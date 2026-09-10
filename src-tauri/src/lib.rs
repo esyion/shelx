@@ -12,11 +12,19 @@ pub mod infrastructure;
 pub mod shared;
 pub mod state;
 
-/// 启动 Tauri 应用:注册插件、注入应用状态并挂载全部 command。
+/// 启动 Tauri 应用:初始化日志、注册插件、注入应用状态并挂载全部 command。
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 日志先行:数据目录解析失败时降级为仅 stdout,不阻断启动。
+    let data_dir = shared::paths::data_dir();
+    if let Err(err) = &data_dir {
+        eprintln!("数据目录初始化失败,文件日志不可用: {err}");
+    }
+    shared::logging::init(data_dir.as_deref().ok());
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(state::AppState::new())
         .invoke_handler(tauri::generate_handler![commands::greet::greet])
         .run(tauri::generate_context!())

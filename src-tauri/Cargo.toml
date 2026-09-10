@@ -38,6 +38,15 @@ tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "time", "
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 keyring = "4.2.0"
 
+# --- 系统对话框(私钥文件 / 下载目录选择,PRD §6.2)---
+tauri-plugin-dialog = "2"
+
+# --- 日志与路径(设计文档 §7.1 / §7.5)---
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"
+dirs = "6"
+
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

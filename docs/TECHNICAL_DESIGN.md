@@ -128,7 +128,7 @@
 | russh-sftp | SFTP | 与 russh 同生态 |
 | tokio | 异步运行时 | features = "full" |
 | rusqlite | SQLite | features = ["bundled"],WAL |
-| keyring 3.x | OS 钥匙串 | Windows 凭据管理器 / macOS Keychain / Secret Service |
+| keyring 4.x | OS 钥匙串 | Windows 凭据管理器 / macOS Keychain / Secret Service |
 | machine-uid | 降级加密的机器指纹来源 | 见 §7.4 |
 | aes-gcm / sha2 | 钥匙串不可用时的降级加密 | |
 | uuid | ID 生成 | v4 + serde |

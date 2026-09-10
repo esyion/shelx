@@ -11,21 +11,23 @@
 
 ---
 
-## M0 工程脚手架(约 0.5 周)
+## M0 工程脚手架(约 0.5 周)— ✅ 已完成(2026-09-10)
 
-- [ ] M0-1 初始化仓库:git、`.gitignore`(node/out/target/dist)、README、editorconfig
-- [ ] M0-2 前端脚手架:bun + create-next-app(TS / App Router / Tailwind),改 `output: 'export'`;**动手前阅读 `node_modules/next/dist/docs/` 相关章节**(AGENTS.md 顶部要求)
-- [ ] M0-3 Tauri 2 接入:`tauri.conf.json`(devUrl `localhost:1420`、frontendDist `../out`、beforeDevCommand `bun run dev`、beforeBuildCommand `bun run build`、窗口 1280×800 / min 960×600)
-- [ ] M0-4 验证 dev/build 双形态(HMR 正常、静态导出产物可被 Tauri 加载)— 覆盖风险 R8
-- [ ] M0-5 shadcn/ui 初始化 + 基础组件入库(button/dialog/dropdown-menu/input/form/select/switch/tabs/tooltip/sonner/scroll-area/context-menu)
-- [ ] M0-6 前端依赖:zustand / recharts / @xterm/* / @tanstack/react-virtual / @tauri-apps/api + dialog/opener 插件 / lucide-react
-- [ ] M0-7 Rust 骨架:`main.rs / lib.rs / state.rs / commands / application / domain / infrastructure / dto / shared` 目录 + 模块声明;tracing 文件日志(滚动);路径解析(`~/.agents-plus/shelx` 与 app config dir)
-- [ ] M0-8 `gateway/tauri.ts` 唯一 invoke/Channel/listen 出口 + `IpcResult`/`IpcError` 类型与解包;`types/` IPC DTO 镜像
-- [ ] M0-9 capabilities 最小集 + CSP(TECHNICAL_DESIGN §10)
-- [ ] M0-10 CI workflow:frontend(bun build + vitest)/ rust(fmt/clippy/test,ubuntu+docker)/ audit
-- [ ] M0-11 `lib/`(cn、format bytes/duration、i18n 字典骨架 zh)
+实况备注:Next 16 + React 19 + shadcn v4(@base-ui 体系),devUrl 为 `localhost:3000`(非 1420);Rust 侧已含 greet 冒烟链路(薄 command + IpcResult 信封 + 测试)与 domain(connection/session/transfer)骨架;russh 锁定 0.63(ring 后端,规避 Windows NASM 依赖)、keyring 4.x。
 
-**M0 验收**:`bun run build` + `cargo clippy -D warnings` 通过;`bunx tauri dev` 打开空壳窗口;CI 全绿。
+- [x] M0-1 初始化仓库:git、`.gitignore`、README、editorconfig
+- [x] M0-2 前端脚手架:bun + Next.js(TS / App Router / Tailwind / 静态导出 `output: 'export'`)
+- [x] M0-3 Tauri 2 接入:devUrl `localhost:3000`、frontendDist `../out`、beforeDevCommand/BuildCommand `bun run dev|build`、窗口 1280×800 / min 960×600 / 居中
+- [x] M0-4 验证 dev/build 双形态(HMR 正常、静态导出产物可被 Tauri 加载)— 覆盖风险 R8
+- [x] M0-5 shadcn/ui 初始化 + 组件全量入库(含 dialog/form/context-menu/tabs 等)
+- [x] M0-6 前端依赖:zustand / recharts / @xterm/* / @tanstack/react-virtual / @tauri-apps/api + opener/dialog 插件 / lucide-react;测试链 vitest + RTL + jsdom
+- [x] M0-7 Rust 骨架:分层目录 + greet 冒烟模板;tracing 双输出日志(stdout + `~/.agents-plus/shelx/logs` 按日滚动);数据目录解析(app config dir 随 settings 模块落地)
+- [x] M0-8 `gateway/tauri.ts` 唯一 invoke 出口 + `IpcResult`/`IpcError` 类型;`types/` IPC 镜像;`app/api.ts` 调用模式已立
+- [x] M0-9 capabilities 最小集(core/opener/dialog)+ CSP/devCsp(script-src 暂含 'unsafe-inline' 因 Next 内联引导脚本,M4 安全加固时收紧)
+- [x] M0-10 CI workflow:frontend(bun build + vitest)/ rust(fmt/clippy/test)/ audit(初期不阻断;docker sshd 集成测试就绪后补 service)
+- [ ] M0-11 `lib/` 工具:cn ✓、format bytes/duration ✓(含测试);仅剩 i18n 字典(随 M1 文案落键,不预建)
+
+**M0 验收(已达成)**:`bun run build` + `cargo clippy -D warnings` + `cargo test`(21 通过)+ `vitest`(5 通过);CI 配置就绪。
 
 ---
 
