@@ -25,7 +25,6 @@
 - [x] M0-8 `gateway/tauri.ts` 唯一 invoke 出口 + `IpcResult`/`IpcError` 类型;`types/` IPC 镜像;`app/api.ts` 调用模式已立
 - [x] M0-9 capabilities 最小集(core/opener/dialog)+ CSP/devCsp(script-src 暂含 'unsafe-inline' 因 Next 内联引导脚本,M4 安全加固时收紧)
 - [x] M0-10 CI workflow:frontend(bun build + vitest)/ rust(fmt/clippy/test)/ audit(初期不阻断;docker sshd 集成测试就绪后补 service)
-- [ ] M0-11 `lib/` 工具:cn ✓、format bytes/duration ✓(含测试);仅剩 i18n 字典(随 M1 文案落键,不预建)
 
 **M0 验收(已达成)**:`bun run build` + `cargo clippy -D warnings` + `cargo test`(21 通过)+ `vitest`(5 通过);CI 配置就绪。
 
