@@ -235,7 +235,7 @@ shelx 以 Tauri 2 构建单窗口桌面应用,单条 SSH 连接复用承载终�
 
 - **渲染**:`@xterm/xterm` + WebGL 渲染器(失败降级 Canvas);`addon-fit` 自适应容器尺寸,窗口缩放/分屏调整时向服务端发送窗口变更(pty request)。
 - **数据流**:前端输入字节 → command 写入后端 → russh channel;服务端输出 → 后端按批(≤16ms 或 ≤64KB 聚合)经 ipc Channel 推给前端 → 写入 xterm。**高频流一律走 Channel,不走全局事件**,避免跨标签广播开销。
-- **编码**:终端数据以**字节流**端到端传输,不破坏二进制正确性;显示编码由前端解码(UTF-8 / GBK,经 encoding_rs 的 WebAssembly 构建),切换即时生效不清屏。
+- **编码**:终端数据以**字节流**端到端传输,不破坏二进制正确性;显示编码由前端以 WebView 原生 TextDecoder 解码(UTF-8 / GBK,遵循 WHATWG 编码标准),切换即时生效不清屏。
 - **多终端**:同一连接的多个终端 = 同一 SSH 连接上的多个 channel,互不影响。
 - **断线处理**:心跳/读写错误检测到断开 → 标签状态点变红 + 终端顶部横幅("连接已断开 · [重新连接]"),终端内容保留可复制;重连成功新开 channel 并恢复视图,失败保留横幅可再试。自动重连默认关闭,设置中可开启(P1)。
 - **keepalive**:默认 30s 全局空请求,可在设置调整(0=关闭)。
@@ -332,9 +332,9 @@ shelx 以 Tauri 2 构建单窗口桌面应用,单条 SSH 连接复用承载终�
 | 状态管理 | Zustand | 轻量无样板代码,适合标签/会话/传输队列这类高频更新的客户端状态 |
 | 终端 | @xterm/xterm + addon-fit + addon-webgl + addon-search | 行业标准 |
 | 图表 | Recharts | React 声明式图表,与 shadcn/Tailwind 样式体系天然融合 |
-| SSH 协议 | russh(客户端)| 纯 Rust、async、与 Tauri 的 tokio 运行时契合 |
+| SSH 协议 | russh(客户端,ring 加密后端)| 纯 Rust、async、与 Tauri 的 tokio 运行时契合;ring 后端免 NASM/CMake 工具链依赖 |
 | SFTP | russh-sftp | 与 russh 同生态,同一连接多 channel |
-| 编码 | encoding_rs(WASM)| UTF-8/GBK 全覆盖,标准表 |
+| 编码 | WebView 原生 TextDecoder | WHATWG 编码标准(与 encoding_rs 同源实现),UTF-8/GBK 全覆盖、零依赖;encoding_rs 无官方 npm/WASM 发布,故不引入 |
 | 本地存储 | SQLite(rusqlite)| 连接树、传输历史;结构化且易扩展 |
 | 凭据 | keyring crate | Windows 凭据管理器 / macOS Keychain / Linux Secret Service |
 | 配置 | JSON 文件 | 设置与布局,便于人工检查 |
@@ -435,6 +435,7 @@ SQLite 主要表:`connections`、`groups`、`transfer_history`(P1)。凭据不�
 6. **凭据永不明文落盘**:钥匙串优先,降级方案为机器指纹派生密钥 AES-GCM 加密,且降级状态对用户可见。
 7. **错误结构化**:所有 command 错误返回 `{code, message, source?}`,code 枚举(如 `AUTH_FAILED`、`HOSTKEY_CHANGED`、`PERMISSION_DENIED`、`NET_TIMEOUT`)供前端精确分支。
 8. **Next.js 仅以静态导出形态使用**:构建产物为纯静态资源(`output: 'export'`),由 Tauri 直接加载;**禁用** SSR、Server Actions、API Routes、中间件等一切 Node 服务端能力,所有数据一律经 Tauri command/Channel 获取。开发期用 `next dev` 起开发服务器,配置为 Tauri 的 devUrl 实现热更新联调。
+9. **russh 加密后端选 ring**:russh 0.63 默认的 aws-lc-rs 后端在 Windows 构建依赖 NASM 与 CMake,对贡献者工具链要求过高;统一使用 ring 后端(标准 Rust 工具链可构建),并保留 `rsa`(老服务器 ssh-rsa)与 `flate2`(zlib 压缩)feature。GBK 等显示编码解码使用 WebView 原生 TextDecoder(WHATWG 编码标准),不引入额外编码库。
 
 ---
 

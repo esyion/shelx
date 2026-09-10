@@ -18,7 +18,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ## 1. 项目定位与技术栈
 
 - 桌面应用框架：Tauri 2。
-- 前端：Next.js App Router + React + TypeScript + Tailwind CSS + shadcn/ui+Zstand。
+- 前端：Next.js App Router + React + TypeScript + Tailwind CSS + shadcn/ui (Base-ui)+Zstand。
 - Rust 端：Rust 2021 edition。
 - 前端与 Rust 的唯一跨边界通信方式：Tauri IPC，包括 invoke、事件和插件 API。
 
