@@ -13,7 +13,7 @@
         "@tauri-apps/plugin-opener": "^2.5.5",
         "@xterm/addon-fit": "^0.11.0",
         "@xterm/addon-search": "^0.16.0",
-        "@xterm/addon-webgl": "^0.19.0",
+        "@xterm/addon-webgl": "0.20.0-beta.300",
         "@xterm/xterm": "^6.0.0",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
@@ -490,7 +490,7 @@
 
     "@xterm/addon-search": ["@xterm/addon-search@0.16.0", "https://registry.npmmirror.com/@xterm/addon-search/-/addon-search-0.16.0.tgz", {}, "sha512-9OeuBFu0/uZJPu+9AHKY6g/w0Czyb/Ut0A5t79I4ULoU4IfU5BEpPFVGQxP4zTTMdfZEYkVIRYbHBX1xWwjeSA=="],
 
-    "@xterm/addon-webgl": ["@xterm/addon-webgl@0.19.0", "https://registry.npmmirror.com/@xterm/addon-webgl/-/addon-webgl-0.19.0.tgz", {}, "sha512-b3fMOsyLVuCeNJWxolACEUED0vm7qC0cy4wRvf3oURSzDTYVQiGPhTnhWZwIHdvC48Y+oLhvYXnY4XDXPoJo6A=="],
+    "@xterm/addon-webgl": ["@xterm/addon-webgl@0.20.0-beta.300", "https://registry.npmmirror.com/@xterm/addon-webgl/-/addon-webgl-0.20.0-beta.300.tgz", { "peerDependencies": { "@xterm/xterm": "^6.1.0-beta.304" } }, "sha512-BJQiOx8I+zz2woe+/E9nWprRRPevo9slPgyOd43E8o18aG307ccsyaTJoIbSu99uqfDoVLWDRLTy91ZXTFsdig=="],
 
     "@xterm/xterm": ["@xterm/xterm@6.0.0", "https://registry.npmmirror.com/@xterm/xterm/-/xterm-6.0.0.tgz", {}, "sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg=="],
 
