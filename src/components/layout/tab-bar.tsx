@@ -28,50 +28,50 @@ export function TabBar() {
         const status = sessionsById[tab.sessionId ?? ""]?.status;
         const active = tab.id === activeTabId;
         return (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            className={cn(
-              "group flex h-8 min-w-0 max-w-48 items-center gap-1.5 rounded-t border border-b-0 px-2.5 text-xs",
-              active
-                ? "bg-background text-foreground"
-                : "border-transparent text-muted-foreground hover:bg-background/60",
-            )}
-            onClick={() => setActive(tab.id)}
-          >
-            <span
-              className={cn("size-2 shrink-0 rounded-full", statusDotClass(status))}
-              aria-label={
-                status === "online"
-                  ? "在线"
-                  : status === "disconnected"
-                    ? "断开"
-                    : "连接中"
-              }
-            />
-            <span className="truncate">{tab.title}</span>
-            {tab.temporary && (
-              <span className="shrink-0 rounded bg-muted px-1 text-[10px] text-muted-foreground">
-                临时
-              </span>
-            )}
-            <span
-              role="button"
-              tabIndex={-1}
+          <div key={tab.id} className="group relative flex items-end">
+            <Button
+              variant="ghost"
+              role="tab"
+              aria-selected={active}
+              className={cn(
+                "h-8 min-w-0 max-w-48 shrink justify-start gap-1.5 rounded-t rounded-b-none border border-b-0 px-2.5 pr-6 text-xs font-normal",
+                active
+                  ? "bg-background text-foreground"
+                  : "border-transparent text-muted-foreground hover:bg-background/60",
+              )}
+              onClick={() => setActive(tab.id)}
+            >
+              <span
+                className={cn("size-2 shrink-0 rounded-full", statusDotClass(status))}
+                aria-label={
+                  status === "online"
+                    ? "在线"
+                    : status === "disconnected"
+                      ? "断开"
+                      : "连接中"
+                }
+              />
+              <span className="truncate">{tab.title}</span>
+              {tab.temporary && (
+                <span className="shrink-0 rounded bg-muted px-1 text-[10px] text-muted-foreground">
+                  临时
+                </span>
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
               aria-label="关闭标签"
-              className="ml-0.5 shrink-0 rounded p-0.5 opacity-0 hover:bg-accent group-hover:opacity-100"
-              onClick={(e) => {
-                e.stopPropagation();
+              className="absolute top-1/2 right-0.5 size-5 -translate-y-1/2 rounded p-0 opacity-0 hover:bg-accent group-hover:opacity-100"
+              onClick={() => {
                 void requestCloseTab(tab).then((ok) => {
                   if (ok) closeTab(tab.id);
                 });
               }}
             >
               <X className="size-3" />
-            </span>
-          </button>
+            </Button>
+          </div>
         );
       })}
       <Button

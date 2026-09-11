@@ -5,6 +5,7 @@
 "use client";
 
 import { Monitor, FolderCode, TerminalSquare } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { TerminalView } from "@/components/terminal/terminal-view";
 import { cn } from "@/lib/utils";
 import { useTabsStore, type WorkspaceView } from "@/stores/tabs";
@@ -38,13 +39,13 @@ export function Workspace() {
       <div className="flex items-center gap-1 border-b px-2 py-1">
         <div role="tablist" aria-label="工作区视图" className="flex items-center gap-1">
           {VIEWS.map(({ key, label, icon: Icon }) => (
-            <button
+            <Button
               key={key}
-              type="button"
+              variant="ghost"
+              size="xs"
               role="tab"
               aria-selected={activeTab.view === key}
               className={cn(
-                "flex items-center gap-1 rounded px-2 py-1 text-xs",
                 activeTab.view === key
                   ? "bg-accent text-accent-foreground"
                   : "text-muted-foreground hover:bg-accent/60",
@@ -53,7 +54,7 @@ export function Workspace() {
             >
               <Icon className="size-3.5" />
               {label}
-            </button>
+            </Button>
           ))}
         </div>
         <span className="ml-auto truncate text-[10px] text-muted-foreground/60">

@@ -133,7 +133,12 @@ export async function requestCloseTab(tab: Tab): Promise<boolean> {
     !!tab.sessionId &&
     useSessionsStore.getState().byId[tab.sessionId]?.status === "online";
   if (confirmClose && online) {
-    return window.confirm(`关闭标签「${tab.title}」?其终端会话仍在运行。`);
+    const { confirmDialog } = await import("@/components/app-dialogs");
+    return confirmDialog({
+      title: "关闭标签",
+      description: `「${tab.title}」的终端会话仍在运行,确定关闭吗?`,
+      confirmText: "关闭",
+    });
   }
   return true;
 }

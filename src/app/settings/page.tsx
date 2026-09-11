@@ -336,12 +336,12 @@ function SwitchRow({
   onChange: (value: boolean) => void;
 }) {
   return (
-    <label className="flex items-center justify-between gap-3 text-sm">
+    <Label className="justify-between gap-3">
       <span>
         {label}
         {hint && <span className="ml-1 text-xs text-muted-foreground">{hint}</span>}
       </span>
       <Switch checked={checked} onCheckedChange={onChange} />
-    </label>
+    </Label>
   );
 }

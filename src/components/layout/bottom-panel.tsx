@@ -4,6 +4,7 @@
  */
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useUiStore, type BottomPanel } from "@/stores/ui";
 
@@ -23,11 +24,11 @@ export function BottomPanel() {
     <section className="flex h-44 shrink-0 flex-col border-t" aria-label="底部面板">
       <div className="flex items-center gap-1 border-b px-2 py-1">
         {PANELS.map(({ key, label }) => (
-          <button
+          <Button
             key={key}
-            type="button"
+            variant="ghost"
+            size="xs"
             className={cn(
-              "rounded px-2 py-1 text-xs",
               bottomPanel === key
                 ? "bg-accent text-accent-foreground"
                 : "text-muted-foreground hover:bg-accent/60",
@@ -37,16 +38,17 @@ export function BottomPanel() {
             }
           >
             {label}
-          </button>
+          </Button>
         ))}
-        <button
-          type="button"
-          className="ml-auto rounded px-2 py-1 text-xs text-muted-foreground hover:bg-accent/60"
+        <Button
+          variant="ghost"
+          size="xs"
+          className="ml-auto text-muted-foreground hover:bg-accent/60"
           title="收起 (Ctrl+J)"
           onClick={toggle}
         >
           收起
-        </button>
+        </Button>
       </div>
       <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
         {bottomPanel === "sftp"

@@ -12,8 +12,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
+import { Input } from "@/components/ui/input";import {
   ChevronDown,
   ChevronRight,
   FolderPlus,
@@ -25,6 +24,7 @@ import {
 import { countConnections, nodeKey, useFilteredTree } from "@/app/hooks/use-connections";
 import type { useConnections } from "@/app/hooks/use-connections";
 import { useUiStore } from "@/stores/ui";
+import { confirmDialog, promptDialog } from "@/components/app-dialogs";
 import { cn } from "@/lib/utils";
 import type { ConnectionNodeDto } from "@/types";
 
@@ -92,8 +92,13 @@ export function ConnectionTree({ api }: { api: ConnectionsApi }) {
         size="sm"
         className="w-full justify-start text-xs"
         onClick={() => {
-          const name = window.prompt("分组名称");
-          if (name && name.trim()) void api.addGroup(name.trim());
+          void promptDialog({
+            title: "新建分组",
+            label: "分组名称",
+            confirmText: "创建",
+          }).then((name) => {
+            if (name && name.trim()) void api.addGroup(name.trim());
+          });
         }}
       >
         <FolderPlus className="size-4" />
@@ -133,9 +138,9 @@ function TreeNode({
     const expanded = forceExpand || !api.collapsed.has(node.id);
     return (
       <li role="treeitem">
-        <button
-          type="button"
-          className="flex w-full items-center gap-1 rounded px-1.5 py-1 text-xs font-medium text-muted-foreground hover:bg-accent"
+        <Button
+          variant="ghost"
+          className="h-auto w-full shrink justify-start gap-1 rounded px-1.5 py-1 text-xs font-medium text-muted-foreground hover:bg-accent"
           onClick={() => api.toggleGroup(node.id)}
         >
           {expanded ? (
@@ -144,7 +149,7 @@ function TreeNode({
             <ChevronRight className="size-3.5" />
           )}
           <span className="truncate">{node.name}</span>
-        </button>
+        </Button>
         {expanded && node.children.length > 0 && (
           <ul className="ml-3 space-y-0.5 border-l pl-1" role="group">
             {node.children.map((child) => (
@@ -165,32 +170,34 @@ function TreeNode({
   return (
     <li role="treeitem">
       <ContextMenu>
-        <ContextMenuTrigger>
-          <button
-            type="button"
-            className={cn(
-              "flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-xs hover:bg-accent",
-              connecting && "opacity-60",
-            )}
-            onDoubleClick={() => void api.connect(node.id, node.name, node.encoding)}
-            title={`${node.username}@${node.host}:${node.port}${
-              node.remark ? ` · ${node.remark}` : ""
-            }`}
-          >
-            {connecting ? (
-              <Loader2 className="size-3.5 shrink-0 animate-spin" />
-            ) : (
-              <Zap
-                className={cn(
-                  "size-3.5 shrink-0",
-                  node.hasStoredPassword || node.hasStoredPassphrase
-                    ? "text-emerald-500"
-                    : "text-muted-foreground/60",
-                )}
-              />
-            )}
-            <span className="truncate">{node.name}</span>
-          </button>
+        <ContextMenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              className={cn(
+                "h-auto w-full shrink justify-start gap-1.5 rounded px-1.5 py-1 text-xs font-normal hover:bg-accent",
+                connecting && "opacity-60",
+              )}
+              title={`${node.username}@${node.host}:${node.port}${
+                node.remark ? ` · ${node.remark}` : ""
+              }`}
+              onDoubleClick={() => void api.connect(node.id, node.name, node.encoding)}
+            />
+          }
+        >
+          {connecting ? (
+            <Loader2 className="size-3.5 shrink-0 animate-spin" />
+          ) : (
+            <Zap
+              className={cn(
+                "size-3.5 shrink-0",
+                node.hasStoredPassword || node.hasStoredPassphrase
+                  ? "text-emerald-500"
+                  : "text-muted-foreground/60",
+              )}
+            />
+          )}
+          <span className="truncate">{node.name}</span>
         </ContextMenuTrigger>
         <ContextMenuContent>
           <ContextMenuItem onClick={() => void api.connect(node.id, node.name, node.encoding)}>
@@ -204,13 +211,14 @@ function TreeNode({
           <ContextMenuItem
             className="text-red-500"
             onClick={() => {
-              if (
-                window.confirm(
-                  `删除连接「${node.name}」?仅移除配置,已存凭据可在设置中清理。`,
-                )
-              ) {
-                void api.remove(node.id);
-              }
+              void confirmDialog({
+                title: "删除连接",
+                description: `删除连接「${node.name}」?仅移除配置,已存凭据可在设置中清理。`,
+                confirmText: "删除",
+                destructive: true,
+              }).then((ok) => {
+                if (ok) void api.remove(node.id);
+              });
             }}
           >
             删除…

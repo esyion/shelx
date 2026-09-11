@@ -150,13 +150,13 @@ export function QuickConnectDialog() {
               />
             </div>
           )}
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Label className="text-xs font-normal text-muted-foreground">
             <Checkbox
               checked={form.save}
               onCheckedChange={(checked) => set("save", checked === true)}
             />
             保存为连接(密码存入钥匙串)
-          </label>
+          </Label>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>

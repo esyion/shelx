@@ -16,6 +16,7 @@ import { TabBar } from "@/components/layout/tab-bar";
 import { Workspace } from "@/components/layout/workspace";
 import { BottomPanel } from "@/components/layout/bottom-panel";
 import { ToastHost } from "@/components/layout/toast-host";
+import { AppDialogs } from "@/components/app-dialogs";
 import { useConnections } from "@/app/hooks/use-connections";
 import { listSessionStatus } from "@/app/api";
 import { initGbkEncoder } from "@/lib/codec";
@@ -157,6 +158,7 @@ export function AppShell() {
       <QuickConnectDialog />
       <HostKeyConfirmDialog />
       <AuthPromptDialog />
+      <AppDialogs />
       <ToastHost />
     </div>
   );

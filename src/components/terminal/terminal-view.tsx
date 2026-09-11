@@ -19,6 +19,7 @@ import {
   writeTerminal,
 } from "@/app/api";
 import { encodeInput, initGbkEncoder, StreamDecoder } from "@/lib/codec";
+import { Button } from "@/components/ui/button";
 import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
 
@@ -183,9 +184,10 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
         <div className="absolute inset-x-0 top-0 z-10 flex items-center gap-2 bg-red-500/15 px-3 py-1 text-xs text-red-500">
           {status === "connecting" ? "连接中…" : "连接已断开,内容保留可复制"}
           {status === "disconnected" && (
-            <button
-              type="button"
-              className="rounded border border-red-500/50 px-1.5 py-0.5 hover:bg-red-500/20"
+            <Button
+              variant="outline"
+              size="xs"
+              className="border-red-500/50 text-red-500 hover:bg-red-500/20 hover:text-red-500"
               onClick={() => {
                 void import("@/app/api").then(async ({ reconnectSession }) => {
                   try {
@@ -202,7 +204,7 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
               }}
             >
               重新连接
-            </button>
+            </Button>
           )}
         </div>
       )}
