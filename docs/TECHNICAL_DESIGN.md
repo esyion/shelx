@@ -421,35 +421,37 @@ ProcessInfo   { pid, user, cpuPercent, memPercent, rssKb, command }   // P1
 
 ### 7.2 SQLite DDL(migrations/0001_init.sql)
 
+> 时间戳统一为 `INTEGER`(unix 毫秒);迁移以 `PRAGMA user_version` 版本化,SQL 内嵌于二进制。
+
 ```sql
 PRAGMA journal_mode = WAL;
 
 CREATE TABLE groups (
   id TEXT PRIMARY KEY,
-  parent_id TEXT REFERENCES groups(id),
+  parent_id TEXT REFERENCES groups(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   position INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
 );
 
 CREATE TABLE connections (
   id TEXT PRIMARY KEY,
-  group_id TEXT REFERENCES groups(id),
+  group_id TEXT REFERENCES groups(id) ON DELETE SET NULL,
   name TEXT NOT NULL,
   host TEXT NOT NULL,
   port INTEGER NOT NULL DEFAULT 22 CHECK(port BETWEEN 1 AND 65535),
   username TEXT NOT NULL,
   auth_method TEXT NOT NULL CHECK(auth_method IN ('password','private_key','keyboard_interactive','agent')),
-  secret_ref_password TEXT,          -- 钥匙串引用键,非明文
   private_key_path TEXT,
+  secret_ref_password TEXT,          -- 钥匙串引用键,非明文
   secret_ref_passphrase TEXT,
   encoding TEXT NOT NULL DEFAULT 'utf-8' CHECK(encoding IN ('utf-8','gbk')),
   tag_color TEXT,
   remark TEXT,
   position INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
 );
 CREATE INDEX idx_connections_group ON connections(group_id);
 CREATE INDEX idx_connections_name  ON connections(name);
@@ -459,7 +461,7 @@ CREATE TABLE host_keys (
   port INTEGER NOT NULL,
   algorithm TEXT NOT NULL,
   fingerprint TEXT NOT NULL,          -- SHA256 hex/base64 统一格式
-  confirmed_at TEXT NOT NULL,
+  confirmed_at INTEGER NOT NULL,
   PRIMARY KEY (host, port)
 );
 
@@ -472,8 +474,8 @@ CREATE TABLE transfer_history (       -- M2 落库
   total_bytes INTEGER NOT NULL,
   status TEXT NOT NULL,
   error TEXT,
-  started_at TEXT NOT NULL,
-  finished_at TEXT
+  started_at INTEGER NOT NULL,
+  finished_at INTEGER
 );
 ```
 

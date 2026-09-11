@@ -45,6 +45,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - **禁止使用 `features/`、路由注册表、React Router、手动 pathname 判断或其他自定义路由抽象来替代文件路由。**
 - **禁止把 Next.js 当作“套壳”使用**，不得通过单一 `page.tsx` + 自定义组件/状态来模拟多页面路由。
 - 页面 URL 必须能够从 `src/app/` 的目录结构中直接对应和理解。
+- 页面禁止内联css，必须使用 Tailwind CSS 语义令牌和 shadcn/ui 组件。
 
 优先遵循 Next.js 官方 App Router 设计，不要自行发明路由体系。
 

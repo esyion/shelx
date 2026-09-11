@@ -41,15 +41,31 @@
 
 ### 后端
 
-- [ ] M1-B1 migrations 0001(groups/connections/host_keys,DDL 见 TECHNICAL_DESIGN §7.2)+ 迁移执行器(user_version)
-- [ ] M1-B2 领域层:`ConnConfig`/`Group` 值对象与校验、`SessionStatus` 状态机、领域错误 + 单测
-- [ ] M1-B3 `ConnectionRepo`(rusqlite)CRUD/移动/搜索 + 临时目录单测
-- [ ] M1-B4 `SecretStore`(keyring put/get/delete + machine-uid+AES-GCM 降级 + availability)+ 双分支单测
-- [ ] M1-B5 `ssh-transport`:connect(密码/私钥含口令/键盘交互/免密默认密钥)、host key TOFU(查库→事件确认→落库;不一致 `HOSTKEY_MISMATCH`)、`PromptBroker` 桥接、120s 超时
-- [ ] M1-B6 `SessionService`:注册表、connect/connect_quick/close/reconnect、断线检测(EOF + keepalive×3)、`session-status-changed` 事件、serverInfo 一次性采集
-- [ ] M1-B7 终端:open/write/resize/close command + pty channel + 输出泵(≤16ms/≤64KiB 批处理,raw bytes Channel)
-- [ ] M1-B8 `SettingsStore`(settings.json/layout.json 原子写)+ `get/update_settings`、`get/save_layout`
-- [ ] M1-B9 dto + commands 注册(connections/groups/sessions/terminals/settings 全集,TECHNICAL_DESIGN §6.2)+ 错误码映射(command 边界统一)
+- [x] M1-B1 migrations 0001(groups/connections/host_keys/transfer_history)+ 迁移执行器(user_version,SQL 内嵌,幂等)✅ 2026-09-10
+- [x] M1-B2 领域层:`ConnConfig`/`Group` 值对象与校验(端口/用户名/编码/备注全字段)、`SessionStatus` 状态机、领域错误 + 单测 ✅ 2026-09-10
+- [x] M1-B3 `ConnectionStore` 端口 + `ConnectionService`(CRUD/移动/复制/树组装/一层嵌套约束)+ SQLite 实现(WAL/外键/忙等待,内存库测试);搜索为前端过滤,无后端命令 ✅ 2026-09-10
+  - 备注:ConnectionInput 暂不含密码/口令字段,随 M1-B4 凭据存储以加法方式扩展契约
+- [x] M1-B4 `SecretStore`(keyring put/get/delete + machine-uid+AES-256-GCM 降级 + availability 探测选择 + 会话缓存)+ 单测(keyring 双分支、降级换机不可解密、凭据保留/覆盖/清除/克隆不复制)✅ 2026-09-10
+  - 契约扩展:ConnectionInput 增 password/passphrase(value+save),ConnectionDto 增 hasStored*;错误码新增 KEYRING_UNAVAILABLE
+- [x] M1-B5 `ssh-transport`:connect(密码/私钥含口令/键盘交互/免密=默认密钥+agent 分平台)、host key TOFU(查库→事件确认→落库;不一致 `HOSTKEY_MISMATCH` 阻断;超时按拒绝)、`PromptBroker` 桥接(先注册后发事件,120s 超时)、keepalive 原生 Config(interval+max=3)、断线回调置位 ✅ 2026-09-10
+  - S1 spike ✅:russh 0.63 键盘交互为拉取式循环(start→prompts→respond),无 Handler 回调桥接复杂度;`connect_env` 仅 unix,Windows agent 走命名管道+Pageant 回退
+  - 真机冒烟 ✅:docker sshd(密码认证)两条用例通过(连接+TOFU 落库+断开 / 错误密码 AuthRejected);私钥/键盘交互/agent 路径待 M1-B10 扩展 sshd 用户后覆盖
+  - 冒烟暴露并修复一个真实竞态:事件先于未决表注册发出,早到的应答会落空
+- [x] M1-B6 `SessionService`:注册表 + 状态机(Connecting→Online→Disconnected,断线观察任务轮询)、connect_by_conn/connect_quick(可选落库)/close/reconnect、serverInfo 后台一次性采集(`uname -s -r -m; hostname`)、凭据缺失 → AUTH_CREDENTIALS_REQUIRED ✅ 2026-09-10
+  - IPC:`connect_session`/`connect_quick_session`/`close_session`/`reconnect_session`/`list_session_status`/`respond_auth_prompt`/`respond_hostkey_confirm` 七命令注册(async 命令外层包 Tauri 签名要求的 Result,信封契约不变)
+  - 事件适配:`TauriSessionEvents` → `auth-prompt`/`hostkey-confirm`/`session-status-changed`;前端 gateway 增 `listenEvent` 唯一事件出口
+  - 应用层端口:`SshTransport`/`SshConnection`(async-trait)/`TransportError`;infra 实现含 `exec_once`(session channel 收集 stdout)
+  - 错误码新增:AUTH_CREDENTIALS_REQUIRED、HOSTKEY_REJECTED、NET_UNREACHABLE;HOSTKEY_CHANGED 携带新旧指纹 details
+  - 重连后 serverInfo 变化事件、会话条目清理策略随 F9/F10 前端接入时打磨
+- [x] M1-B7 终端:open/write/resize/close_terminal 命令(全 async)+ pty channel(request_pty + shell,split 读写两半)+ 输出泵(≤16ms/≤64KiB 聚合,EOF 前发尽残余)+ 输出经 ipc Channel `InvokeResponseBody::Raw` 原始字节直发 + TerminalService 多终端注册路由 + SessionService.connection_of ✅ 2026-09-10
+  - S3 spike ✅:`Channel<InvokeResponseBody>::send(Raw)` 官方支持,原始字节路径成立
+  - 冒烟 ✅:pty echo 回读全链路(开终端→写命令→泵回送标记→resize→close)在 docker sshd 通过,共 3 条 ignored 用例
+  - 输入方向暂为 JSON 数字数组(键盘小包);原始 body 直传列为 F7 优化项
+  - 错误码新增 SESSION_CLOSED
+- [x] M1-B8 `SettingsStore`(settings.json/layout.json 原子写)+ `get/update_settings`(JSON 补丁深合并 + 边界校验)、`get/save_layout`(对象校验 + 256KB 上限)✅ 2026-09-10
+  - 设置类型单一来源:application::settings::AppSettings(各分组自带文档化 Default),dto 直接复用;布局以后端透明 JSON 持久化(前端自有形状)
+  - state 装配迁移至 setup 钩子(取 Tauri app_config_dir);settings-changed 事件随 F11 设置页落地
+- [ ] M1-B9 dto + commands 注册(connections/groups/settings 全集已注册并接前端 gateway ✅ 2026-09-10;sessions/terminals 随对应模块补充)+ 错误码映射(已含 NOT_FOUND、KEYRING_UNAVAILABLE;command 边界统一)
 - [ ] M1-B10 集成测试(docker sshd:密码/私钥/OTP 用户):三种认证、指纹首次确认与变化阻断、服务端主动断连回调、连接超时
 
 ### 前端
