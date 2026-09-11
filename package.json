@@ -7,7 +7,9 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "test": "vitest run",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "release": "node scripts/release.mjs",
+    "bump": "node scripts/bump-version.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

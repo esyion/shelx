@@ -103,9 +103,11 @@ function applyVersion(file, newVersion) {
   const text = readFileSync(file.path, "utf8");
   let next;
   if (file.kind === "json") {
-    const data = JSON.parse(text);
-    data[file.key] = newVersion;
-    next = JSON.stringify(data, null, 2) + "\n";
+    // 原地正则替换 "version": "x.y.z",  → "version": "<new>",
+    // 不走 JSON.parse/stringify,避免重排 key、丢注释、丢 BOM。
+    // 仅匹配顶层键(JSON.stringify 顶层缩进 2 空格,匹配 `  "version":`)。
+    const re = new RegExp(`(^[ \\t]*"${file.key}"\\s*:\\s*)"[^"]*"`, "m");
+    next = text.replace(re, `$1"${newVersion}"`);
   } else {
     // Cargo.toml:替换 [package] 块下的 version 行(保留缩进)
     next = text.replace(
@@ -159,4 +161,55 @@ function main() {
   for (const f of FILES) console.log(`  ${f.path}`);
 }
 
-main();
+/**
+ * 公共 API:把版本号改成 `next`(支持 "patch"|"minor"|"major"|"x.y.z")。
+ * 不抛错,失败返回 `{ ok: false, error }`。
+ *
+ * @param {"patch"|"minor"|"major"|`${number}.${number}.${number}`} nextArg
+ * @returns {{ ok: true; previous: string; next: string } | { ok: false; error: string }}
+ */
+export function bumpVersion(nextArg) {
+  const currentMap = readAll();
+  const versions = Object.values(currentMap);
+  if (new Set(versions).size !== 1) {
+    const lines = Object.entries(currentMap).map(([p, v]) => `  ${p}: ${v}`).join("\n");
+    return { ok: false, error: `三处 version 不一致:\n${lines}` };
+  }
+  const previous = versions[0];
+
+  let next;
+  if (SEMVER_RE.test(nextArg)) {
+    next = nextArg;
+  } else if (["patch", "minor", "major"].includes(nextArg)) {
+    next = bump(previous, nextArg);
+  } else {
+    return { ok: false, error: `未知参数: ${nextArg}(期望 patch|minor|major 或 x.y.z)` };
+  }
+  if (!next || !SEMVER_RE.test(next)) {
+    return { ok: false, error: `计算结果 "${next}" 不是合法 semver` };
+  }
+  if (next === previous) {
+    return { ok: false, error: `当前已是 ${previous},无需变更` };
+  }
+  for (const f of FILES) applyVersion(f, next);
+  return { ok: true, previous, next };
+}
+
+/**
+ * 公共 API:读取当前三处版本号,返回 { ok, value | error }。
+ * 仅用于校验,不应触发写入。
+ */
+export function readCurrentVersion() {
+  const currentMap = readAll();
+  const versions = Object.values(currentMap);
+  if (new Set(versions).size !== 1) {
+    const lines = Object.entries(currentMap).map(([p, v]) => `  ${p}: ${v}`).join("\n");
+    return { ok: false, error: `三处 version 不一致:\n${lines}` };
+  }
+  return { ok: true, value: versions[0] };
+}
+
+// 仅在直接执行(而非被 import)时跑 CLI 主流程。
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main();
+}
