@@ -7,6 +7,7 @@
 import {
   connectionsApi,
   localFsApi,
+  monitorApi,
   sessionsApi,
   settingsApi,
   sftpApi,
@@ -142,3 +143,12 @@ export const renameLocalEntry = localFsApi.renameLocalEntry;
 
 /** 删除本地文件。 */
 export const deleteLocalEntries = localFsApi.deleteLocalEntries;
+
+/** 启动监控采集。 */
+export const startMonitor = monitorApi.startMonitor;
+
+/** 停止监控采集。 */
+export const stopMonitor = monitorApi.stopMonitor;
+
+/** 读取环形缓冲快照。 */
+export const recentMonitorSamples = monitorApi.recentMonitorSamples;

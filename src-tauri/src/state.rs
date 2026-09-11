@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::application::connections::ConnectionService;
+use crate::application::monitoring::MonitorService;
 use crate::application::ports::{SecretAvailability, SessionEventSink, SshTransport};
 use crate::application::prompt::PromptBroker;
 use crate::application::sessions::SessionService;
@@ -36,6 +37,8 @@ pub struct AppState {
     pub sftp: Arc<SftpService>,
     /// 传输引擎(全局队列/冲突/取消/重试)。
     pub transfers: Arc<TransferService>,
+    /// 监控采集服务(调度/环形缓冲/断线联动)。
+    pub monitor: Arc<MonitorService>,
     /// 键盘交互/指纹确认桥(respond_* 命令直达)。
     pub broker: Arc<PromptBroker>,
     /// 凭据存储可用性(供设置页展示"系统钥匙串 / 降级加密")。
@@ -69,6 +72,7 @@ impl AppState {
         let connections = Arc::new(ConnectionService::new(Box::new(store), secret_store));
 
         let events: Arc<dyn SessionEventSink> = Arc::new(TauriSessionEvents::new(app.clone()));
+        let monitor_events = events.clone();
         let broker = Arc::new(PromptBroker::new(events.clone()));
         let host_keys = Arc::new(
             SqliteHostKeyStore::open(&db_path)
@@ -85,6 +89,7 @@ impl AppState {
             Arc::new(crate::infrastructure::local_fs::StdLocalFs::new()),
             &settings,
         ));
+        let monitor = Arc::new(MonitorService::new(sessions.clone(), monitor_events));
 
         Self {
             connections,
@@ -93,6 +98,7 @@ impl AppState {
             terminals,
             sftp,
             transfers,
+            monitor,
             broker,
             secret_availability,
         }

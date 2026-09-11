@@ -9,5 +9,6 @@ pub mod connection;
 pub mod error;
 pub mod group;
 pub mod hostkey;
+pub mod metrics;
 pub mod session;
 pub mod transfer;

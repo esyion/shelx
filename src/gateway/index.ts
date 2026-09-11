@@ -15,3 +15,4 @@ export * as settingsApi from "./settings";
 export * as terminalsApi from "./terminals";
 export * as transferApi from "./transfer";
 export * as localFsApi from "./local_fs";
+export * as monitorApi from "./monitor";

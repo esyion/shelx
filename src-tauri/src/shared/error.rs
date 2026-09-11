@@ -29,6 +29,8 @@ pub enum IpcErrorCode {
     RemoteFsError,
     /// 本地文件操作失败。
     LocalFsError,
+    /// 目标系统不支持监控采集(非 Linux)。
+    MonitorUnsupported,
     /// 凭据存储不可用(钥匙串初始化失败且降级存储不可用)。
     KeyringUnavailable,
     /// 网络读写超时。

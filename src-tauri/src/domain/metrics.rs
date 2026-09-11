@@ -12,6 +12,8 @@ pub struct RawSample {
     pub cpu_times: Vec<[u64; 8]>,
     /// /proc/meminfo:总内存 KiB。
     pub mem_total_kb: Option<u64>,
+    /// /proc/meminfo:空闲内存 KiB(MemFree)。
+    pub mem_free_kb: Option<u64>,
     /// /proc/meminfo:可用内存 KiB(MemAvailable,老内核缺此字段时用 MemFree + Buffers + Cached)。
     pub mem_available_kb: Option<u64>,
     /// /proc/meminfo:Buffers KiB。
@@ -126,7 +128,10 @@ pub fn compute_sample(
                 .zip(p.net_bytes.iter())
                 .map(|(c, o)| c.1.saturating_sub(o.1))
                 .sum();
-            ((rx as f64 / elapsed_secs) as u64, (tx as f64 / elapsed_secs) as u64)
+            (
+                (rx as f64 / elapsed_secs) as u64,
+                (tx as f64 / elapsed_secs) as u64,
+            )
         }
         _ => (0, 0),
     };

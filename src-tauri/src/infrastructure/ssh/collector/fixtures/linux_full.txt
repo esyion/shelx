@@ -1,0 +1,50 @@
+===S
+cpu  74689 2122 24812 8269938 12190 0 812 0 0 0
+cpu0 18675 530 6203 2069903 3047 0 203 0 0 0
+cpu1 18720 531 6208 2069912 3047 0 203 0 0 0
+cpu2 18647 530 6200 2070000 3048 0 203 0 0 0
+cpu3 18647 531 6201 2070123 3048 0 203 0 0 0
+intr 35938565 34 9 0 ... 
+ctxt 52886797
+btime 1755119808
+processes 134202
+procs_running 1
+procs_blocked 0
+===M
+MemTotal:       16342712 kB
+MemFree:         8293260 kB
+MemAvailable:   12582904 kB
+Buffers:          412344 kB
+Cached:          3954200 kB
+SwapCached:            0 kB
+Active:          2148316 kB
+Inactive:        1552304 kB
+Active(anon):     858824 kB
+Inactive(anon):   125908 kB
+Active(file):    1289492 kB
+Inactive(file):  1426396 kB
+Unevictable:          16 kB
+Mlocked:              16 kB
+SwapTotal:       2097148 kB
+SwapFree:        2097148 kB
+Dirty:              2244 kB
+Writeback:             0 kB
+AnonPages:        853532 kB
+Mapped:           402388 kB
+Shmem:            131200 kB
+Slab:             381768 kB
+===N
+Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+    lo: 5264862   32142    0    0    0     0          0         0  5264862   32142    0    0    0     0       0          0
+  eth0: 2783948213 3422218    0    0    0     0          0      0 822632191 2456351    0    0    0     0       0          0
+ wlan0: 1204930296 1023904    0    0    0     0          0         0 183840290  743210    0    0    0     0       0          0
+===L
+0.42 0.51 0.38 2/812 4521
+2783542.31 12345678.90
+===D
+Filesystem     1024-blocks      Used Available Capacity Mounted on
+/dev/nvme0n1p2  998576248 418293628 529260608      45% /
+tmpfs           10343956     131200  10212756       2% /run
+/dev/nvme0n1p1    523244     131072    392172      26% /boot
+/dev/sda1       975682548 471672308 454253916      51% /data

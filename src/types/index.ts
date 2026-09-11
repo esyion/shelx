@@ -52,3 +52,4 @@ export type {
   TransferStatus,
   TransferTask,
 } from "./transfer";
+export type { DiskInfo, MetricsSample } from "./monitor";

@@ -1,0 +1,20 @@
+===S
+cpu  15327 122 6412 190843 902 0 103 0 0 0
+cpu0 15327 122 6412 190843 902 0 103 0 0 0
+===M
+MemTotal:        4050888 kB
+MemFree:         1812304 kB
+Buffers:           93456 kB
+Cached:           893400 kB
+SwapTotal:       2097148 kB
+SwapFree:        2097148 kB
+===N
+Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+  eth0: 82390482 1029384    0    0    0     0          0         0 28291038 743210    0    0    0     0       0          0
+===L
+0.08 0.12 0.05 1/212 421
+56789.01 234567.89
+===D
+Filesystem     1024-blocks      Used Available Capacity Mounted on
+/dev/sda1       30832636  9120404 20168152      32% /

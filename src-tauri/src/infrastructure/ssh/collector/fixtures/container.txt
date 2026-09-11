@@ -1,0 +1,27 @@
+===S
+cpu  25327 122 8412 290843 1902 0 203 0 0 0
+cpu0 25327 122 8412 290843 1902 0 203 0 0 0
+intr 8521204 
+ctxt 12843702
+===M
+MemTotal:        8123456 kB
+MemFree:         3912304 kB
+MemAvailable:    5912304 kB
+Buffers:          123456 kB
+Cached:          1893400 kB
+SwapTotal:             0 kB
+SwapFree:              0 kB
+===N
+Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+    lo: 84932     420    0    0    0     0          0         0    84932     420    0    0    0     0       0          0
+  eth0: 182390482 1029384    0    0    0     0          0         0 48291038  743210    0    0    0     0       0          0
+===L
+0.12 0.18 0.09 1/312 892
+123456.78 987654.32
+===D
+Filesystem     1024-blocks      Used Available Capacity Mounted on
+overlay         62584220  12903400  46472920      22% /
+tmpfs            65536        0     65536       0% /dev
+tmpfs          8123456     131200  7992256       2% /run
+/dev/vda1      62584220  12903400  46472920      22% /

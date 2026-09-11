@@ -8,6 +8,7 @@ import { Monitor, FolderCode, TerminalSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TerminalView } from "@/components/terminal/terminal-view";
 import { FileManager } from "@/components/files/file-manager";
+import { MonitorView } from "@/components/monitor/monitor-view";
 import { cn } from "@/lib/utils";
 import { useTabsStore, type WorkspaceView } from "@/stores/tabs";
 
@@ -73,9 +74,12 @@ export function Workspace() {
           ) : (
             <Centered text="正在建立会话…" />
           ))}
-        {activeTab.view === "monitor" && (
-          <Centered text="监控视图 — M3 实现(免 Agent 采集 + Recharts)" />
-        )}
+        {activeTab.view === "monitor" &&
+          (activeTab.sessionId ? (
+            <MonitorView sessionId={activeTab.sessionId} />
+          ) : (
+            <Centered text="正在建立会话…" />
+          ))}
         {activeTab.view === "files" && (
           <FileManager sessionId={activeTab.sessionId} />
         )}

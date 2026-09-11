@@ -79,6 +79,9 @@ pub fn run() {
             commands::local_fs::create_local_dir,
             commands::local_fs::rename_local_entry,
             commands::local_fs::delete_local_entries,
+            commands::monitor::start_monitor,
+            commands::monitor::stop_monitor,
+            commands::monitor::recent_monitor_samples,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

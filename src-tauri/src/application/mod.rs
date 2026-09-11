@@ -7,6 +7,7 @@
 
 pub mod connections;
 pub mod greet;
+pub mod monitoring;
 pub mod ports;
 pub mod prompt;
 pub mod sessions;

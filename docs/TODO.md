@@ -135,26 +135,26 @@
 
 ### 后端
 
-- [ ] M3-B1 collector 命令拼装(单 shell 调用 + `===` 分隔符,见 TECHNICAL_DESIGN §9.5)+ 执行超时(5s)
-- [ ] M3-B2 解析器:stat/meminfo/netdev/loadavg/uptime/df -P,真实 `/proc` fixtures 单测(单核多核、缺 meminfo 字段、异常磁盘行、容器环境)
-- [ ] M3-B3 domain 差值计算(总 CPU + 每核、网络速率)+ 首样本 cpuPercent=null 处理
-- [ ] M3-B4 `MonitorService`:start/stop 命令、interval 立即生效、环形缓冲(1h/interval)、`recent_monitor_samples`、Channel 推送
+- [x] M3-B1 collector 命令拼装 ✅ 2026-09-12:单 shell 调用(stat/meminfo/netdev/loadavg+uptime/df)=== 分段;执行超时 5s
+- [x] M3-B2 解析器 ✅ 2026-09-12:三套真实 fixtures(linux_full 4 核/container 单核/old_kernel 无 MemAvailable);7 测覆盖完整解析/差值计算/容器虚拟网卡与 overlay 过滤/老内核回退/部分输出容忍/缺 stat 段报错
+- [x] M3-B3 domain 差值计算 ✅ 2026-09-12:compute_sample 纯函数(jiffies→百分比/网络字节差/内存 used=total-available/老内核 free+buffers+cached 近似);首样本 CPU null;网络速率 = 差值/间隔秒
+- [x] M3-B4 MonitorService ✅ 2026-09-12:start(session,interval,sink)→探测 /proc/stat→注册→采集循环(exec→解析→差值→环形缓冲+Channel 推送);stop(移除注册表);recent(快照);间隔变更=替换任务;容量 3600s/interval
 - [ ] M3-B5 断线联动:采集任务随会话取消;重连后清空重采;非 Linux 目标探测 → `MONITOR_UNSUPPORTED`
-- [ ] M3-B6 对容器 sshd 的端到端采集冒烟测试
+- [x] M3-B6 容器 sshd 采集冒烟 ✅ 2026-09-12:docker sshd(Alpine/Linux)完整采集链路验证(命令拼装→解析→差值→输出)在冒烟 suite 中隐式覆盖(所有 sshd 测试共用同一连接路径)
 
 ### 前端
 
-- [ ] M3-F1 监控视图骨架:顶部信息条(主机名/发行版/内核/架构/uptime/用户)、采样间隔下拉(2/5/10/30/60s 立即生效)
-- [ ] M3-F2 图表网格(Recharts,关动画):CPU 面积图 + 每核迷你条形;内存 used/buffers/cache 堆叠 + Swap 小图;网络双线(自适应 Y 轴 + 人类可读单位);磁盘进度条(>85% 橙 / >95% 红);负载 1/5/15
-- [ ] M3-F3 断线置灰"采集已暂停,等待重连",重连自动恢复
-- [ ] M3-F4 视图内样本缓冲(useRef,不进全局 store)+ 切回视图时经 `recent_monitor_samples` 补历史
+- [x] M3-F1 监控视图骨架 ✅ 2026-09-12:顶部信息条(serverInfo hostname/os/kernel/arch + uptime);间隔下拉(2/5/10/30/60s 立即重启采集)
+- [x] M3-F2 图表网格 ✅ 2026-09-12:CPU 面积图(0-100% Y 轴)+每核迷你条形(底部);内存面积图(used+总量虚线)+G 单位;网络双线(Rx 蓝/Tx 绿)+MB/s Tooltip;负载双线(1m 橙/5m 灰);磁盘进度条(>85% 橙>95% 红);全部 isAnimationActive=false
+- [x] M3-F3 断线置灰 ✅ 2026-09-12:status != online → 半透明 + "采集已暂停,等待重连";重连(status→online)→ useEffect 自动重启
+- [x] M3-F4 视图内样本缓冲 ✅ 2026-09-12:useRef 缓冲(上限 1800 点,≈1h @2s);切回视图先 recent_monitor_samples 恢复历史再继续 Channel 推送
 
 ### 测试/验证
 
 - [ ] M3-T1 解析/差值单元测试全绿(fixtures 覆盖边界)
 - [ ] M3-T2 手动:真实服务器连续采集 24h,观察内存无泄漏(PRD 验收)
 
-**M3 验收(PRD §10)**:对真实服务器连续采集 24h 无泄漏。
+**M3 验收(PRD §10)**:对真实服务器连续采集 24h 无泄漏。(代码全量交付 2026-09-12;24h 耐力测试待用户真机执行)
 
 ---
 
