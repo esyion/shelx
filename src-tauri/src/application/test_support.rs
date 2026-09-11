@@ -317,11 +317,13 @@ impl crate::application::ports::PtyChannel for FakePty {
     }
 }
 
-/// fake SFTP 的内存节点表:目录路径 → 子条目;条目路径 → 类型/属性。
+/// fake SFTP 的内存节点表:目录路径 → 子条目;文件路径 → 内容单元。
 #[derive(Default)]
 pub struct FakeSftpState {
     /// 目录 → 子条目列表。
     pub dirs: Mutex<std::collections::HashMap<String, Vec<crate::application::ports::RemoteEntry>>>,
+    /// 文件 → 内容单元。
+    pub files: Mutex<std::collections::HashMap<String, FakeFileCell>>,
 }
 
 /// 内存 fake SFTP 通道(服务层测试)。
@@ -331,6 +333,35 @@ pub struct FakeSftpChannel {
 }
 
 impl FakeSftpChannel {
+    /// 预置远端文件内容。
+    pub fn seed_file(&self, path: &str, bytes: &[u8]) {
+        self.state
+            .files
+            .lock()
+            .expect("fake sftp 锁")
+            .insert(path.to_owned(), new_cell(bytes));
+    }
+
+    /// 读取远端文件内容快照。
+    pub fn file_bytes(&self, path: &str) -> Option<Vec<u8>> {
+        self.state
+            .files
+            .lock()
+            .expect("fake sftp 锁")
+            .get(path)
+            .map(|cell| cell.lock().expect("fake 文件锁").bytes.clone())
+    }
+
+    /// 内容单元(注入失败计数等)。
+    pub fn file_cell(&self, path: &str) -> Option<FakeFileCell> {
+        self.state
+            .files
+            .lock()
+            .expect("fake sftp 锁")
+            .get(path)
+            .cloned()
+    }
+
     /// 预置目录与其子条目。
     pub fn seed_dir(&self, path: &str, children: Vec<crate::application::ports::RemoteEntry>) {
         self.state
@@ -409,9 +440,19 @@ impl crate::application::ports::SftpChannel for FakeSftpChannel {
                 0,
             ));
         }
-        dirs.get(&parent)
-            .and_then(|children| children.iter().find(|e| e.name == name))
-            .cloned()
+        let parent_hit = dirs.get(&parent).cloned();
+        drop(dirs);
+        // 文件表判型(下载预检/冲突探测)。
+        if let Some(cell) = self.state.files.lock().expect("fake sftp 锁").get(path) {
+            let len = cell.lock().expect("fake 文件锁").bytes.len() as u64;
+            return Ok(fake_entry(
+                &name,
+                crate::application::ports::RemoteFileType::File,
+                len,
+            ));
+        }
+        parent_hit
+            .and_then(|children| children.iter().find(|e| e.name == name).cloned())
             .ok_or_else(|| crate::application::ports::TransportError::RemoteFs("文件不存在".into()))
     }
 
@@ -443,6 +484,16 @@ impl crate::application::ports::SftpChannel for FakeSftpChannel {
         }
         if let Some(children) = dirs.remove(old_path) {
             dirs.insert(new_path.to_owned(), children);
+        }
+        drop(dirs);
+        // 文件内容表同步搬家(分片 → 最终名)。
+        let mut files = self.state.files.lock().expect("fake sftp 锁");
+        if let Some(cell) = files.remove(old_path) {
+            if let Some(state) = cell.lock().expect("fake 文件锁").bytes.first() {
+                let _ = state;
+            }
+            cell.lock().expect("fake 文件锁").position = 0;
+            files.insert(new_path.to_owned(), cell);
         }
         Ok(())
     }
@@ -498,5 +549,296 @@ impl crate::application::ports::SftpChannel for FakeSftpChannel {
         _mode: u32,
     ) -> Result<(), crate::application::ports::TransportError> {
         Ok(())
+    }
+
+    async fn open_write_stream(
+        &self,
+        path: &str,
+    ) -> Result<
+        Box<dyn crate::application::ports::TransferStream>,
+        crate::application::ports::TransportError,
+    > {
+        let cell = new_cell(&[]);
+        self.state
+            .files
+            .lock()
+            .expect("fake sftp 锁")
+            .insert(path.to_owned(), cell.clone());
+        Ok(Box::new(FakeTransferStream { cell }))
+    }
+
+    async fn open_read_stream(
+        &self,
+        path: &str,
+    ) -> Result<
+        Box<dyn crate::application::ports::TransferStream>,
+        crate::application::ports::TransportError,
+    > {
+        let cell = self
+            .state
+            .files
+            .lock()
+            .expect("fake sftp 锁")
+            .get(path)
+            .cloned()
+            .ok_or_else(|| {
+                crate::application::ports::TransportError::RemoteFs("远端文件不存在".into())
+            })?;
+        Ok(Box::new(FakeTransferStream { cell }))
+    }
+
+    async fn file_size(
+        &self,
+        path: &str,
+    ) -> Result<Option<u64>, crate::application::ports::TransportError> {
+        Ok(self
+            .state
+            .files
+            .lock()
+            .expect("fake sftp 锁")
+            .get(path)
+            .map(|cell| cell.lock().expect("fake 文件锁").bytes.len() as u64))
+    }
+}
+
+/// fake 远端文件内容单元。
+pub type FakeFileCell = std::sync::Arc<Mutex<FakeFileState>>;
+
+/// fake 文件游标与内容。
+pub struct FakeFileState {
+    /// 内容。
+    pub bytes: Vec<u8>,
+    /// 读写游标。
+    pub position: usize,
+    /// 剩余失败次数(每次 append 前扣减,>0 时报错;测试重试用)。
+    pub fail_appends: usize,
+}
+
+/// fake 传输流。
+pub struct FakeTransferStream {
+    cell: FakeFileCell,
+}
+
+#[async_trait::async_trait]
+impl crate::application::ports::TransferStream for FakeTransferStream {
+    async fn append_chunk(
+        &self,
+        data: &[u8],
+    ) -> Result<(), crate::application::ports::TransportError> {
+        let mut state = self.cell.lock().expect("fake 文件锁");
+        if state.fail_appends > 0 {
+            state.fail_appends -= 1;
+            return Err(crate::application::ports::TransportError::RemoteFs(
+                "注入的临时网络错误".into(),
+            ));
+        }
+        state.bytes.extend_from_slice(data);
+        Ok(())
+    }
+
+    async fn read_chunk(
+        &self,
+        buf: &mut Vec<u8>,
+        max: usize,
+    ) -> Result<usize, crate::application::ports::TransportError> {
+        let mut state = self.cell.lock().expect("fake 文件锁");
+        buf.clear();
+        let end = (state.position + max).min(state.bytes.len());
+        buf.extend_from_slice(&state.bytes[state.position..end]);
+        state.position = end;
+        Ok(buf.len())
+    }
+
+    async fn finish(&self) -> Result<(), crate::application::ports::TransportError> {
+        Ok(())
+    }
+}
+
+/// 内存 fake 本地文件系统(传输引擎测试)。
+#[derive(Clone, Default)]
+pub struct FakeLocalFs {
+    state: std::sync::Arc<Mutex<FakeLocalState>>,
+}
+
+/// fake 本地状态。
+#[derive(Default)]
+pub struct FakeLocalState {
+    /// 文件 → 内容单元。
+    pub files: std::collections::HashMap<String, FakeFileCell>,
+    /// 目录集合(隐含父目录)。
+    pub dirs: std::collections::HashSet<String>,
+    /// 路径重命名记录。
+    pub renames: Vec<(String, String)>,
+}
+
+impl FakeLocalFs {
+    /// 预置文件内容。
+    pub fn seed_file(&self, path: &str, bytes: &[u8]) {
+        self.state
+            .lock()
+            .expect("fake local 锁")
+            .files
+            .insert(path.to_owned(), new_cell(bytes));
+    }
+
+    /// 读取文件内容快照。
+    pub fn file_bytes(&self, path: &str) -> Option<Vec<u8>> {
+        self.state
+            .lock()
+            .expect("fake local 锁")
+            .files
+            .get(path)
+            .map(|cell| cell.lock().expect("fake 文件锁").bytes.clone())
+    }
+
+    /// 预置目录。
+    pub fn seed_dir(&self, path: &str) {
+        self.state
+            .lock()
+            .expect("fake local 锁")
+            .dirs
+            .insert(path.to_owned());
+    }
+}
+
+/// 构造内容单元。
+fn new_cell(bytes: &[u8]) -> FakeFileCell {
+    std::sync::Arc::new(Mutex::new(FakeFileState {
+        bytes: bytes.to_vec(),
+        position: 0,
+        fail_appends: 0,
+    }))
+}
+
+/// fake 本地句柄。
+struct FakeLocalHandle {
+    cell: FakeFileCell,
+}
+
+impl crate::application::ports::LocalFile for FakeLocalHandle {
+    fn read_chunk(&mut self, buf: &mut Vec<u8>, max: usize) -> Result<(), String> {
+        let mut state = self.cell.lock().expect("fake 文件锁");
+        buf.clear();
+        let end = (state.position + max).min(state.bytes.len());
+        buf.extend_from_slice(&state.bytes[state.position..end]);
+        state.position = end;
+        Ok(())
+    }
+
+    fn write_chunk(&mut self, data: &[u8]) -> Result<(), String> {
+        self.cell
+            .lock()
+            .expect("fake 文件锁")
+            .bytes
+            .extend_from_slice(data);
+        Ok(())
+    }
+
+    fn finish(&mut self) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+impl crate::application::ports::LocalFs for FakeLocalFs {
+    fn file_size(&self, path: &str) -> Result<Option<u64>, String> {
+        Ok(self
+            .state
+            .lock()
+            .expect("fake local 锁")
+            .files
+            .get(path)
+            .map(|cell| cell.lock().expect("fake 文件锁").bytes.len() as u64))
+    }
+
+    fn is_dir(&self, path: &str) -> Result<bool, String> {
+        Ok(self
+            .state
+            .lock()
+            .expect("fake local 锁")
+            .dirs
+            .contains(path))
+    }
+
+    fn list_dir(&self, path: &str) -> Result<Vec<(String, bool)>, String> {
+        let state = self.state.lock().expect("fake local 锁");
+        let prefix = format!("{}/", path.trim_end_matches('/'));
+        // 同名目录优先(目录与文件同名时合并为一个条目)。
+        let mut merged: std::collections::HashMap<String, bool> = std::collections::HashMap::new();
+        for file in state.files.keys() {
+            if let Some(rest) = file.strip_prefix(&prefix) {
+                if let Some(top) = rest.split('/').next() {
+                    merged.entry(top.to_owned()).or_insert(false);
+                }
+            }
+        }
+        for dir in &state.dirs {
+            if let Some(rest) = dir.strip_prefix(&prefix) {
+                if let Some(top) = rest.split('/').next() {
+                    merged.insert(top.to_owned(), true);
+                }
+            }
+        }
+        let mut items: Vec<(String, bool)> = merged.into_iter().collect();
+        items.sort();
+        Ok(items)
+    }
+
+    fn ensure_dir(&self, path: &str) -> Result<(), String> {
+        self.state
+            .lock()
+            .expect("fake local 锁")
+            .dirs
+            .insert(path.to_owned());
+        Ok(())
+    }
+
+    fn open_read(
+        &self,
+        path: &str,
+    ) -> Result<Box<dyn crate::application::ports::LocalFile>, String> {
+        let cell = self
+            .state
+            .lock()
+            .expect("fake local 锁")
+            .files
+            .get(path)
+            .cloned()
+            .ok_or("本地文件不存在")?;
+        Ok(Box::new(FakeLocalHandle { cell }))
+    }
+
+    fn create_write(
+        &self,
+        path: &str,
+    ) -> Result<Box<dyn crate::application::ports::LocalFile>, String> {
+        let cell = new_cell(&[]);
+        self.state
+            .lock()
+            .expect("fake local 锁")
+            .files
+            .insert(path.to_owned(), cell.clone());
+        Ok(Box::new(FakeLocalHandle { cell }))
+    }
+
+    fn rename(&self, old_path: &str, new_path: &str) -> Result<(), String> {
+        let mut state = self.state.lock().expect("fake local 锁");
+        let Some(cell) = state.files.remove(old_path) else {
+            return Err("本地重命名源不存在".into());
+        };
+        state
+            .renames
+            .push((old_path.to_owned(), new_path.to_owned()));
+        state.files.insert(new_path.to_owned(), cell);
+        Ok(())
+    }
+
+    fn remove_file(&self, path: &str) -> Result<(), String> {
+        self.state
+            .lock()
+            .expect("fake local 锁")
+            .files
+            .remove(path)
+            .map(|_| ())
+            .ok_or_else(|| "本地文件不存在".into())
     }
 }

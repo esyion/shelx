@@ -13,6 +13,7 @@ use crate::application::sessions::SessionService;
 use crate::application::settings::SettingsService;
 use crate::application::sftp::SftpService;
 use crate::application::terminals::TerminalService;
+use crate::application::transfers::TransferService;
 use crate::infrastructure::events::TauriSessionEvents;
 use crate::infrastructure::secrets;
 use crate::infrastructure::settings::JsonFileSettingsStore;
@@ -33,6 +34,8 @@ pub struct AppState {
     pub terminals: Arc<TerminalService>,
     /// SFTP 文件操作服务(通道缓存 + 浏览/建删改)。
     pub sftp: Arc<SftpService>,
+    /// 传输引擎(全局队列/冲突/取消/重试)。
+    pub transfers: Arc<TransferService>,
     /// 键盘交互/指纹确认桥(respond_* 命令直达)。
     pub broker: Arc<PromptBroker>,
     /// 凭据存储可用性(供设置页展示"系统钥匙串 / 降级加密")。
@@ -77,6 +80,11 @@ impl AppState {
         let sessions = Arc::new(SessionService::new(transport, connections.clone(), events));
         let terminals = Arc::new(TerminalService::new(sessions.clone()));
         let sftp = Arc::new(SftpService::new(sessions.clone()));
+        let transfers = Arc::new(TransferService::new(
+            sftp.clone(),
+            Arc::new(crate::infrastructure::local_fs::StdLocalFs::new()),
+            &settings,
+        ));
 
         Self {
             connections,
@@ -84,6 +92,7 @@ impl AppState {
             sessions,
             terminals,
             sftp,
+            transfers,
             broker,
             secret_availability,
         }

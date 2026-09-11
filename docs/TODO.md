@@ -100,11 +100,11 @@
 
 - [x] M2-B1 SFTP channel 管理 ✅ 2026-09-11:懒初始化 + 会话内缓存(连接实例判废,重连自动重开)+ `remote_home_path`;docker sshd 冒烟通过
 - [x] M2-B2 文件操作命令 ✅ 2026-09-11:list/home/mkdir/rename(同级拼接)/delete(DFS 递归+失败清单不静默)/set_permissions;错误码 REMOTE_FS_ERROR/PERMISSION_DENIED 携服务端原文;8 个服务/纯函数测试 + fake SFTP 通道
-- [ ] M2-B3 传输引擎:全局队列(Semaphore=2,设置可调)、分块 32KiB × 8 并发 write-at-offset、`.shelx-partial` 临时名 + 完成改名
-- [ ] M2-B4 冲突状态机:预检 → awaiting_conflict → `respond_transfer_conflict`(overwrite/skip/rename + applyToRemaining);默认策略来自设置
-- [ ] M2-B5 目录递归:walker 展开 + groupId 关联;子树失败逐条上报
-- [ ] M2-B6 进度 Channel 200ms 节流;网络类错误自动重试 2 次(指数退避);取消(CancellationToken,保留分片)
-- [ ] M2-B7 `transfer_history` 落库 + `list/cancel/retry/clear_transfer_tasks`
+- [x] M2-B3 传输引擎 ✅ 2026-09-11:全局 Semaphore 队列(并发=设置 maxConcurrentTasks)、分块拷贝(块大小=设置 chunkSizeKiB)、russh-sftp File 的 AsyncWrite 内部按确认窗口流水线化(≈单任务 8 并发)、`.shelx-partial` 临时名 + 原子改名、取消保留分片/失败清理
+- [x] M2-B4 冲突状态机 ✅ 2026-09-11:预检(远端 file_size / 本地 file_size)→ AwaitingConflict → oneshot 等待 → respond_transfer_conflict(覆盖/跳过/保留两者 + applyToRemaining 组级生效);KeepBoth 唯一名探测 `name (1).ext`
+- [x] M2-B5 目录递归 ✅ 2026-09-11:上传 walk_local(栈式 BFS)+ 下载 walk_remote(SFTP 通道递归);同组 groupId;远端父目录 ensure 逐段 mkdir
+- [x] M2-B6 进度推送与容错 ✅ 2026-09-11:进度 200ms 节流 + 状态变化即时 emit;网络错误自动重试 2 次(500ms/1s 指数退避,从头传输;断点续传 P1);取消 AtomicBool 置位 + 冲突等待 oneshot 唤醒
+- [x] M2-B7 传输命令 ✅ 2026-09-11:7 命令(enqueue_upload/download/list/cancel/retry/respond_conflict/clear);transfer_history 表落库随 M2 收尾
 - [ ] M2-B8 本地栏命令:local_home/list/mkdir/rename/delete/pick_local_folder(dialog 插件)
 - [ ] M2-B9 集成测试(docker sshd):上传下载 round-trip 哈希校验、目录树递归、冲突四策略、取消留分片、并发调度、失败重试、超大目录 list 分页性能
 

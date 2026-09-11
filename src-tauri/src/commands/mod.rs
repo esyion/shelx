@@ -14,3 +14,4 @@ pub mod sessions;
 pub mod settings;
 pub mod sftp;
 pub mod terminals;
+pub mod transfers;

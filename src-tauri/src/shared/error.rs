@@ -27,6 +27,8 @@ pub enum IpcErrorCode {
     PermissionDenied,
     /// SFTP 文件操作失败(服务端消息见 details)。
     RemoteFsError,
+    /// 本地文件操作失败。
+    LocalFsError,
     /// 凭据存储不可用(钥匙串初始化失败且降级存储不可用)。
     KeyringUnavailable,
     /// 网络读写超时。

@@ -5,15 +5,21 @@ use super::error::DomainError;
 /// SFTP 传输任务状态。
 ///
 /// 合法流转:
-/// - `Queued → Transferring | Cancelled`(调度启动或排队期取消)
+/// - `Queued → Preparing | Cancelled`(调度启动或排队期取消)
+/// - `Preparing → AwaitingConflict | Transferring | Failed | Cancelled`(冲突预检/开句柄)
+/// - `AwaitingConflict → Transferring | Cancelled | Failed`(用户决策后继续)
 /// - `Transferring → Completed | Failed | Cancelled`(完成、出错或取消)
-/// - `Failed → Queued`(手动重试重新入队)
+/// - `Failed → Queued`(自动/手动重试重新入队)
 ///
 /// `Completed` 与 `Cancelled` 为终态。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransferStatus {
     /// 已入队,等待调度(全局并发上限默认 2,PRD §6.4)。
     Queued,
+    /// 准备中:目录展开/冲突预检/句柄打开。
+    Preparing,
+    /// 等待用户冲突决策(覆盖/跳过/保留两者)。
+    AwaitingConflict,
     /// 正在传输。
     Transferring,
     /// 传输完成。
@@ -29,12 +35,19 @@ impl TransferStatus {
     pub fn can_transition_to(self, next: Self) -> bool {
         matches!(
             (self, next),
-            (Self::Queued, Self::Transferring | Self::Cancelled)
-                | (
-                    Self::Transferring,
-                    Self::Completed | Self::Failed | Self::Cancelled
-                )
-                | (Self::Failed, Self::Queued)
+            (
+                Self::Queued,
+                Self::Preparing | Self::Transferring | Self::Cancelled
+            ) | (
+                Self::Preparing,
+                Self::AwaitingConflict | Self::Transferring | Self::Failed | Self::Cancelled
+            ) | (
+                Self::AwaitingConflict,
+                Self::Transferring | Self::Failed | Self::Cancelled
+            ) | (
+                Self::Transferring,
+                Self::Completed | Self::Failed | Self::Cancelled
+            ) | (Self::Failed, Self::Queued)
         )
     }
 
@@ -59,6 +72,8 @@ impl TransferStatus {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Queued => "queued",
+            Self::Preparing => "preparing",
+            Self::AwaitingConflict => "awaiting_conflict",
             Self::Transferring => "transferring",
             Self::Completed => "completed",
             Self::Failed => "failed",
@@ -123,5 +138,23 @@ mod tests {
         assert!(!TransferStatus::Queued.can_transition_to(TransferStatus::Completed));
         assert!(!TransferStatus::Queued.can_transition_to(TransferStatus::Failed));
         assert!(!TransferStatus::Transferring.can_transition_to(TransferStatus::Queued));
+    }
+
+    #[test]
+    fn preparing_and_conflict_paths() {
+        // 冲突路径:Queued → Preparing → AwaitingConflict → Transferring。
+        let status = TransferStatus::Queued
+            .transition_to(TransferStatus::Preparing)
+            .unwrap()
+            .transition_to(TransferStatus::AwaitingConflict)
+            .unwrap()
+            .transition_to(TransferStatus::Transferring)
+            .unwrap();
+        assert_eq!(status, TransferStatus::Transferring);
+        // 无冲突直通。
+        assert!(TransferStatus::Preparing.can_transition_to(TransferStatus::Transferring));
+        // 排队/冲突等待期可取消。
+        assert!(TransferStatus::Queued.can_transition_to(TransferStatus::Cancelled));
+        assert!(TransferStatus::AwaitingConflict.can_transition_to(TransferStatus::Cancelled));
     }
 }

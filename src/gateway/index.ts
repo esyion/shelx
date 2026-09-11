@@ -13,3 +13,4 @@ export * as sessionsApi from "./sessions";
 export * as sftpApi from "./sftp";
 export * as settingsApi from "./settings";
 export * as terminalsApi from "./terminals";
+export * as transferApi from "./transfer";

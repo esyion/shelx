@@ -10,6 +10,7 @@ import {
   settingsApi,
   sftpApi,
   terminalsApi,
+  transferApi,
 } from "@/gateway";
 
 /** 列出连接树。 */
@@ -104,3 +105,24 @@ export const deleteRemoteEntries = sftpApi.deleteRemoteEntries;
 
 /** 修改远端权限。 */
 export const setRemotePermissions = sftpApi.setRemotePermissions;
+
+/** 入队上传。 */
+export const enqueueUpload = transferApi.enqueueUpload;
+
+/** 入队下载。 */
+export const enqueueDownload = transferApi.enqueueDownload;
+
+/** 任务列表。 */
+export const listTransferTasks = transferApi.listTransferTasks;
+
+/** 取消任务。 */
+export const cancelTransferTask = transferApi.cancelTransferTask;
+
+/** 重试任务。 */
+export const retryTransferTask = transferApi.retryTransferTask;
+
+/** 应答冲突。 */
+export const respondTransferConflict = transferApi.respondTransferConflict;
+
+/** 清理任务记录。 */
+export const clearTransferTasks = transferApi.clearTransferTasks;

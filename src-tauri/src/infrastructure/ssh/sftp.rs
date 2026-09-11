@@ -98,6 +98,51 @@ impl SftpChannel for RusshSftpChannel {
         self.session.remove_dir(path).await.map_err(map_error)
     }
 
+    async fn open_write_stream(
+        &self,
+        path: &str,
+    ) -> Result<Box<dyn crate::application::ports::TransferStream>, TransportError> {
+        use russh_sftp::protocol::OpenFlags;
+        let file = self
+            .session
+            .open_with_flags(
+                path,
+                OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::TRUNCATE,
+            )
+            .await
+            .map_err(map_error)?;
+        Ok(Box::new(RusshTransferStream {
+            file: tokio::sync::Mutex::new(file),
+        }))
+    }
+
+    async fn open_read_stream(
+        &self,
+        path: &str,
+    ) -> Result<Box<dyn crate::application::ports::TransferStream>, TransportError> {
+        use russh_sftp::protocol::OpenFlags;
+        let file = self
+            .session
+            .open_with_flags(path, OpenFlags::READ)
+            .await
+            .map_err(map_error)?;
+        Ok(Box::new(RusshTransferStream {
+            file: tokio::sync::Mutex::new(file),
+        }))
+    }
+
+    async fn file_size(&self, path: &str) -> Result<Option<u64>, TransportError> {
+        match self.session.metadata(path).await {
+            Ok(metadata) => Ok(metadata.size),
+            Err(russh_sftp::client::error::Error::Status(status))
+                if status.status_code == russh_sftp::protocol::StatusCode::NoSuchFile =>
+            {
+                Ok(None)
+            }
+            Err(err) => Err(map_error(err)),
+        }
+    }
+
     async fn set_permissions(&self, path: &str, mode: u32) -> Result<(), TransportError> {
         let metadata = russh_sftp::client::fs::Metadata {
             permissions: Some(mode),
@@ -107,5 +152,42 @@ impl SftpChannel for RusshSftpChannel {
             .set_metadata(path, metadata)
             .await
             .map_err(map_error)
+    }
+}
+
+/// 远端传输流:russh-sftp File 的顺序块封装
+/// (库内部按确认窗口流水线化,满足并发块吞吐)。
+pub struct RusshTransferStream {
+    file: tokio::sync::Mutex<russh_sftp::client::fs::File>,
+}
+
+/// io::Error → 传输错误(AsyncRead/Write 路径;按 kind 区分权限)。
+fn map_io_error(err: std::io::Error) -> TransportError {
+    if err.kind() == std::io::ErrorKind::PermissionDenied {
+        TransportError::RemotePermissionDenied(err.to_string())
+    } else {
+        TransportError::RemoteFs(err.to_string())
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::application::ports::TransferStream for RusshTransferStream {
+    async fn append_chunk(&self, data: &[u8]) -> Result<(), TransportError> {
+        use tokio::io::AsyncWriteExt;
+        let mut file = self.file.lock().await;
+        file.write_all(data).await.map_err(map_io_error)
+    }
+
+    async fn read_chunk(&self, buf: &mut Vec<u8>, max: usize) -> Result<usize, TransportError> {
+        use tokio::io::AsyncReadExt;
+        let mut file = self.file.lock().await;
+        buf.clear();
+        buf.reserve(max);
+        file.read_buf(buf).await.map_err(map_io_error)
+    }
+
+    async fn finish(&self) -> Result<(), TransportError> {
+        let file = self.file.lock().await;
+        file.sync_all().await.map_err(map_error)
     }
 }

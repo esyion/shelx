@@ -51,7 +51,10 @@ impl SftpService {
     }
 
     /// 取会话的 SFTP 通道;连接实例变化(重连)时重开。
-    async fn channel_for(&self, session_id: &str) -> Result<Arc<dyn SftpChannel>, SftpError> {
+    pub(crate) async fn channel_for(
+        &self,
+        session_id: &str,
+    ) -> Result<Arc<dyn SftpChannel>, SftpError> {
         let connection = self.sessions.connection_of(session_id)?;
         {
             let cache = self.cache.read().expect("sftp 缓存锁");

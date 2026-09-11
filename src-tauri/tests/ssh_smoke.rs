@@ -180,7 +180,7 @@ async fn pty_shell_echo_round_trip() {
 #[tokio::test]
 #[ignore = "需要 docker sshd,见 tests/sshd/README.md"]
 async fn sftp_file_ops_round_trip() {
-    use shelx_lib::application::ports::{SftpChannel, SshConnection};
+    use shelx_lib::application::ports::SshConnection;
 
     let (transport, _host_keys) = transport();
     let session = transport
@@ -219,4 +219,161 @@ async fn sftp_file_ops_round_trip() {
 
     sftp.remove_dir(&base).await.expect("空目录删除应成功");
     session.disconnect().await.expect("断开应成功");
+}
+
+/// 传输引擎冒烟:上传(本地临时文件)→ 下载回另一本地路径 → 内容逐字节一致;
+/// 校验分片改名、目录确保与端到端流水线。
+#[tokio::test]
+#[ignore = "需要 docker sshd,见 tests/sshd/README.md"]
+async fn transfer_upload_download_round_trip() {
+    use shelx_lib::application::connections::ConnectionService;
+    use shelx_lib::application::ports::{SecretStore, SecretStoreError, SessionEventSink};
+    use shelx_lib::application::sessions::SessionService;
+    use shelx_lib::application::sftp::SftpService;
+    use shelx_lib::application::transfers::{ConflictPolicy, TransferService};
+    use shelx_lib::infrastructure::local_fs::StdLocalFs;
+    use shelx_lib::infrastructure::sqlite::connection_repo::SqliteConnectionStore;
+    use std::sync::{Arc, Mutex};
+
+    struct NoopSink;
+    impl SessionEventSink for NoopSink {
+        fn auth_prompt(&self, _: &shelx_lib::application::ports::AuthPromptRequest) {}
+        fn hostkey_confirm(&self, _: &shelx_lib::application::ports::HostKeyConfirmRequest) {}
+        fn status_changed(&self, _: &shelx_lib::application::ports::SessionStatusEvent) {}
+    }
+    #[derive(Default)]
+    struct NullSecrets;
+    impl SecretStore for NullSecrets {
+        fn put(&self, _: &str, _: &str) -> Result<(), SecretStoreError> {
+            Ok(())
+        }
+        fn get(&self, _: &str) -> Result<Option<String>, SecretStoreError> {
+            Ok(None)
+        }
+        fn delete(&self, _: &str) -> Result<(), SecretStoreError> {
+            Ok(())
+        }
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+    let local_base = dir
+        .path()
+        .to_string_lossy()
+        .replace(std::path::MAIN_SEPARATOR, "/");
+    let content: Vec<u8> = (0..100_000u32).map(|i| (i % 251) as u8).collect();
+    let source = format!("{local_base}/up.bin");
+    std::fs::write(&source, &content).unwrap();
+
+    let host_keys = Arc::new(SqliteHostKeyStore::open_in_memory().unwrap());
+    // 复用文件级 AutoAcceptSink(自答指纹与键盘交互)。
+    let sink = Arc::new(AutoAcceptSink {
+        broker: std::sync::OnceLock::new(),
+    });
+    let broker = Arc::new(PromptBroker::new(sink.clone()));
+    sink.broker
+        .set(broker.clone())
+        .ok()
+        .expect("broker 只注入一次");
+    let transport = Arc::new(RusshTransport::new(
+        Some(Duration::from_secs(15)),
+        broker,
+        host_keys,
+    ));
+    let store = SqliteConnectionStore::open_in_memory().unwrap();
+    let connections = Arc::new(ConnectionService::new(
+        Box::new(store),
+        Arc::new(NullSecrets),
+    ));
+    let sessions = Arc::new(SessionService::new(
+        transport,
+        connections,
+        Arc::new(NoopSink),
+    ));
+    let info = sessions
+        .connect_quick(shelx_lib::application::sessions::QuickConnectSpec {
+            name: None,
+            host: env_or_die("SSH_SMOKE_HOST"),
+            port: env_or_die("SSH_SMOKE_PORT").parse().unwrap(),
+            username: env_or_die("SSH_SMOKE_USER"),
+            auth: shelx_lib::domain::connection::AuthMethod::Password,
+            password: Some(env_or_die("SSH_SMOKE_PASS")),
+            passphrase: None,
+            private_key_path: None,
+            save: false,
+        })
+        .await
+        .expect("连接应成功");
+    let _ = info;
+
+    let sftp = Arc::new(SftpService::new(sessions));
+    let service = Arc::new(TransferService::with_limits(
+        sftp,
+        Arc::new(StdLocalFs::new()),
+        2,
+        32 * 1024,
+    ));
+
+    #[derive(Default)]
+    struct Collect(Mutex<Vec<String>>);
+    impl shelx_lib::application::ports::TransferProgressSink for Collect {
+        fn on_progress(&self, event: &shelx_lib::application::ports::TransferProgressEvent) {
+            self.0.lock().unwrap().push(event.status.clone());
+        }
+    }
+    let sink = Arc::new(Collect::default());
+
+    // 上传 → 等待完成。
+    let up = service
+        .enqueue_upload(
+            &info.session_id,
+            &source,
+            "/tmp/shelx-smoke",
+            ConflictPolicy::Overwrite,
+            sink.clone(),
+        )
+        .await
+        .expect("上传入队应成功");
+    for _ in 0..600 {
+        if service
+            .task(&up[0])
+            .map(|t| t.status == shelx_lib::domain::transfer::TransferStatus::Completed)
+            .unwrap_or(false)
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(
+        service.task(&up[0]).unwrap().status,
+        shelx_lib::domain::transfer::TransferStatus::Completed,
+        "上传应完成:{:?}",
+        service.task(&up[0])
+    );
+
+    // 下载回另一路径 → 内容一致。
+    let down = service
+        .enqueue_download(
+            &info.session_id,
+            "/tmp/shelx-smoke/up.bin",
+            &format!("{local_base}/dl"),
+            ConflictPolicy::Overwrite,
+            sink,
+        )
+        .await
+        .expect("下载入队应成功");
+    for _ in 0..600 {
+        if service
+            .task(&down[0])
+            .map(|t| t.status == shelx_lib::domain::transfer::TransferStatus::Completed)
+            .unwrap_or(false)
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(
+        std::fs::read(format!("{local_base}/dl/up.bin")).unwrap(),
+        content,
+        "往返内容应逐字节一致"
+    );
 }

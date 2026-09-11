@@ -186,6 +186,9 @@ pub enum TransportError {
     /// 远端文件操作失败(服务端消息原文)。
     #[error("远端文件操作失败:{0}")]
     RemoteFs(String),
+    /// 本地文件操作失败。
+    #[error("本地文件操作失败:{0}")]
+    LocalIo(String),
     /// 远端权限不足。
     #[error("远端权限不足:{0}")]
     RemotePermissionDenied(String),
@@ -343,4 +346,91 @@ pub trait SftpChannel: Send + Sync {
     async fn remove_dir(&self, path: &str) -> Result<(), TransportError>;
     /// 修改权限位(chmod)。
     async fn set_permissions(&self, path: &str, mode: u32) -> Result<(), TransportError>;
+    /// 打开远端文件写流(创建/截断;传输引擎写入 .shelx-partial 临时名)。
+    async fn open_write_stream(
+        &self,
+        path: &str,
+    ) -> Result<Box<dyn TransferStream>, TransportError>;
+    /// 打开远端文件读流。
+    async fn open_read_stream(&self, path: &str)
+        -> Result<Box<dyn TransferStream>, TransportError>;
+    /// 远端文件大小;不存在返回 None(冲突预检/下载总量)。
+    async fn file_size(&self, path: &str) -> Result<Option<u64>, TransportError>;
+}
+
+/// 传输方向。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransferDirection {
+    /// 上传(本地 → 远端)。
+    Upload,
+    /// 下载(远端 → 本地)。
+    Download,
+}
+
+/// 传输流端口(M2-B3):按顺序块抽象;russh-sftp 的 File 内部
+/// 以并发确认窗口流水线化(设计文档 §7.7-3 的两层并发之上游)。
+#[async_trait::async_trait]
+pub trait TransferStream: Send + Sync {
+    /// 追加写入一块(从当前末尾顺序)。
+    async fn append_chunk(&self, data: &[u8]) -> Result<(), TransportError>;
+    /// 读取一块到 buf,返回读取字节数(0 = EOF)。
+    async fn read_chunk(&self, buf: &mut Vec<u8>, max: usize) -> Result<usize, TransportError>;
+    /// 确认全部写入落盘(sync)。
+    async fn finish(&self) -> Result<(), TransportError>;
+}
+
+/// 传输进度事件载荷(200ms 节流推送,设计文档 §6.3)。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferProgressEvent {
+    /// 任务 ID。
+    pub task_id: String,
+    /// 目录组 ID(单文件为 null)。
+    pub group_id: Option<String>,
+    /// 状态(queued/preparing/awaiting_conflict/transferring/completed/failed/cancelled)。
+    pub status: String,
+    /// 已传输字节。
+    pub transferred_bytes: u64,
+    /// 总字节。
+    pub total_bytes: u64,
+    /// 平均速度(字节/秒)。
+    pub speed_bps: Option<u64>,
+    /// 失败原因。
+    pub error: Option<String>,
+}
+
+/// 传输进度出口;Tauri 适配层实现为 ipc Channel JSON 推送。
+pub trait TransferProgressSink: Send + Sync {
+    /// 推送一次进度/状态。
+    fn on_progress(&self, event: &TransferProgressEvent);
+}
+
+/// 本地文件随机句柄(传输引擎用;同步语义,本地磁盘微秒级)。
+pub trait LocalFile: Send {
+    /// 顺序读一块到 buf,返回字节数(0 = EOF)。
+    fn read_chunk(&mut self, buf: &mut Vec<u8>, max: usize) -> Result<(), String>;
+    /// 顺序追加写一块。
+    fn write_chunk(&mut self, data: &[u8]) -> Result<(), String>;
+    /// 落盘。
+    fn finish(&mut self) -> Result<(), String>;
+}
+
+/// 本地文件系统端口(上传读/下载写/目录遍历;AGENTS.md §4.5 I/O 在 infra)。
+pub trait LocalFs: Send + Sync {
+    /// 文件大小;不存在返回 None。
+    fn file_size(&self, path: &str) -> Result<Option<u64>, String>;
+    /// 是否目录。
+    fn is_dir(&self, path: &str) -> Result<bool, String>;
+    /// 列出直接子项 (名称, 是否目录)。
+    fn list_dir(&self, path: &str) -> Result<Vec<(String, bool)>, String>;
+    /// 递归确保目录存在。
+    fn ensure_dir(&self, path: &str) -> Result<(), String>;
+    /// 打开只读句柄。
+    fn open_read(&self, path: &str) -> Result<Box<dyn LocalFile>, String>;
+    /// 创建/截断写句柄。
+    fn create_write(&self, path: &str) -> Result<Box<dyn LocalFile>, String>;
+    /// 重命名。
+    fn rename(&self, old_path: &str, new_path: &str) -> Result<(), String>;
+    /// 删除文件。
+    fn remove_file(&self, path: &str) -> Result<(), String>;
 }

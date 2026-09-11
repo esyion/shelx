@@ -16,7 +16,6 @@ export type {
   AppSettings,
   AppSettingsPatch,
   AppearanceSettings,
-  ConflictPolicy,
   ConnectionSettings,
   CursorStyle,
   DefaultAuthMethod,
@@ -44,3 +43,12 @@ export type {
   FileEntry,
   RemoteFileType,
 } from "./sftp";
+export type {
+  ConflictDecision,
+  ConflictPolicy,
+  EnqueueResult,
+  TransferDirection,
+  TransferProgressEvent,
+  TransferStatus,
+  TransferTask,
+} from "./transfer";
