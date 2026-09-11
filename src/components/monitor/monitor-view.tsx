@@ -99,7 +99,7 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground opacity-60">
         <span className="text-sm">采集已暂停,等待重连</span>
-        <span className="text-xs">重连后自动恢复采集</span>
+        {/* <span className="text-xs">重连后自动恢复采集</span> */}
       </div>
     );
   }
@@ -118,7 +118,12 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
       <div className="flex items-center gap-4 text-xs text-muted-foreground">
         {serverInfo && (
           <span>
-            {[serverInfo.hostname, serverInfo.os, serverInfo.kernel, serverInfo.arch]
+            {[
+              serverInfo.hostname,
+              serverInfo.os,
+              serverInfo.kernel,
+              serverInfo.arch,
+            ]
               .filter(Boolean)
               .join(" · ")}
           </span>
@@ -155,7 +160,9 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
         >
           <NetworkChart samples={samples} />
         </ChartCard>
-        <ChartCard title={`负载 ${latest.load1.toFixed(2)} / ${latest.load5.toFixed(2)} / ${latest.load15.toFixed(2)}`}>
+        <ChartCard
+          title={`负载 ${latest.load1.toFixed(2)} / ${latest.load5.toFixed(2)} / ${latest.load15.toFixed(2)}`}
+        >
           <LoadChart samples={samples} />
         </ChartCard>
       </div>
@@ -190,7 +197,13 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
 }
 
 /** 图表卡片容器。 */
-function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
+function ChartCard({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex min-h-36 flex-col rounded-md border p-2">
       <span className="mb-1 text-xs font-medium">{title}</span>
@@ -200,9 +213,15 @@ function ChartCard({ title, children }: { title: string; children: React.ReactNo
 }
 
 /** 通用时间轴(样本 → 图表数据)。 */
-function toTimeline(samples: MetricsSample[]): { time: string; [key: string]: number | string | null }[] {
+function toTimeline(
+  samples: MetricsSample[],
+): { time: string; [key: string]: number | string | null }[] {
   return samples.slice(-120).map((s) => ({
-    time: new Date(s.ts).toLocaleTimeString("zh-CN", { hour12: false, minute: "2-digit", second: "2-digit" }),
+    time: new Date(s.ts).toLocaleTimeString("zh-CN", {
+      hour12: false,
+      minute: "2-digit",
+      second: "2-digit",
+    }),
     cpu: s.cpuPercent,
     /** 数据轴是字节(KiB × 1024);与 YAxis unit="GiB" / tooltip 配套。 */
     memUsed: s.memUsedKb * 1024,
@@ -220,12 +239,27 @@ function CpuChart({ samples }: { samples: MetricsSample[] }) {
   const data = toTimeline(samples);
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <AreaChart data={data} margin={{ top: 2, right: 4, bottom: 0, left: -20 }}>
+      <AreaChart
+        data={data}
+        margin={{ top: 2, right: 4, bottom: 0, left: -20 }}
+      >
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
         <XAxis dataKey="time" hide />
         <YAxis domain={[0, 100]} tick={{ fontSize: 9 }} />
-        <Tooltip contentStyle={{ fontSize: 10 }} formatter={(v) => [`${Number(v).toFixed(1)}%`, "CPU"] as [string, string]} />
-        <Area type="monotone" dataKey="cpu" stroke="hsl(var(--primary))" fill="hsl(var(--primary)/0.15)" strokeWidth={1.5} isAnimationActive={false} />
+        <Tooltip
+          contentStyle={{ fontSize: 10 }}
+          formatter={(v) =>
+            [`${Number(v).toFixed(1)}%`, "CPU"] as [string, string]
+          }
+        />
+        <Area
+          type="monotone"
+          dataKey="cpu"
+          stroke="hsl(var(--primary))"
+          fill="hsl(var(--primary)/0.15)"
+          strokeWidth={1.5}
+          isAnimationActive={false}
+        />
       </AreaChart>
     </ResponsiveContainer>
   );
@@ -239,10 +273,40 @@ function MemoryChart({ samples }: { samples: MetricsSample[] }) {
       <AreaChart data={data} margin={{ top: 2, right: 4, bottom: 0, left: -8 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
         <XAxis dataKey="time" hide />
-        <YAxis tick={{ fontSize: 9 }} unit="GiB" tickFormatter={(v) => (Number(v) / 1024 / 1024 / 1024).toFixed(1)} />
-        <Tooltip contentStyle={{ fontSize: 10 }} formatter={(v, name) => [`${(Number(v) / 1024 / 1024 / 1024).toFixed(2)} GiB`, String(name)] as [string, string]} />
-        <Area type="monotone" dataKey="memUsed" stackId="mem" stroke="hsl(var(--primary))" fill="hsl(var(--primary)/0.2)" strokeWidth={1.5} name="已用" isAnimationActive={false} />
-        <Area type="monotone" dataKey="memTotal" stroke="hsl(var(--muted-foreground))" fill="none" strokeWidth={1} strokeDasharray="4 4" name="总量" isAnimationActive={false} />
+        <YAxis
+          tick={{ fontSize: 9 }}
+          unit="GiB"
+          tickFormatter={(v) => (Number(v) / 1024 / 1024 / 1024).toFixed(1)}
+        />
+        <Tooltip
+          contentStyle={{ fontSize: 10 }}
+          formatter={(v, name) =>
+            [
+              `${(Number(v) / 1024 / 1024 / 1024).toFixed(2)} GiB`,
+              String(name),
+            ] as [string, string]
+          }
+        />
+        <Area
+          type="monotone"
+          dataKey="memUsed"
+          stackId="mem"
+          stroke="hsl(var(--primary))"
+          fill="hsl(var(--primary)/0.2)"
+          strokeWidth={1.5}
+          name="已用"
+          isAnimationActive={false}
+        />
+        <Area
+          type="monotone"
+          dataKey="memTotal"
+          stroke="hsl(var(--muted-foreground))"
+          fill="none"
+          strokeWidth={1}
+          strokeDasharray="4 4"
+          name="总量"
+          isAnimationActive={false}
+        />
       </AreaChart>
     </ResponsiveContainer>
   );
@@ -256,10 +320,38 @@ function NetworkChart({ samples }: { samples: MetricsSample[] }) {
       <LineChart data={data} margin={{ top: 2, right: 4, bottom: 0, left: -8 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
         <XAxis dataKey="time" hide />
-        <YAxis tick={{ fontSize: 9 }} unit="B/s" tickFormatter={(v) => formatAxisBytes(Number(v))} />
-        <Tooltip contentStyle={{ fontSize: 10 }} formatter={(v, name) => [`${(Number(v) / 1024 / 1024).toFixed(2)} MB/s`, String(name)] as [string, string]} />
-        <Line type="monotone" dataKey="netRx" stroke="#3b82f6" strokeWidth={1.5} dot={false} name="下行" isAnimationActive={false} />
-        <Line type="monotone" dataKey="netTx" stroke="#22c55e" strokeWidth={1.5} dot={false} name="上行" isAnimationActive={false} />
+        <YAxis
+          tick={{ fontSize: 9 }}
+          unit="B/s"
+          tickFormatter={(v) => formatAxisBytes(Number(v))}
+        />
+        <Tooltip
+          contentStyle={{ fontSize: 10 }}
+          formatter={(v, name) =>
+            [`${(Number(v) / 1024 / 1024).toFixed(2)} MB/s`, String(name)] as [
+              string,
+              string,
+            ]
+          }
+        />
+        <Line
+          type="monotone"
+          dataKey="netRx"
+          stroke="#3b82f6"
+          strokeWidth={1.5}
+          dot={false}
+          name="下行"
+          isAnimationActive={false}
+        />
+        <Line
+          type="monotone"
+          dataKey="netTx"
+          stroke="#22c55e"
+          strokeWidth={1.5}
+          dot={false}
+          name="上行"
+          isAnimationActive={false}
+        />
       </LineChart>
     </ResponsiveContainer>
   );
@@ -278,32 +370,60 @@ function LoadChart({ samples }: { samples: MetricsSample[] }) {
   const data = toTimeline(samples);
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <LineChart data={data} margin={{ top: 2, right: 4, bottom: 0, left: -20 }}>
+      <LineChart
+        data={data}
+        margin={{ top: 2, right: 4, bottom: 0, left: -20 }}
+      >
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
         <XAxis dataKey="time" hide />
         <YAxis tick={{ fontSize: 9 }} />
         <Tooltip contentStyle={{ fontSize: 10 }} />
-        <Line type="monotone" dataKey="load1" stroke="#f59e0b" strokeWidth={1.5} dot={false} name="1m" isAnimationActive={false} />
-        <Line type="monotone" dataKey="load5" stroke="#94a3b8" strokeWidth={1} dot={false} name="5m" isAnimationActive={false} />
+        <Line
+          type="monotone"
+          dataKey="load1"
+          stroke="#f59e0b"
+          strokeWidth={1.5}
+          dot={false}
+          name="1m"
+          isAnimationActive={false}
+        />
+        <Line
+          type="monotone"
+          dataKey="load5"
+          stroke="#94a3b8"
+          strokeWidth={1}
+          dot={false}
+          name="5m"
+          isAnimationActive={false}
+        />
       </LineChart>
     </ResponsiveContainer>
   );
 }
 
 /** 磁盘进度条(PRD: >85% 橙,>95% 红)。 */
-function DiskBar({ disk }: { disk: { mount: string; totalKb: number; usedKb: number } }) {
+function DiskBar({
+  disk,
+}: {
+  disk: { mount: string; totalKb: number; usedKb: number };
+}) {
   const percent = disk.totalKb > 0 ? (disk.usedKb / disk.totalKb) * 100 : 0;
-  const color = percent > 95 ? "bg-red-500" : percent > 85 ? "bg-orange-500" : "bg-primary";
+  const color =
+    percent > 95 ? "bg-red-500" : percent > 85 ? "bg-orange-500" : "bg-primary";
   return (
     <div className="flex items-center gap-2 text-xs">
       <span className="w-24 truncate text-muted-foreground" title={disk.mount}>
         {disk.mount}
       </span>
       <div className="h-1.5 flex-1 rounded bg-muted">
-        <div className={`h-full rounded ${color}`} style={{ width: `${Math.min(100, percent)}%` }} />
+        <div
+          className={`h-full rounded ${color}`}
+          style={{ width: `${Math.min(100, percent)}%` }}
+        />
       </div>
       <span className="w-24 text-right tabular-nums text-muted-foreground">
-        {percent.toFixed(0)}% {formatBytes(disk.usedKb * 1024)}/{formatBytes(disk.totalKb * 1024)}
+        {percent.toFixed(0)}% {formatBytes(disk.usedKb * 1024)}/
+        {formatBytes(disk.totalKb * 1024)}
       </span>
     </div>
   );
