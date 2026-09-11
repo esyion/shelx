@@ -61,6 +61,12 @@ pub fn run() {
             commands::terminals::write_terminal,
             commands::terminals::resize_terminal,
             commands::terminals::close_terminal,
+            commands::sftp::remote_home_path,
+            commands::sftp::list_remote_entries,
+            commands::sftp::create_remote_dir,
+            commands::sftp::rename_remote_entry,
+            commands::sftp::delete_remote_entries,
+            commands::sftp::set_remote_permissions,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

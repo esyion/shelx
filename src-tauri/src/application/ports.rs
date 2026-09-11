@@ -183,6 +183,12 @@ pub enum TransportError {
     /// 指纹存取失败。
     #[error("{0}")]
     Storage(#[from] StoreError),
+    /// 远端文件操作失败(服务端消息原文)。
+    #[error("远端文件操作失败:{0}")]
+    RemoteFs(String),
+    /// 远端权限不足。
+    #[error("远端权限不足:{0}")]
+    RemotePermissionDenied(String),
 }
 
 /// 已认证 SSH 连接的端口;pty 通道供终端使用,
@@ -208,6 +214,8 @@ pub trait SshConnection: Send + Sync {
         terminal_id: &str,
         sink: std::sync::Arc<dyn TerminalDataSink>,
     ) -> Result<Box<dyn PtyChannel>, TransportError>;
+    /// 开辟 SFTP 子系统通道(懒初始化,由应用层缓存复用)。
+    async fn open_sftp(&self) -> Result<Box<dyn SftpChannel>, TransportError>;
 }
 
 /// SSH 传输端口:建立连接并完成认证(host key TOFU 在内部经事件桥确认)。
@@ -284,4 +292,55 @@ pub trait PtyChannel: Send + Sync {
     async fn resize(&self, cols: u32, rows: u32) -> Result<(), TransportError>;
     /// 关闭通道。
     async fn close(&self) -> Result<(), TransportError>;
+}
+
+/// 远端文件类型。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RemoteFileType {
+    /// 目录。
+    Dir,
+    /// 常规文件。
+    File,
+    /// 符号链接(删除时不跟随)。
+    Symlink,
+    /// 其他(套接字/FIFO/设备等)。
+    Other,
+}
+
+/// 远端文件条目(列表与删除判型共用)。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteEntry {
+    /// 文件名(不含路径)。
+    pub name: String,
+    /// 类型。
+    pub file_type: RemoteFileType,
+    /// 字节数;目录为 0。
+    pub size: u64,
+    /// 修改时间(unix 秒)。
+    pub mtime: Option<u64>,
+    /// 权限位(如 0o755)。
+    pub mode: Option<u32>,
+    /// 属主(协议返回时存在)。
+    pub owner: Option<String>,
+}
+
+/// SFTP 通道端口(同一 SSH 会话懒开、复用;传输引擎随 M2-B3 扩展读写)。
+#[async_trait::async_trait]
+pub trait SftpChannel: Send + Sync {
+    /// 远端主目录(连接后定位初始路径)。
+    async fn home_path(&self) -> Result<String, TransportError>;
+    /// 列出目录条目(`.`/`..` 已滤除)。
+    async fn entries(&self, path: &str) -> Result<Vec<RemoteEntry>, TransportError>;
+    /// 单条目的类型与属性(删除判型;符号链接不跟随)。
+    async fn entry(&self, path: &str) -> Result<RemoteEntry, TransportError>;
+    /// 创建目录(父目录必须已存在)。
+    async fn mkdir(&self, path: &str) -> Result<(), TransportError>;
+    /// 重命名/移动(old、new 均为完整路径)。
+    async fn rename(&self, old_path: &str, new_path: &str) -> Result<(), TransportError>;
+    /// 删除常规文件或符号链接。
+    async fn remove_file(&self, path: &str) -> Result<(), TransportError>;
+    /// 删除空目录。
+    async fn remove_dir(&self, path: &str) -> Result<(), TransportError>;
+    /// 修改权限位(chmod)。
+    async fn set_permissions(&self, path: &str, mode: u32) -> Result<(), TransportError>;
 }

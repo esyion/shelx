@@ -11,6 +11,7 @@ use crate::application::ports::{SecretAvailability, SessionEventSink, SshTranspo
 use crate::application::prompt::PromptBroker;
 use crate::application::sessions::SessionService;
 use crate::application::settings::SettingsService;
+use crate::application::sftp::SftpService;
 use crate::application::terminals::TerminalService;
 use crate::infrastructure::events::TauriSessionEvents;
 use crate::infrastructure::secrets;
@@ -30,6 +31,8 @@ pub struct AppState {
     pub sessions: Arc<SessionService>,
     /// 终端管理服务(多 pty 注册与路由)。
     pub terminals: Arc<TerminalService>,
+    /// SFTP 文件操作服务(通道缓存 + 浏览/建删改)。
+    pub sftp: Arc<SftpService>,
     /// 键盘交互/指纹确认桥(respond_* 命令直达)。
     pub broker: Arc<PromptBroker>,
     /// 凭据存储可用性(供设置页展示"系统钥匙串 / 降级加密")。
@@ -73,12 +76,14 @@ impl AppState {
             Arc::new(RusshTransport::new(keepalive, broker.clone(), host_keys));
         let sessions = Arc::new(SessionService::new(transport, connections.clone(), events));
         let terminals = Arc::new(TerminalService::new(sessions.clone()));
+        let sftp = Arc::new(SftpService::new(sessions.clone()));
 
         Self {
             connections,
             settings,
             sessions,
             terminals,
+            sftp,
             broker,
             secret_availability,
         }

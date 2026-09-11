@@ -8,6 +8,7 @@ import {
   connectionsApi,
   sessionsApi,
   settingsApi,
+  sftpApi,
   terminalsApi,
 } from "@/gateway";
 
@@ -85,3 +86,21 @@ export const resizeTerminal = terminalsApi.resizeTerminal;
 
 /** 关终端。 */
 export const closeTerminal = terminalsApi.closeTerminal;
+
+/** 远端主目录。 */
+export const remoteHomePath = sftpApi.remoteHomePath;
+
+/** 列出远端条目。 */
+export const listRemoteEntries = sftpApi.listRemoteEntries;
+
+/** 新建远端目录。 */
+export const createRemoteDir = sftpApi.createRemoteDir;
+
+/** 重命名远端条目。 */
+export const renameRemoteEntry = sftpApi.renameRemoteEntry;
+
+/** 批量删除远端条目。 */
+export const deleteRemoteEntries = sftpApi.deleteRemoteEntries;
+
+/** 修改远端权限。 */
+export const setRemotePermissions = sftpApi.setRemotePermissions;

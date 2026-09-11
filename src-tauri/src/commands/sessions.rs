@@ -44,6 +44,12 @@ fn to_ipc_error(err: SessionError) -> IpcError {
         SessionError::Connect(TransportError::Storage(e)) => {
             IpcError::new(IpcErrorCode::Internal, e.to_string())
         }
+        SessionError::Connect(TransportError::RemoteFs(_)) => {
+            IpcError::new(IpcErrorCode::RemoteFsError, err.to_string())
+        }
+        SessionError::Connect(TransportError::RemotePermissionDenied(_)) => {
+            IpcError::new(IpcErrorCode::PermissionDenied, err.to_string())
+        }
         SessionError::ConnectionNotFound | SessionError::SessionNotFound => {
             IpcError::new(IpcErrorCode::NotFound, err.to_string())
         }

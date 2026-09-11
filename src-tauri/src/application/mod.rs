@@ -11,6 +11,7 @@ pub mod ports;
 pub mod prompt;
 pub mod sessions;
 pub mod settings;
+pub mod sftp;
 pub mod terminals;
 
 #[cfg(test)]

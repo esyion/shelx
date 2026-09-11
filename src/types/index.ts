@@ -38,3 +38,9 @@ export type {
   SessionStatusEvent,
 } from "./sessions";
 export type { TerminalDataHandler, TerminalHandle } from "./terminals";
+export type {
+  DeleteFailure,
+  DeleteRemoteResult,
+  FileEntry,
+  RemoteFileType,
+} from "./sftp";

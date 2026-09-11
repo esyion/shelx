@@ -10,5 +10,6 @@ export {
 } from "./tauri";
 export * as connectionsApi from "./connections";
 export * as sessionsApi from "./sessions";
+export * as sftpApi from "./sftp";
 export * as settingsApi from "./settings";
 export * as terminalsApi from "./terminals";

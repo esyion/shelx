@@ -98,8 +98,8 @@
 
 ### 后端
 
-- [ ] M2-B1 SFTP channel 管理:懒初始化、会话内复用、断线清理;`remote_home_path`
-- [ ] M2-B2 文件操作命令:list/mkdir/rename/delete(递归,逐条结果)/setstat(chmod)+ SFTP 错误码映射(保留服务端消息)
+- [x] M2-B1 SFTP channel 管理 ✅ 2026-09-11:懒初始化 + 会话内缓存(连接实例判废,重连自动重开)+ `remote_home_path`;docker sshd 冒烟通过
+- [x] M2-B2 文件操作命令 ✅ 2026-09-11:list/home/mkdir/rename(同级拼接)/delete(DFS 递归+失败清单不静默)/set_permissions;错误码 REMOTE_FS_ERROR/PERMISSION_DENIED 携服务端原文;8 个服务/纯函数测试 + fake SFTP 通道
 - [ ] M2-B3 传输引擎:全局队列(Semaphore=2,设置可调)、分块 32KiB × 8 并发 write-at-offset、`.shelx-partial` 临时名 + 完成改名
 - [ ] M2-B4 冲突状态机:预检 → awaiting_conflict → `respond_transfer_conflict`(overwrite/skip/rename + applyToRemaining);默认策略来自设置
 - [ ] M2-B5 目录递归:walker 展开 + groupId 关联;子树失败逐条上报

@@ -192,6 +192,10 @@ pub struct FakeConnectionState {
     pub last_pty_size: Mutex<(u32, u32)>,
     /// open_pty 创建的通道(共享状态)。
     pub opened_ptys: Mutex<Vec<FakePty>>,
+    /// open_sftp 调用计数(通道缓存断言)。
+    pub sftp_open_count: Mutex<usize>,
+    /// open_sftp 交出的共享通道。
+    pub sftp_channel: FakeSftpChannel,
 }
 
 /// 可克隆的 fake 连接。
@@ -204,6 +208,14 @@ impl FakeConnection {
     /// 已创建的 pty 通道快照。
     pub fn opened_ptys(&self) -> Vec<FakePty> {
         self.state.opened_ptys.lock().expect("pty 列表锁").clone()
+    }
+    /// open_sftp 调用计数。
+    pub fn sftp_open_count(&self) -> usize {
+        *self.state.sftp_open_count.lock().expect("sftp 计数锁")
+    }
+    /// 共享的 fake SFTP 通道。
+    pub fn sftp_channel(&self) -> FakeSftpChannel {
+        self.state.sftp_channel.clone()
     }
 }
 
@@ -244,6 +256,15 @@ fake-host
             .expect("pty 列表锁")
             .push(pty.clone());
         Ok(Box::new(pty))
+    }
+    async fn open_sftp(
+        &self,
+    ) -> Result<
+        Box<dyn crate::application::ports::SftpChannel>,
+        crate::application::ports::TransportError,
+    > {
+        *self.state.sftp_open_count.lock().expect("sftp 计数锁") += 1;
+        Ok(Box::new(self.state.sftp_channel.clone()))
     }
 }
 
@@ -292,6 +313,190 @@ impl crate::application::ports::PtyChannel for FakePty {
         Ok(())
     }
     async fn close(&self) -> Result<(), crate::application::ports::TransportError> {
+        Ok(())
+    }
+}
+
+/// fake SFTP 的内存节点表:目录路径 → 子条目;条目路径 → 类型/属性。
+#[derive(Default)]
+pub struct FakeSftpState {
+    /// 目录 → 子条目列表。
+    pub dirs: Mutex<std::collections::HashMap<String, Vec<crate::application::ports::RemoteEntry>>>,
+}
+
+/// 内存 fake SFTP 通道(服务层测试)。
+#[derive(Clone, Default)]
+pub struct FakeSftpChannel {
+    state: std::sync::Arc<FakeSftpState>,
+}
+
+impl FakeSftpChannel {
+    /// 预置目录与其子条目。
+    pub fn seed_dir(&self, path: &str, children: Vec<crate::application::ports::RemoteEntry>) {
+        self.state
+            .dirs
+            .lock()
+            .expect("fake sftp 锁")
+            .insert(path.to_owned(), children);
+    }
+
+    /// 目录子条目快照。
+    pub fn children_of(&self, path: &str) -> Vec<crate::application::ports::RemoteEntry> {
+        self.state
+            .dirs
+            .lock()
+            .expect("fake sftp 锁")
+            .get(path)
+            .cloned()
+            .unwrap_or_default()
+    }
+}
+
+/// 构造 fake 条目。
+pub fn fake_entry(
+    name: &str,
+    file_type: crate::application::ports::RemoteFileType,
+    size: u64,
+) -> crate::application::ports::RemoteEntry {
+    crate::application::ports::RemoteEntry {
+        name: name.into(),
+        file_type,
+        size,
+        mtime: Some(1_700_000_000),
+        mode: Some(match file_type {
+            crate::application::ports::RemoteFileType::Dir => 0o755,
+            _ => 0o644,
+        }),
+        owner: Some("root".into()),
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::application::ports::SftpChannel for FakeSftpChannel {
+    async fn home_path(&self) -> Result<String, crate::application::ports::TransportError> {
+        Ok("/root".into())
+    }
+
+    async fn entries(
+        &self,
+        path: &str,
+    ) -> Result<
+        Vec<crate::application::ports::RemoteEntry>,
+        crate::application::ports::TransportError,
+    > {
+        let dirs = self.state.dirs.lock().expect("fake sftp 锁");
+        dirs.get(path)
+            .cloned()
+            .ok_or_else(|| crate::application::ports::TransportError::RemoteFs("目录不存在".into()))
+    }
+
+    async fn entry(
+        &self,
+        path: &str,
+    ) -> Result<crate::application::ports::RemoteEntry, crate::application::ports::TransportError>
+    {
+        let (parent, name) = match path.rfind('/') {
+            Some(0) => ("/".to_owned(), path[1..].to_owned()),
+            Some(index) => (path[..index].to_owned(), path[index + 1..].to_owned()),
+            None => (String::new(), path.to_owned()),
+        };
+        let dirs = self.state.dirs.lock().expect("fake sftp 锁");
+        // 已知目录路径直接判型(根下第一层目录的父 "/" 不在表内)。
+        if dirs.contains_key(path) {
+            return Ok(fake_entry(
+                &name,
+                crate::application::ports::RemoteFileType::Dir,
+                0,
+            ));
+        }
+        dirs.get(&parent)
+            .and_then(|children| children.iter().find(|e| e.name == name))
+            .cloned()
+            .ok_or_else(|| crate::application::ports::TransportError::RemoteFs("文件不存在".into()))
+    }
+
+    async fn mkdir(&self, path: &str) -> Result<(), crate::application::ports::TransportError> {
+        let mut dirs = self.state.dirs.lock().expect("fake sftp 锁");
+        dirs.insert(path.to_owned(), Vec::new());
+        Ok(())
+    }
+
+    async fn rename(
+        &self,
+        old_path: &str,
+        new_path: &str,
+    ) -> Result<(), crate::application::ports::TransportError> {
+        let split = |path: &str| match path.rfind('/') {
+            Some(0) => ("/".to_owned(), path[1..].to_owned()),
+            Some(index) => (path[..index].to_owned(), path[index + 1..].to_owned()),
+            None => (String::new(), path.to_owned()),
+        };
+        let (old_parent, old_name) = split(old_path);
+        let (_new_parent, new_name) = split(new_path);
+        let mut dirs = self.state.dirs.lock().expect("fake sftp 锁");
+        if let Some(children) = dirs.get_mut(&old_parent) {
+            for entry in children.iter_mut() {
+                if entry.name == old_name {
+                    entry.name = new_name.clone();
+                }
+            }
+        }
+        if let Some(children) = dirs.remove(old_path) {
+            dirs.insert(new_path.to_owned(), children);
+        }
+        Ok(())
+    }
+
+    async fn remove_file(
+        &self,
+        path: &str,
+    ) -> Result<(), crate::application::ports::TransportError> {
+        let (parent, name) = match path.rfind('/') {
+            Some(0) => ("/".to_owned(), path[1..].to_owned()),
+            Some(index) => (path[..index].to_owned(), path[index + 1..].to_owned()),
+            None => (String::new(), path.to_owned()),
+        };
+        let mut dirs = self.state.dirs.lock().expect("fake sftp 锁");
+        if let Some(children) = dirs.get_mut(&parent) {
+            children.retain(|e| e.name != name);
+        }
+        Ok(())
+    }
+
+    async fn remove_dir(
+        &self,
+        path: &str,
+    ) -> Result<(), crate::application::ports::TransportError> {
+        let split = |p: &str| match p.rfind('/') {
+            Some(0) => ("/".to_owned(), p[1..].to_owned()),
+            Some(index) => (p[..index].to_owned(), p[index + 1..].to_owned()),
+            None => (String::new(), p.to_owned()),
+        };
+        let mut dirs = self.state.dirs.lock().expect("fake sftp 锁");
+        match dirs.get(path) {
+            Some(children) if children.is_empty() => {
+                dirs.remove(path);
+                // 同步从父目录清单移除名字。
+                let (parent, name) = split(path);
+                if let Some(siblings) = dirs.get_mut(&parent) {
+                    siblings.retain(|e| e.name != name);
+                }
+                Ok(())
+            }
+            Some(_) => Err(crate::application::ports::TransportError::RemoteFs(
+                "目录非空".into(),
+            )),
+            None => Err(crate::application::ports::TransportError::RemoteFs(
+                "目录不存在".into(),
+            )),
+        }
+    }
+
+    async fn set_permissions(
+        &self,
+        _path: &str,
+        _mode: u32,
+    ) -> Result<(), crate::application::ports::TransportError> {
         Ok(())
     }
 }

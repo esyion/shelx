@@ -25,6 +25,8 @@ pub enum IpcErrorCode {
     SessionClosed,
     /// 远端文件或命令操作被服务端权限拒绝。
     PermissionDenied,
+    /// SFTP 文件操作失败(服务端消息见 details)。
+    RemoteFsError,
     /// 凭据存储不可用(钥匙串初始化失败且降级存储不可用)。
     KeyringUnavailable,
     /// 网络读写超时。

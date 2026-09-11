@@ -12,4 +12,5 @@ pub mod greet;
 pub mod groups;
 pub mod sessions;
 pub mod settings;
+pub mod sftp;
 pub mod terminals;

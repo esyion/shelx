@@ -175,3 +175,48 @@ async fn pty_shell_echo_round_trip() {
     pty.close().await.expect("关闭应成功");
     session.disconnect().await.expect("断开应成功");
 }
+
+/// SFTP 冒烟:开通道 → 主目录 → mkdir/chmod/list → 空目录删除 → 断开。
+#[tokio::test]
+#[ignore = "需要 docker sshd,见 tests/sshd/README.md"]
+async fn sftp_file_ops_round_trip() {
+    use shelx_lib::application::ports::{SftpChannel, SshConnection};
+
+    let (transport, _host_keys) = transport();
+    let session = transport
+        .connect(&SshConnectParams {
+            host: env_or_die("SSH_SMOKE_HOST"),
+            port: env_or_die("SSH_SMOKE_PORT").parse().expect("端口为数字"),
+            username: env_or_die("SSH_SMOKE_USER"),
+            auth: AuthPlan::Password {
+                password: env_or_die("SSH_SMOKE_PASS"),
+            },
+        })
+        .await
+        .expect("连接应成功");
+
+    let sftp = session.open_sftp().await.expect("SFTP 通道应打开");
+    let home = sftp.home_path().await.expect("主目录应可取");
+    assert!(home.contains("root"), "root 用户主目录应含 root:{home}");
+
+    let base = format!("{home}/shelx-smoke");
+    // 清理可能的历史残留(尽力而为)。
+    let _ = sftp.remove_dir(&base).await;
+
+    sftp.mkdir(&base).await.expect("mkdir 应成功");
+    sftp.set_permissions(&base, 0o755)
+        .await
+        .expect("chmod 应成功");
+    let entries = sftp.entries(&base).await.expect("list 应成功");
+    assert!(entries.is_empty(), "新目录应为空:{entries:?}");
+
+    // 根目录列表可见且条目形状完整(类型/权限位)。
+    let root_entries = sftp.entries("/").await.expect("根目录 list 应成功");
+    assert!(!root_entries.is_empty());
+    assert!(root_entries
+        .iter()
+        .any(|e| e.file_type == shelx_lib::application::ports::RemoteFileType::Dir));
+
+    sftp.remove_dir(&base).await.expect("空目录删除应成功");
+    session.disconnect().await.expect("断开应成功");
+}

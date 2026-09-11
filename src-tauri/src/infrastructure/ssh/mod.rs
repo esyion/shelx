@@ -6,4 +6,5 @@
 pub mod error;
 pub mod handler;
 pub mod session;
+pub mod sftp;
 pub mod transport;

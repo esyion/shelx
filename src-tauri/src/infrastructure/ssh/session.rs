@@ -97,6 +97,26 @@ impl SshConnection for RusshSession {
         Ok(String::from_utf8_lossy(&stdout).into_owned())
     }
 
+    /// 开 SFTP 子系统通道并完成协议握手(设计文档 §5.3.1)。
+    async fn open_sftp(
+        &self,
+    ) -> Result<Box<dyn crate::application::ports::SftpChannel>, TransportError> {
+        let handle = self.handle.lock().await;
+        if self.is_closed() {
+            return Err(TransportError::Network("会话已断开".into()));
+        }
+        let channel = handle
+            .channel_open_session()
+            .await
+            .map_err(|e| TransportError::Network(e.to_string()))?;
+        channel
+            .request_subsystem(true, "sftp")
+            .await
+            .map_err(|e| TransportError::Network(e.to_string()))?;
+        let sftp = super::sftp::RusshSftpChannel::handshake(channel.into_stream()).await?;
+        Ok(Box::new(sftp))
+    }
+
     /// 开 pty channel:request_pty + shell,split 出读写两半;
     /// 读半交给输出泵任务,写半包装为 [`PtyChannel`] 返回。
     async fn open_pty(
