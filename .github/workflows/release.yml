@@ -188,3 +188,86 @@ jobs:
           files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Tauri updater 客户端从 `releases/latest/download/latest.json` 读取可用版本与签名,
+  # 故必须另外产出一个 `latest.json` 并上传到 release assets。
+  # 资产命名按 cc-switch 的 assemble-latest-json 经验映射:产物文件名 -> tauri platform key。
+  latest-json:
+    name: Assemble latest.json
+    runs-on: ubuntu-latest
+    needs: publish
+    permissions:
+      contents: write
+    steps:
+      - name: Install gh CLI
+        run: |
+          if ! command -v gh >/dev/null; then
+            sudo apt-get update && sudo apt-get install -y gh
+          fi
+
+      - name: Download all release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          mkdir -p dl
+          gh release download "$GITHUB_REF_NAME" --dir dl --repo "$GITHUB_REPOSITORY"
+
+      - name: Generate latest.json
+        env:
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euxo pipefail
+          VERSION="${TAG#v}"
+          PUB_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          BASE="https://github.com/$REPO/releases/download/$TAG"
+
+          mac_url=""; mac_sig=""
+          win_url=""; win_sig=""
+          linux_url=""; linux_sig=""
+
+          shopt -s nullglob
+          for sig in dl/*.sig; do
+            base=${sig%.sig}
+            fname=$(basename "$base")
+            url="$BASE/$fname"
+            sig_content=$(cat "$sig")
+            case "$fname" in
+              *.msi)
+                win_url="$url"; win_sig="$sig_content";;
+              *.AppImage)
+                linux_url="$url"; linux_sig="$sig_content";;
+            esac
+          done
+
+          tmp=$(mktemp)
+          {
+            echo '{'
+            echo "  \"version\": \"$VERSION\","
+            echo "  \"notes\": \"Release $TAG\","
+            echo "  \"pub_date\": \"$PUB_DATE\","
+            echo '  "platforms": {'
+            first=1
+            if [ -n "$win_url" ] && [ -n "$win_sig" ]; then
+              [ $first -eq 0 ] && echo ','
+              echo "    \"windows-x86_64\": {\"signature\": \"$win_sig\", \"url\": \"$win_url\"}"
+              first=0
+            fi
+            if [ -n "$linux_url" ] && [ -n "$linux_sig" ]; then
+              [ $first -eq 0 ] && echo ','
+              echo "    \"linux-x86_64\": {\"signature\": \"$linux_sig\", \"url\": \"$linux_url\"}"
+              first=0
+            fi
+            echo '  }'
+            echo '}'
+          } > "$tmp"
+          echo "Generated:" && cat "$tmp"
+          mv "$tmp" latest.json
+
+      - name: Upload latest.json to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euxo pipefail
+          gh release upload "$GITHUB_REF_NAME" latest.json --clobber --repo "$GITHUB_REPOSITORY"

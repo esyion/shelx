@@ -11,6 +11,25 @@ export interface AppVersion {
   version: string;
 }
 
+/**
+ * Tauri `check_for_update` 命令返回结构。后端已做 semver 比较,
+ * 前端只需根据 `available` 字段决定是否染色图标。
+ */
+export interface UpdateInfo {
+  /** 远端版本号(去前缀);无更新时为空字符串。 */
+  version: string;
+  /** release notes(Markdown 源);无更新时为 null。 */
+  notes: string | null;
+  /** 是否有可用更新。 */
+  available: boolean;
+}
+
+/** Tauri `download_and_install_update` 命令返回结构。 */
+export interface UpdateInstallResult {
+  /** 是否真的执行了安装。false 表示已是最新。 */
+  installed: boolean;
+}
+
 /** GitHub release 资源条目(仅取前端需要的字段)。 */
 export interface GithubReleaseAsset {
   /** 文件名,如 `shelx-0.2.0-Windows.msi`。 */

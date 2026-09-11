@@ -21,6 +21,9 @@ tauri-build = { version = "2", features = [] }
 # --- Tauri 框架与插件 ---
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+# 应用内更新:GitHub Releases endpoint + minisign 签名校验。
+# 公钥见 src-tauri/keys/minisign.pub(随仓库发布);私钥经 GitHub Secret 注入 CI。
+tauri-plugin-updater = "2"
 
 # --- 序列化与配置(JSON)---
 serde = { version = "1", features = ["derive"] }
