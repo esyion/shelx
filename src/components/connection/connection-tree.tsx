@@ -1,9 +1,21 @@
 /**
- * 连接树侧栏内容:树渲染、搜索过滤、右键菜单、双击连接(PRD §6.2)。
+ * 连接树侧栏内容:树渲染、搜索过滤、右键菜单、双击连接、
+ * 拖拽移动(连接↔分组/根级,分组↔根级)(PRD §6.2)。
  */
 "use client";
 
 import { useState } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -12,16 +24,22 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";import {
+import { Input } from "@/components/ui/input";
+import {
   ChevronDown,
   ChevronRight,
   FolderPlus,
+  GripVertical,
   Loader2,
   Plus,
   Server,
   Zap,
 } from "lucide-react";
-import { countConnections, nodeKey, useFilteredTree } from "@/app/hooks/use-connections";
+import {
+  countConnections,
+  nodeKey,
+  useFilteredTree,
+} from "@/app/hooks/use-connections";
 import type { useConnections } from "@/app/hooks/use-connections";
 import { useUiStore } from "@/stores/ui";
 import { confirmDialog, promptDialog } from "@/components/app-dialogs";
@@ -30,6 +48,16 @@ import type { ConnectionNodeDto } from "@/types";
 
 /** useConnections 的返回形状(避免重复声明)。 */
 type ConnectionsApi = ReturnType<typeof useConnections>;
+
+/** droppable 根级容器的固定 ID。 */
+const ROOT_DROPPABLE_ID = "root";
+
+/** 解析 droppable id:分组返回 groupId,根级返回 null。 */
+function resolveTargetGroup(overId: string | null): string | null | undefined {
+  if (!overId || overId === ROOT_DROPPABLE_ID) return null;
+  if (overId.startsWith("group:")) return overId.slice("group:".length);
+  return undefined;
+}
 
 /**
  * 连接树主体。
@@ -41,6 +69,32 @@ export function ConnectionTree({ api }: { api: ConnectionsApi }) {
   const filtered = useFilteredTree(api.tree, keyword);
   const total = countConnections(api.tree);
   const searching = keyword.trim().length > 0;
+
+  /** 当前拖拽中的 draggable id(用于 DragOverlay 渲染预览)。 */
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  /** 5px 阈值避免点击误触发拖拽;@dnd-kit 默认就是 5。 */
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
+
+  /** 处理拖入:根据源/目标类型调用对应 move,失败已由 hook 内部 toast。 */
+  const handleDragEnd = async (event: DragEndEvent) => {
+    setActiveId(null);
+    const { active, over } = event;
+    if (!over) return;
+    const targetGroupId = resolveTargetGroup(String(over.id));
+    if (targetGroupId === undefined) return;
+    const sourceId = String(active.id);
+    if (sourceId === String(over.id)) return;
+    if (sourceId.startsWith("c:")) {
+      const connId = sourceId.slice("c:".length);
+      await api.moveConnection(connId, targetGroupId);
+    } else if (sourceId.startsWith("g:")) {
+      const groupId = sourceId.slice("g:".length);
+      await api.moveGroup(groupId, targetGroupId);
+    }
+  };
 
   return (
     <div className="flex h-full flex-col gap-2">
@@ -61,49 +115,78 @@ export function ConnectionTree({ api }: { api: ConnectionsApi }) {
         >
           <Plus className="size-4" />
         </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          className="size-8 shrink-0"
+          title="新建分组"
+          onClick={() => {
+            void promptDialog({
+              title: "新建分组",
+              label: "分组名称",
+              confirmText: "创建",
+            }).then((name) => {
+              if (name && name.trim()) void api.addGroup(name.trim());
+            });
+          }}
+        >
+          <FolderPlus className="size-4" />
+        </Button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {api.error ? (
-          <p className="px-2 py-4 text-xs text-red-500">{api.error}</p>
-        ) : total === 0 ? (
-          <EmptyTree />
-        ) : (
-          <ul className="space-y-0.5 px-1" role="tree">
-            {filtered.map((node) => (
-              <TreeNode
-                key={nodeKey(node)}
-                node={node}
-                api={api}
-                forceExpand={searching}
-              />
-            ))}
-            {filtered.length === 0 && (
-              <li className="px-2 py-4 text-xs text-muted-foreground">
-                没有匹配的连接
-              </li>
-            )}
-          </ul>
-        )}
-      </div>
-
-      <Button
-        variant="outline"
-        size="sm"
-        className="w-full justify-start text-xs"
-        onClick={() => {
-          void promptDialog({
-            title: "新建分组",
-            label: "分组名称",
-            confirmText: "创建",
-          }).then((name) => {
-            if (name && name.trim()) void api.addGroup(name.trim());
-          });
-        }}
+      <DndContext
+        sensors={sensors}
+        onDragStart={(event: DragStartEvent) =>
+          setActiveId(String(event.active.id))
+        }
+        onDragCancel={() => setActiveId(null)}
+        onDragEnd={handleDragEnd}
       >
-        <FolderPlus className="size-4" />
-        新建分组
-      </Button>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <RootDroppable>
+            {api.error ? (
+              <p className="px-2 py-4 text-xs text-red-500">{api.error}</p>
+            ) : total === 0 ? (
+              <EmptyTree />
+            ) : (
+              <ul className="space-y-0.5 px-1" role="tree">
+                {filtered.map((node) => (
+                  <TreeNode
+                    key={nodeKey(node)}
+                    node={node}
+                    api={api}
+                    forceExpand={searching}
+                  />
+                ))}
+                {filtered.length === 0 && (
+                  <li className="px-2 py-4 text-xs text-muted-foreground">
+                    没有匹配的连接
+                  </li>
+                )}
+              </ul>
+            )}
+          </RootDroppable>
+        </div>
+        <DragOverlay>
+          {activeId ? <DragPreview nodeKey={activeId} /> : null}
+        </DragOverlay>
+      </DndContext>
+    </div>
+  );
+}
+
+/** 根级 droppable 容器:让任意节点可拖出到根级兄弟之间。 */
+function RootDroppable({ children }: { children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: ROOT_DROPPABLE_ID });
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "h-full rounded-md transition-colors",
+        isOver && "bg-accent/40 ring-1 ring-accent",
+      )}
+    >
+      {children}
     </div>
   );
 }
@@ -122,7 +205,25 @@ function EmptyTree() {
   );
 }
 
-/** 树节点:分组(可折叠)或连接叶子。 */
+/** 拖拽中的浮层预览。 */
+function DragPreview({ nodeKey: key }: { nodeKey: string }) {
+  const isConn = key.startsWith("c:");
+  return (
+    <div className="flex items-center gap-1.5 rounded border bg-background px-2 py-1 text-xs shadow-md">
+      <GripVertical className="size-3 text-muted-foreground" />
+      {isConn ? (
+        <Zap className="size-3 text-emerald-500" />
+      ) : (
+        <FolderPlus className="size-3 text-muted-foreground" />
+      )}
+      <span className="text-muted-foreground">
+        {isConn ? "连接" : "分组"}
+      </span>
+    </div>
+  );
+}
+
+/** 树节点:分组(可折叠,可拖入/拖出)或连接叶子(可拖出)。 */
 function TreeNode({
   node,
   api,
@@ -138,18 +239,12 @@ function TreeNode({
     const expanded = forceExpand || !api.collapsed.has(node.id);
     return (
       <li role="treeitem">
-        <Button
-          variant="ghost"
-          className="h-auto w-full shrink justify-start gap-1 rounded px-1.5 py-1 text-xs font-medium text-muted-foreground hover:bg-accent"
-          onClick={() => api.toggleGroup(node.id)}
-        >
-          {expanded ? (
-            <ChevronDown className="size-3.5" />
-          ) : (
-            <ChevronRight className="size-3.5" />
-          )}
-          <span className="truncate">{node.name}</span>
-        </Button>
+        <GroupRow
+          id={node.id}
+          name={node.name}
+          expanded={expanded}
+          onToggle={() => api.toggleGroup(node.id)}
+        />
         {expanded && node.children.length > 0 && (
           <ul className="ml-3 space-y-0.5 border-l pl-1" role="group">
             {node.children.map((child) => (
@@ -172,35 +267,26 @@ function TreeNode({
       <ContextMenu>
         <ContextMenuTrigger
           render={
-            <Button
-              variant="ghost"
-              className={cn(
-                "h-auto w-full shrink justify-start gap-1.5 rounded px-1.5 py-1 text-xs font-normal hover:bg-accent",
-                connecting && "opacity-60",
-              )}
-              title={`${node.username}@${node.host}:${node.port}${
-                node.remark ? ` · ${node.remark}` : ""
-              }`}
-              onDoubleClick={() => void api.connect(node.id, node.name, node.encoding)}
+            <ConnectionRow
+              id={node.id}
+              name={node.name}
+              username={node.username}
+              host={node.host}
+              port={node.port}
+              remark={node.remark ?? null}
+              connecting={connecting}
+              hasStoredPassword={node.hasStoredPassword}
+              hasStoredPassphrase={node.hasStoredPassphrase}
+              onDoubleClick={() =>
+                void api.connect(node.id, node.name, node.encoding)
+              }
             />
           }
-        >
-          {connecting ? (
-            <Loader2 className="size-3.5 shrink-0 animate-spin" />
-          ) : (
-            <Zap
-              className={cn(
-                "size-3.5 shrink-0",
-                node.hasStoredPassword || node.hasStoredPassphrase
-                  ? "text-emerald-500"
-                  : "text-muted-foreground/60",
-              )}
-            />
-          )}
-          <span className="truncate">{node.name}</span>
-        </ContextMenuTrigger>
+        />
         <ContextMenuContent>
-          <ContextMenuItem onClick={() => void api.connect(node.id, node.name, node.encoding)}>
+          <ContextMenuItem
+            onClick={() => void api.connect(node.id, node.name, node.encoding)}
+          >
             连接
           </ContextMenuItem>
           <ContextMenuItem onClick={() => openEdit(node.id)}>编辑…</ContextMenuItem>
@@ -226,5 +312,136 @@ function TreeNode({
         </ContextMenuContent>
       </ContextMenu>
     </li>
+  );
+}
+
+/** 分组行:既是 draggable 也是 droppable。 */
+function GroupRow({
+  id,
+  name,
+  expanded,
+  onToggle,
+}: {
+  id: string;
+  name: string;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const draggableId = `g:${id}`;
+  const droppableId = `group:${id}`;
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({ id: draggableId });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: droppableId });
+
+  /**
+   * 合并 draggable 和 droppable 的 ref。
+   * dnd-kit 自身支持多个 setNodeRef 调用的合并。
+   */
+  const setRefs = (node: HTMLDivElement | null) => {
+    setDragRef(node);
+    setDropRef(node);
+  };
+
+  return (
+    <div
+      ref={setRefs}
+      className={cn(
+        "flex items-center gap-1 rounded px-1 py-0.5 text-xs transition-colors",
+        isOver && "bg-accent ring-1 ring-accent",
+        isDragging && "opacity-40",
+      )}
+    >
+      <button
+        type="button"
+        aria-label="拖动分组"
+        className="cursor-grab text-muted-foreground/60 hover:text-foreground active:cursor-grabbing"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="size-3" />
+      </button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-auto flex-1 justify-start gap-1 px-1 py-0.5 text-xs font-medium text-muted-foreground hover:bg-transparent"
+        onClick={onToggle}
+      >
+        {expanded ? (
+          <ChevronDown className="size-3.5" />
+        ) : (
+          <ChevronRight className="size-3.5" />
+        )}
+        <span className="truncate">{name}</span>
+      </Button>
+    </div>
+  );
+}
+
+/** 连接行:draggable,双击触发连接。 */
+function ConnectionRow({
+  id,
+  name,
+  username,
+  host,
+  port,
+  remark,
+  connecting,
+  hasStoredPassword,
+  hasStoredPassphrase,
+  onDoubleClick,
+}: {
+  id: string;
+  name: string;
+  username: string;
+  host: string;
+  port: number;
+  remark: string | null;
+  connecting: boolean;
+  hasStoredPassword: boolean;
+  hasStoredPassphrase: boolean;
+  onDoubleClick: () => void;
+}) {
+  const draggableId = `c:${id}`;
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: draggableId,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      onDoubleClick={onDoubleClick}
+      className={cn(
+        "group flex items-center gap-1 rounded px-1 py-0.5 text-xs transition-colors hover:bg-accent",
+        isDragging && "opacity-40",
+      )}
+      title={`${username}@${host}:${port}${remark ? ` · ${remark}` : ""}`}
+    >
+      <button
+        type="button"
+        aria-label="拖动连接"
+        className="cursor-grab text-muted-foreground/60 hover:text-foreground active:cursor-grabbing"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="size-3" />
+      </button>
+      {connecting ? (
+        <Loader2 className="size-3.5 shrink-0 animate-spin" />
+      ) : (
+        <Zap
+          className={cn(
+            "size-3.5 shrink-0",
+            hasStoredPassword || hasStoredPassphrase
+              ? "text-emerald-500"
+              : "text-muted-foreground/60",
+          )}
+        />
+      )}
+      <span className="flex-1 truncate">{name}</span>
+    </div>
   );
 }

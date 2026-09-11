@@ -62,7 +62,7 @@ export function TabBar() {
               variant="ghost"
               size="icon-xs"
               aria-label="关闭标签"
-              className="absolute top-1/2 right-0.5 size-5 -translate-y-1/2 rounded p-0 opacity-0 hover:bg-accent group-hover:opacity-100"
+              className="absolute top-1/2 right-0.5 z-10 size-5 -translate-y-1/2 rounded p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
               onClick={() => {
                 void requestCloseTab(tab).then((ok) => {
                   if (ok) closeTab(tab.id);

@@ -12,12 +12,24 @@ use super::connection::AuthMethodDto;
 pub struct ServerInfoDto {
     /// 主机名。
     pub hostname: Option<String>,
-    /// 操作系统。
+    /// 操作系统(`uname -s`)。
     pub os: Option<String>,
-    /// 内核版本。
+    /// 内核版本(`uname -r`)。
     pub kernel: Option<String>,
-    /// 架构。
+    /// 架构(`uname -m`)。
     pub arch: Option<String>,
+    /// 发行版标识(`/etc/os-release::PRETTY_NAME`)。
+    pub distribution: Option<String>,
+    /// CPU 型号(`/proc/cpuinfo` 首条 `model name`)。
+    pub cpu_model: Option<String>,
+    /// 物理核心数。
+    pub cpu_cores_physical: Option<u32>,
+    /// 逻辑核心数。
+    pub cpu_cores_logical: Option<u32>,
+    /// 内存总容量(字节)。
+    pub mem_total_bytes: Option<u64>,
+    /// 启动时间(UNIX 秒)。
+    pub boot_time: Option<i64>,
 }
 
 impl From<crate::application::sessions::ServerInfo> for ServerInfoDto {
@@ -27,6 +39,12 @@ impl From<crate::application::sessions::ServerInfo> for ServerInfoDto {
             os: value.os,
             kernel: value.kernel,
             arch: value.arch,
+            distribution: value.distribution,
+            cpu_model: value.cpu_model,
+            cpu_cores_physical: value.cpu_cores_physical,
+            cpu_cores_logical: value.cpu_cores_logical,
+            mem_total_bytes: value.mem_total_bytes,
+            boot_time: value.boot_time,
         }
     }
 }

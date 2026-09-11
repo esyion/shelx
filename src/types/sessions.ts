@@ -11,6 +11,18 @@ export interface ServerInfo {
   os: string | null;
   kernel: string | null;
   arch: string | null;
+  /** 发行版标识(/etc/os-release::PRETTY_NAME)。 */
+  distribution: string | null;
+  /** CPU 型号。 */
+  cpuModel: string | null;
+  /** 物理核心数。 */
+  cpuCoresPhysical: number | null;
+  /** 逻辑核心数。 */
+  cpuCoresLogical: number | null;
+  /** 内存总容量(字节)。 */
+  memTotalBytes: number | null;
+  /** 启动时间(UNIX 秒)。 */
+  bootTime: number | null;
 }
 
 /** 会话信息。 */

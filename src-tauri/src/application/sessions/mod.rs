@@ -22,8 +22,27 @@ mod tests;
 
 pub use server_info::ServerInfo;
 
-/// serverInfo 一次性采集命令(设计文档 §9.1)。
-const SERVER_INFO_COMMAND: &str = "uname -s -r -m; hostname";
+/// serverInfo 一次性采集命令(设计文档 §9.1 + PRD §6.5)。
+///
+/// 一次 SSH exec 同时取回 hostname、uname、发行版、CPU、内存、启动时间。
+/// 每个子命令独立可失败,失败时该行为空;解析层 tolerated 缺字段。
+const SERVER_INFO_COMMAND: &str = r#"
+{
+  uname -s -r -m; hostname
+  if [ -r /etc/os-release ]; then
+    . /etc/os-release
+    [ -n "$PRETTY_NAME" ] && echo "DIST=$PRETTY_NAME"
+  fi
+  cpu_model=$(grep -m1 '^model name' /proc/cpuinfo 2>/dev/null | cut -d: -f2-)
+  [ -n "$cpu_model" ] && echo "CPU_MODEL=$cpu_model"
+  phys=$(grep -c '^core id' /proc/cpuinfo 2>/dev/null)
+  log=$(grep -c '^processor' /proc/cpuinfo 2>/dev/null)
+  echo "CPU_CORES_PHYS=$phys"
+  echo "CPU_CORES_LOG=$log"
+  awk '/^MemTotal:/ {print "MEM_TOTAL_KB=" $2}' /proc/meminfo 2>/dev/null
+  awk '/^btime/ {print "BOOT=" $2}' /proc/stat 2>/dev/null
+}
+"#;
 /// serverInfo 采集超时。
 const SERVER_INFO_TIMEOUT: Duration = Duration::from_secs(8);
 /// 断线观察任务的轮询间隔。
@@ -362,6 +381,15 @@ impl SessionService {
                 status: entry.status,
                 server_info: entry.server_info.clone(),
             })
+    }
+
+    /// 读取已采集的服务器信息(无快照副本,用于系统信息弹窗)。
+    pub fn system_info(&self, session_id: &str) -> Option<ServerInfo> {
+        self.registry
+            .read()
+            .expect("会话注册表锁")
+            .get(session_id)
+            .and_then(|entry| entry.server_info.clone())
     }
 
     /// 后台观察断线:轮询传输端口,置位并广播(已是 Disconnected 时不重复)。

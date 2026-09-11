@@ -64,25 +64,33 @@ export function Workspace() {
         </span>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden">
-        {activeTab.view === "terminal" &&
-          (activeTab.sessionId ? (
-            <TerminalView
-              sessionId={activeTab.sessionId}
-              encoding={activeTab.encoding}
-            />
-          ) : (
-            <Centered text="正在建立会话…" />
-          ))}
-        {activeTab.view === "monitor" &&
-          (activeTab.sessionId ? (
-            <MonitorView sessionId={activeTab.sessionId} />
-          ) : (
-            <Centered text="正在建立会话…" />
-          ))}
-        {activeTab.view === "files" && (
-          <FileManager sessionId={activeTab.sessionId} />
-        )}
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        {tabs.map((tab) => {
+          const visible = tab.id === activeTabId;
+          const className = visible ? "relative h-full w-full" : "hidden";
+          return (
+            <div key={tab.id} className={className} data-terminal-root="">
+              {tab.view === "terminal" &&
+                (tab.sessionId ? (
+                  <TerminalView
+                    sessionId={tab.sessionId}
+                    encoding={tab.encoding}
+                  />
+                ) : (
+                  <Centered text="正在建立会话…" />
+                ))}
+              {tab.view === "monitor" &&
+                (tab.sessionId ? (
+                  <MonitorView sessionId={tab.sessionId} />
+                ) : (
+                  <Centered text="正在建立会话…" />
+                ))}
+              {tab.view === "files" && (
+                <FileManager sessionId={tab.sessionId} />
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

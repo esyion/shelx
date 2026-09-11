@@ -57,6 +57,7 @@ pub fn run() {
             commands::sessions::list_session_status,
             commands::sessions::respond_auth_prompt,
             commands::sessions::respond_hostkey_confirm,
+            commands::sessions::get_system_info,
             commands::terminals::open_terminal,
             commands::terminals::write_terminal,
             commands::terminals::resize_terminal,

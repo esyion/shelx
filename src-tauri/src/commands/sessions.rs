@@ -11,7 +11,7 @@ use crate::dto::common::IpcResult;
 use crate::dto::connection::{parse_conn_id, IdRequestDto};
 use crate::dto::session::{
     ConnectSessionRequestDto, QuickConnectRequestDto, RespondAuthPromptRequestDto,
-    RespondHostkeyConfirmRequestDto, SessionInfoDto,
+    RespondHostkeyConfirmRequestDto, ServerInfoDto, SessionIdRequestDto, SessionInfoDto,
 };
 use crate::shared::error::{IpcError, IpcErrorCode};
 use crate::state::AppState;
@@ -176,5 +176,21 @@ pub fn respond_hostkey_confirm(
             IpcErrorCode::HostkeyRejected,
             "指纹确认已取消或超时",
         )),
+    }
+}
+
+/// 读取会话已采集好的服务器基础信息(连接后一次性采集,直接复用缓存)。
+///
+/// 不重新发起 SSH exec,也不阻塞 UI;会话不存在返回 `NotFound`。
+/// 采集尚未完成时 `ServerInfoDto` 字段全 `null`,前端可结合 `list_session_status`
+/// 判断是否在线,决定何时再次拉取。
+#[tauri::command]
+pub fn get_system_info(
+    state: State<AppState>,
+    request: SessionIdRequestDto,
+) -> IpcResult<ServerInfoDto> {
+    match state.sessions.system_info(&request.id) {
+        Some(info) => IpcResult::ok(info.into()),
+        None => IpcResult::err(IpcError::new(IpcErrorCode::NotFound, "会话不存在")),
     }
 }

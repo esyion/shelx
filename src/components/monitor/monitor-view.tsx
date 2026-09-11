@@ -146,7 +146,7 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
           <CpuChart samples={samples} />
         </ChartCard>
         <ChartCard
-          title={`内存 ${formatBytes(latest.memUsedKb)} / ${formatBytes(latest.memTotalKb)}`}
+          title={`内存 ${formatBytes(latest.memUsedKb * 1024)} / ${formatBytes(latest.memTotalKb * 1024)}`}
         >
           <MemoryChart samples={samples} />
         </ChartCard>
@@ -204,10 +204,12 @@ function toTimeline(samples: MetricsSample[]): { time: string; [key: string]: nu
   return samples.slice(-120).map((s) => ({
     time: new Date(s.ts).toLocaleTimeString("zh-CN", { hour12: false, minute: "2-digit", second: "2-digit" }),
     cpu: s.cpuPercent,
-    memUsed: s.memUsedKb / 1024 / 1024,
-    memTotal: s.memTotalKb / 1024 / 1024,
-    netRx: s.netRxBps / 1024,
-    netTx: s.netTxBps / 1024,
+    /** 数据轴是字节(KiB × 1024);与 YAxis unit="GiB" / tooltip 配套。 */
+    memUsed: s.memUsedKb * 1024,
+    memTotal: s.memTotalKb * 1024,
+    /** 数据轴是字节/秒;tooltip 自行换算到 MB/s。 */
+    netRx: s.netRxBps,
+    netTx: s.netTxBps,
     load1: s.load1,
     load5: s.load5,
   }));
@@ -237,8 +239,8 @@ function MemoryChart({ samples }: { samples: MetricsSample[] }) {
       <AreaChart data={data} margin={{ top: 2, right: 4, bottom: 0, left: -8 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
         <XAxis dataKey="time" hide />
-        <YAxis tick={{ fontSize: 9 }} unit="G" />
-        <Tooltip contentStyle={{ fontSize: 10 }} formatter={(v, name) => [`${Number(v).toFixed(2)}G`, String(name)] as [string, string]} />
+        <YAxis tick={{ fontSize: 9 }} unit="GiB" tickFormatter={(v) => (Number(v) / 1024 / 1024 / 1024).toFixed(1)} />
+        <Tooltip contentStyle={{ fontSize: 10 }} formatter={(v, name) => [`${(Number(v) / 1024 / 1024 / 1024).toFixed(2)} GiB`, String(name)] as [string, string]} />
         <Area type="monotone" dataKey="memUsed" stackId="mem" stroke="hsl(var(--primary))" fill="hsl(var(--primary)/0.2)" strokeWidth={1.5} name="已用" isAnimationActive={false} />
         <Area type="monotone" dataKey="memTotal" stroke="hsl(var(--muted-foreground))" fill="none" strokeWidth={1} strokeDasharray="4 4" name="总量" isAnimationActive={false} />
       </AreaChart>
@@ -254,13 +256,21 @@ function NetworkChart({ samples }: { samples: MetricsSample[] }) {
       <LineChart data={data} margin={{ top: 2, right: 4, bottom: 0, left: -8 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
         <XAxis dataKey="time" hide />
-        <YAxis tick={{ fontSize: 9 }} unit="K" />
-        <Tooltip contentStyle={{ fontSize: 10 }} formatter={(v, name) => [`${(Number(v) / 1024).toFixed(1)} MB/s`, String(name)] as [string, string]} />
+        <YAxis tick={{ fontSize: 9 }} unit="B/s" tickFormatter={(v) => formatAxisBytes(Number(v))} />
+        <Tooltip contentStyle={{ fontSize: 10 }} formatter={(v, name) => [`${(Number(v) / 1024 / 1024).toFixed(2)} MB/s`, String(name)] as [string, string]} />
         <Line type="monotone" dataKey="netRx" stroke="#3b82f6" strokeWidth={1.5} dot={false} name="下行" isAnimationActive={false} />
         <Line type="monotone" dataKey="netTx" stroke="#22c55e" strokeWidth={1.5} dot={false} name="上行" isAnimationActive={false} />
       </LineChart>
     </ResponsiveContainer>
   );
+}
+
+/** 网络 Y 轴数字 → 人读(B/KiB/MiB),保留 1 位小数。 */
+function formatAxisBytes(v: number): string {
+  if (!Number.isFinite(v) || v < 0) return "0";
+  if (v >= 1024 * 1024) return `${(v / 1024 / 1024).toFixed(1)}M`;
+  if (v >= 1024) return `${(v / 1024).toFixed(1)}K`;
+  return String(Math.round(v));
 }
 
 /** 负载迷你趋势。 */
@@ -293,7 +303,7 @@ function DiskBar({ disk }: { disk: { mount: string; totalKb: number; usedKb: num
         <div className={`h-full rounded ${color}`} style={{ width: `${Math.min(100, percent)}%` }} />
       </div>
       <span className="w-24 text-right tabular-nums text-muted-foreground">
-        {percent.toFixed(0)}% {formatBytes(disk.usedKb)}/{formatBytes(disk.totalKb)}
+        {percent.toFixed(0)}% {formatBytes(disk.usedKb * 1024)}/{formatBytes(disk.totalKb * 1024)}
       </span>
     </div>
   );

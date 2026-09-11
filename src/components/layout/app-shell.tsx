@@ -3,7 +3,8 @@
  */
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { useEventListener } from "usehooks-ts";
 import { ConnectionTree } from "@/components/connection/connection-tree";
 import { ConnectionDialog } from "@/components/connection/connection-dialog";
 import { QuickConnectDialog } from "@/components/connection/quick-connect-dialog";
@@ -16,6 +17,7 @@ import { TabBar } from "@/components/layout/tab-bar";
 import { Workspace } from "@/components/layout/workspace";
 import { BottomPanel } from "@/components/layout/bottom-panel";
 import { ToastHost } from "@/components/layout/toast-host";
+import { SystemInfoDialog } from "@/components/monitor/system-info-dialog";
 import { TransferConflictDialog } from "@/components/transfers/transfer-dialogs";
 import { AppDialogs } from "@/components/app-dialogs";
 import { useConnections } from "@/app/hooks/use-connections";
@@ -41,10 +43,13 @@ export function AppShell() {
     void useUiStore.getState().restoreLayout();
 
     void initGbkEncoder();
-    void useSettingsStore.getState().load().then(() => {
-      const theme = useSettingsStore.getState().settings?.appearance.theme;
-      if (theme) applyThemeClass(theme);
-    });
+    void useSettingsStore
+      .getState()
+      .load()
+      .then(() => {
+        const theme = useSettingsStore.getState().settings?.appearance.theme;
+        if (theme) applyThemeClass(theme);
+      });
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const mediaHandler = () => {
       const current = useSettingsStore.getState().settings?.appearance.theme;
@@ -56,22 +61,27 @@ export function AppShell() {
       useSessionsStore.getState().upsertMany(sessions);
     });
     let unlistenStatus: (() => void) | undefined;
-    void listenEvent<SessionStatusEvent>(SESSION_EVENTS.statusChanged, (event) => {
-      const existing = useSessionsStore.getState().byId[event.sessionId];
-      useSessionsStore.getState().upsert({
-        sessionId: event.sessionId,
-        connId: event.connId,
-        temporary: existing?.temporary ?? false,
-        status: event.status,
-        serverInfo: existing?.serverInfo ?? null,
-      });
-      if (event.status === "disconnected") {
-        useUiStore.getState().toast(
-          event.reason ? `连接已断开:${event.reason}` : "连接已断开",
-          "error",
-        );
-      }
-    }).then((unlisten) => {
+    void listenEvent<SessionStatusEvent>(
+      SESSION_EVENTS.statusChanged,
+      (event) => {
+        const existing = useSessionsStore.getState().byId[event.sessionId];
+        useSessionsStore.getState().upsert({
+          sessionId: event.sessionId,
+          connId: event.connId,
+          temporary: existing?.temporary ?? false,
+          status: event.status,
+          serverInfo: existing?.serverInfo ?? null,
+        });
+        if (event.status === "disconnected") {
+          useUiStore
+            .getState()
+            .toast(
+              event.reason ? `连接已断开:${event.reason}` : "连接已断开",
+              "error",
+            );
+        }
+      },
+    ).then((unlisten) => {
       unlistenStatus = unlisten;
     });
 
@@ -81,9 +91,10 @@ export function AppShell() {
     };
   }, []);
 
-  // 全局快捷键。
+  // 全局快捷键:handler 通过 ref 同步,避免重复注册/解绑。
+  const keyHandlerRef = useRef<(event: KeyboardEvent) => void>(() => {});
   useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
+    keyHandlerRef.current = (event: KeyboardEvent) => {
       const ui = useUiStore.getState();
       const tabs = useTabsStore.getState();
       const ctrl = event.ctrlKey || event.metaKey;
@@ -140,9 +151,8 @@ export function AppShell() {
           break;
       }
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
   }, []);
+  useEventListener("keydown", (event) => keyHandlerRef.current(event));
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
@@ -161,6 +171,7 @@ export function AppShell() {
       <AuthPromptDialog />
       <AppDialogs />
       <TransferConflictDialog />
+      <SystemInfoDialog />
       <ToastHost />
     </div>
   );

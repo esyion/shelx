@@ -11,6 +11,7 @@ import {
   sessionsApi,
   settingsApi,
   sftpApi,
+  systemInfoApi,
   terminalsApi,
   transferApi,
 } from "@/gateway";
@@ -152,3 +153,6 @@ export const stopMonitor = monitorApi.stopMonitor;
 
 /** 读取环形缓冲快照。 */
 export const recentMonitorSamples = monitorApi.recentMonitorSamples;
+
+/** 读取会话的服务器系统信息(连接后一次性采集)。 */
+export const fetchSystemInfo = systemInfoApi.fetchSystemInfo;

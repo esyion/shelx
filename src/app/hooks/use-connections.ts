@@ -10,6 +10,8 @@ import {
   deleteConnection,
   duplicateConnection,
   listConnections,
+  moveConnection as moveConnectionApi,
+  moveGroup as moveGroupApi,
 } from "@/app/api";
 import { isGatewayError } from "@/gateway";
 import { useSessionsStore } from "@/stores/sessions";
@@ -105,6 +107,38 @@ export function useConnections() {
     [refresh],
   );
 
+  /** 移动连接到目标分组;`targetGroupId=null` 移到根级。 */
+  const moveConnection = useCallback(
+    async (connId: string, targetGroupId: string | null) => {
+      try {
+        await moveConnectionApi(connId, targetGroupId);
+        await refresh();
+      } catch (err) {
+        useUiStore.getState().toast(
+          isGatewayError(err) ? err.message : "移动失败",
+          "error",
+        );
+      }
+    },
+    [refresh],
+  );
+
+  /** 移动分组到目标父级;`targetParentId=null` 移到根级兄弟之间。 */
+  const moveGroup = useCallback(
+    async (groupId: string, targetParentId: string | null) => {
+      try {
+        await moveGroupApi(groupId, targetParentId);
+        await refresh();
+      } catch (err) {
+        useUiStore.getState().toast(
+          isGatewayError(err) ? err.message : "移动分组失败",
+          "error",
+        );
+      }
+    },
+    [refresh],
+  );
+
   /** 新建分组(根级)。 */
   const addGroup = useCallback(
     async (name: string) => {
@@ -140,6 +174,8 @@ export function useConnections() {
     duplicate,
     remove,
     addGroup,
+    moveConnection,
+    moveGroup,
     connectingId,
     collapsed,
     toggleGroup,
