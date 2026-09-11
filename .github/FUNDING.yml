@@ -1,0 +1,8 @@
+# Funding / support channels.
+# GitHub uses this file to surface sponsor buttons on the repo page.
+# It is purely informational; no payment integration is wired up.
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
+
+github: esyion
+custom:
+  - "https://x.com/esyion_"

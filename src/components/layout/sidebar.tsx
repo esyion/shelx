@@ -12,6 +12,7 @@ import { useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   BarChart3,
+  CircleArrowUp,
   GripHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
@@ -22,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { SidebarMonitor } from "@/components/monitor/sidebar-monitor";
 import { useTabsStore } from "@/stores/tabs";
 import { useUiStore } from "@/stores/ui";
+import { useUpdateStore } from "@/stores/update";
 
 /** 侧栏默认上半比例(连接树)。 */
 const DEFAULT_TREE_RATIO = 60;
@@ -47,6 +49,7 @@ export function Sidebar({ children }: { children: ReactNode }) {
         >
           <PanelLeftOpen className="size-4" />
         </Button>
+        <UpdateButton collapsed />
         <Button
           variant="ghost"
           size="icon"
@@ -79,6 +82,7 @@ function SidebarHeader() {
     <div className="flex shrink-0 items-center justify-between px-3 py-2">
       <span className="text-sm font-semibold tracking-wide">shelx</span>
       <div className="flex items-center gap-0.5">
+        <UpdateButton />
         <Button
           variant="ghost"
           size="icon"
@@ -104,6 +108,44 @@ function SidebarHeader() {
         </Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * 侧栏上的更新按钮:
+ *   - 默认灰色(opacity-40),无操作提示;
+ *   - 检测到新版本时变彩色(opacity-100 + 蓝色 text-foreground),
+ *     鼠标移上去提示具体版本号;
+ *   - 点击打开更新对话框(详见 UpdateDialog)。
+ */
+function UpdateButton({ collapsed = false }: { collapsed?: boolean }) {
+  const status = useUpdateStore((s) => s.status);
+  const latest = useUpdateStore((s) => s.latest);
+  const current = useUpdateStore((s) => s.currentVersion);
+  const setOpen = useUiStore((s) => s.setUpdateDialogOpen);
+
+  const isAvailable = status === "available";
+  const title = isAvailable && latest
+    ? `发现新版本 ${latest.tag_name}(当前 v${current ?? "?"})`
+    : "检查更新";
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className={collapsed ? "size-8" : "size-7"}
+      title={title}
+      onClick={() => setOpen(true)}
+      data-testid="update-button"
+      data-update-available={isAvailable ? "true" : "false"}
+    >
+      <CircleArrowUp
+        className={cn(
+          "size-4 transition-opacity",
+          isAvailable ? "opacity-100 text-blue-500" : "opacity-40",
+        )}
+      />
+    </Button>
   );
 }
 

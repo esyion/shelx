@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { ArrowLeft } from "lucide-react";
 import { applyThemeClass, useSettingsStore } from "@/stores/settings";
 import { useUiStore } from "@/stores/ui";
+import { useUpdateStore } from "@/stores/update";
 import type { AppSettings } from "@/types";
 
 /** 设置页。 */
@@ -21,6 +22,7 @@ export default function SettingsPage() {
   const patch = useSettingsStore((s) => s.patch);
   const load = useSettingsStore((s) => s.load);
   const toast = useUiStore((s) => s.toast);
+  const currentVersion = useUpdateStore((s) => s.currentVersion);
 
   useEffect(() => {
     void load();
@@ -275,7 +277,7 @@ export default function SettingsPage() {
       </Section>
 
       <footer className="pb-6 text-center text-xs text-muted-foreground">
-        shelx v0.1 · 数据仅存本地(~/.agents-plus/shelx 与系统配置目录)
+        shelx{currentVersion ? ` v${currentVersion}` : ""} · 数据仅存本地(~/.shelx 与系统配置目录)
       </footer>
     </main>
   );

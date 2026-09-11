@@ -1,0 +1,77 @@
+name: Feature request
+description: Propose a new feature or a meaningful UX change.
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        shelx is a small project — feature requests with a concrete user
+        scenario, expected scope, and how they fit the layering in
+        `AGENTS.md` get triaged fastest. Larger changes should usually start
+        as a discussion so we can agree on direction before code.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What user pain does this address? Who feels it?
+      placeholder: |
+        Operators juggling 30+ hosts lose track of which tab is which
+        session, especially when several sessions point at the same host
+        but different users or jump-hosts.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Sketch the user-facing behavior. Wireframes, ASCII layouts,
+        or shell command examples all help.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you weighed, and why this one fits better.
+    validations:
+      required: false
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Affected areas
+      description: |
+        Check all that apply. Be honest about cross-layer impact — we will
+        ask about it during review.
+      value: |
+        - [ ] Frontend (Next.js / React / UI)
+        - [ ] Backend (Rust / Tauri command)
+        - [ ] IPC contract (commands, events, DTOs)
+        - [ ] Persistence (settings, history, credentials)
+        - [ ] Capabilities / CSP / security
+        - [ ] Documentation (`docs/`, `AGENTS.md`)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: How important is it to you?
+      options:
+        - Blocks my daily use
+        - Painful workaround exists
+        - Nice to have
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: References, prior art from other tools, related issues.
+    validations:
+      required: false

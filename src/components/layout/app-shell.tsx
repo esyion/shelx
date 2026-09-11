@@ -14,6 +14,7 @@ import {
 } from "@/components/connection/session-prompt-dialogs";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TabBar } from "@/components/layout/tab-bar";
+import { UpdateDialog } from "@/components/layout/update-dialog";
 import { Workspace } from "@/components/layout/workspace";
 import { BottomPanel } from "@/components/layout/bottom-panel";
 import { ToastHost } from "@/components/layout/toast-host";
@@ -28,6 +29,7 @@ import { useSessionsStore } from "@/stores/sessions";
 import { applyThemeClass, useSettingsStore } from "@/stores/settings";
 import { requestCloseTab, useTabsStore } from "@/stores/tabs";
 import { useUiStore } from "@/stores/ui";
+import { useUpdateStore } from "@/stores/update";
 import type { SessionStatusEvent } from "@/types";
 
 /**
@@ -43,6 +45,7 @@ export function AppShell() {
     void useUiStore.getState().restoreLayout();
 
     void initGbkEncoder();
+    void useUpdateStore.getState().init();
     void useSettingsStore
       .getState()
       .load()
@@ -172,6 +175,7 @@ export function AppShell() {
       <AppDialogs />
       <TransferConflictDialog />
       <SystemInfoDialog />
+      <UpdateDialog />
       <ToastHost />
     </div>
   );

@@ -33,6 +33,8 @@ export interface UiStore {
   systemInfoSessionId: string | null;
   /** 传输冲突弹窗的当前任务 ID;null = 关闭。 */
   conflictTaskId: string | null;
+  /** 更新对话框是否打开(由侧栏更新图标触发)。 */
+  updateDialogOpen: boolean;
   /** toast 列表。 */
   toasts: ToastItem[];
   /** 启动时从后端恢复布局(幂等)。 */
@@ -57,6 +59,8 @@ export interface UiStore {
   toast(message: string, variant?: ToastItem["variant"]): void;
   /** 设置传输冲突弹窗。 */
   setConflictTaskId(taskId: string | null): void;
+  /** 打开/关闭更新对话框。 */
+  setUpdateDialogOpen(open: boolean): void;
 }
 
 let toastSeq = 0;
@@ -84,6 +88,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
   quickConnectOpen: false,
   systemInfoSessionId: null,
   conflictTaskId: null,
+  updateDialogOpen: false,
   toasts: [],
 
   async restoreLayout() {
@@ -149,6 +154,10 @@ export const useUiStore = create<UiStore>((set, get) => ({
 
   setConflictTaskId(taskId) {
     set({ conflictTaskId: taskId });
+  },
+
+  setUpdateDialogOpen(open) {
+    set({ updateDialogOpen: open });
   },
 
   toast(message, variant = "info") {

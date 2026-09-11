@@ -1,0 +1,108 @@
+name: Bug report
+description: Report a reproducible bug in shelx (UI, backend, IPC, packaging).
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please fill in the template
+        below — the more concrete the reproduction, the faster we can fix it.
+
+        > **Security issues are not bugs.** If the report describes a
+        > vulnerability, follow [SECURITY.md](.github/SECURITY.md) instead of
+        > opening a public issue.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: A clear, concise description of the bug.
+      placeholder: |
+        The terminal pane stops responding after switching tabs.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal, ordered steps. Include any host / target machine specifics.
+      placeholder: |
+        1. Connect to an Ubuntu 22.04 host via password auth
+        2. Open the SFTP panel and navigate to /var/log
+        3. Drag nginx/access.log into the upload area
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened? Include error messages verbatim.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: shelx version
+      description: Version or commit SHA. Visible in the About dialog.
+      placeholder: "v0.1.0 (commit a3d63fb)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows 11
+        - Windows 10
+        - macOS 15 (Sequoia)
+        - macOS 14 (Sonoma)
+        - Ubuntu 24.04
+        - Ubuntu 22.04
+        - Fedora (latest)
+        - Arch (rolling)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: arch
+    attributes:
+      label: Architecture
+      placeholder: "x86_64 / arm64"
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots / recordings
+      description: |
+        Attach or paste any relevant console output, Rust `tracing` logs,
+        screenshots, or screen recordings. **Do not include credentials or
+        hostnames you do not want to make public.**
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that might be relevant — first occurrence or
+        reproducible every time, related issues, attempted workarounds.
+    validations:
+      required: false

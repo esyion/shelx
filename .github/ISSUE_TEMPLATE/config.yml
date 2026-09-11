@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report
+    url: https://github.com/esyion/shelx/blob/main/.github/SECURITY.md
+    about: Please report security issues privately — do not open a public issue.
+  - name: Discussions
+    url: https://github.com/esyion/shelx/discussions
+    about: Questions, ideas, and "how do I…" that are not bug reports.

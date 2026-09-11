@@ -1,0 +1,35 @@
+name: Documentation issue
+description: Fix or improve the docs (README, AGENTS.md, docs/, inline).
+title: "[docs] "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for typos, broken links, missing or wrong setup steps,
+        unclear explanations in `README.md` / `AGENTS.md` / `docs/`.
+
+  - type: textarea
+    id: where
+    attributes:
+      label: Where is the problem?
+      description: File path and, if possible, line numbers or section heading.
+      placeholder: "docs/TECHNICAL_DESIGN.md §4.2 — transport retry policy"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's wrong?
+      description: Quote the current text and explain the gap or error.
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested fix
+      description: Optional. Paste a draft of the replacement text.
+    validations:
+      required: false
