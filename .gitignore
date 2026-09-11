@@ -19,7 +19,7 @@ next-env.d.ts
 dist
 dist-ssr
 *.local
-
+.omc
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
