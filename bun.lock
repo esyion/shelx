@@ -14,10 +14,10 @@
         "@tauri-apps/api": "^2.11.1",
         "@tauri-apps/plugin-dialog": "^2.7.3",
         "@tauri-apps/plugin-opener": "^2.5.5",
-        "@xterm/addon-fit": "^0.11.0",
-        "@xterm/addon-search": "^0.16.0",
-        "@xterm/addon-webgl": "0.20.0-beta.300",
-        "@xterm/xterm": "6.1.0-beta.304",
+        "@xterm/addon-fit": "0.11.0",
+        "@xterm/addon-search": "0.16.0",
+        "@xterm/addon-webgl": "0.19.0",
+        "@xterm/xterm": "5.5.0",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "cmdk": "^1.1.1",
@@ -502,9 +502,9 @@
 
     "@xterm/addon-search": ["@xterm/addon-search@0.16.0", "https://registry.npmmirror.com/@xterm/addon-search/-/addon-search-0.16.0.tgz", {}, "sha512-9OeuBFu0/uZJPu+9AHKY6g/w0Czyb/Ut0A5t79I4ULoU4IfU5BEpPFVGQxP4zTTMdfZEYkVIRYbHBX1xWwjeSA=="],
 
-    "@xterm/addon-webgl": ["@xterm/addon-webgl@0.20.0-beta.300", "https://registry.npmmirror.com/@xterm/addon-webgl/-/addon-webgl-0.20.0-beta.300.tgz", { "peerDependencies": { "@xterm/xterm": "^6.1.0-beta.304" } }, "sha512-BJQiOx8I+zz2woe+/E9nWprRRPevo9slPgyOd43E8o18aG307ccsyaTJoIbSu99uqfDoVLWDRLTy91ZXTFsdig=="],
+    "@xterm/addon-webgl": ["@xterm/addon-webgl@0.19.0", "https://registry.npmmirror.com/@xterm/addon-webgl/-/addon-webgl-0.19.0.tgz", {}, "sha512-b3fMOsyLVuCeNJWxolACEUED0vm7qC0cy4wRvf3oURSzDTYVQiGPhTnhWZwIHdvC48Y+oLhvYXnY4XDXPoJo6A=="],
 
-    "@xterm/xterm": ["@xterm/xterm@6.1.0-beta.304", "https://registry.npmmirror.com/@xterm/xterm/-/xterm-6.1.0-beta.304.tgz", {}, "sha512-Wq9d4qFYslYQBIan+riXotdyurtREc6v+HWdAwV6Y2JSDI9eJ1dkWm/fzYb2rCGgGnM3baiYuSK4Z6OLNKLzDw=="],
+    "@xterm/xterm": ["@xterm/xterm@5.5.0", "https://registry.npmmirror.com/@xterm/xterm/-/xterm-5.5.0.tgz", {}, "sha512-hqJHYaQb5OptNunnyAnkHyM8aCjZ1MEIDTQu1iIbbTD/xops91NB5yq1ZK/dC2JDbVWtF23zUtl9JE2NqwT87A=="],
 
     "accepts": ["accepts@2.0.0", "https://registry.npmmirror.com/accepts/-/accepts-2.0.0.tgz", { "dependencies": { "mime-types": "^3.0.0", "negotiator": "^1.0.0" } }, "sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng=="],
 

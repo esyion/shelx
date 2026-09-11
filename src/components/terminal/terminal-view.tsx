@@ -64,7 +64,14 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
     const fit = new FitAddon();
     terminal.loadAddon(fit);
     terminal.open(host);
-    tryLoadWebglAddon(terminal);
+
+    // WebGL addon 持有引用以便 cleanup 时显式 dispose,避免
+    // terminal.dispose() → AddonManager → 二次 dispose 触发 addon 内部
+    // 私有字段 _isDisposed undefined 错误。
+    let webglAddon: { dispose: () => void } | null = null;
+    void tryLoadWebglAddon(terminal).then((addon) => {
+      if (!disposed && addon) webglAddon = addon;
+    });
 
     const decoder = new StreamDecoder(encoding);
     let disposed = false;
@@ -169,6 +176,19 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
       dataDisposable.dispose();
       selectionDisposable.dispose();
       if (terminalId) void closeTerminal(terminalId);
+      // 显式释放 addon,再 dispose terminal;避免 AddonManager 二次 dispose
+      // 触发 addon 内部 _isDisposed 访问 undefined 的运行时错误。
+      try {
+        webglAddon?.dispose();
+      } catch {
+        // 忽略二次 dispose 异常。
+      }
+      webglAddon = null;
+      try {
+        fit.dispose();
+      } catch {
+        // 同上。
+      }
       terminal.dispose();
     };
   }, [sessionId, onlineEpoch, status, encoding]);
