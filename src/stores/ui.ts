@@ -25,6 +25,8 @@ export interface UiStore {
   editDialogConnId: string | null | undefined;
   /** 快速连接对话框是否打开。 */
   quickConnectOpen: boolean;
+  /** 传输冲突弹窗的当前任务 ID;null = 关闭。 */
+  conflictTaskId: string | null;
   /** toast 列表。 */
   toasts: ToastItem[];
   /** 启动时从后端恢复布局(幂等)。 */
@@ -41,6 +43,8 @@ export interface UiStore {
   setQuickConnectOpen(open: boolean): void;
   /** 推送 toast(自动过期)。 */
   toast(message: string, variant?: ToastItem["variant"]): void;
+  /** 设置传输冲突弹窗。 */
+  setConflictTaskId(taskId: string | null): void;
 }
 
 let toastSeq = 0;
@@ -62,6 +66,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
   bottomPanel: "hidden",
   editDialogConnId: undefined,
   quickConnectOpen: false,
+  conflictTaskId: null,
   toasts: [],
 
   async restoreLayout() {
@@ -100,6 +105,10 @@ export const useUiStore = create<UiStore>((set, get) => ({
 
   setQuickConnectOpen(open) {
     set({ quickConnectOpen: open });
+  },
+
+  setConflictTaskId(taskId) {
+    set({ conflictTaskId: taskId });
   },
 
   toast(message, variant = "info") {

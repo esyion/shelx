@@ -6,6 +6,9 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { FileManager } from "@/components/files/file-manager";
+import { TransferCenter } from "@/components/transfers/transfer-center";
+import { useTabsStore } from "@/stores/tabs";
 import { useUiStore, type BottomPanel } from "@/stores/ui";
 
 /** 页签定义。 */
@@ -50,11 +53,21 @@ export function BottomPanel() {
           收起
         </Button>
       </div>
-      <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
-        {bottomPanel === "sftp"
-          ? "SFTP 双栏 — M2 实现(本地/远程双栏、拖拽传输)"
-          : "传输中心 — M2 实现(任务队列、进度与取消)"}
+      <div className="min-h-0 flex-1">
+        {bottomPanel === "sftp" ? (
+          <BottomFileManager />
+        ) : (
+          <TransferCenter />
+        )}
       </div>
     </section>
   );
+}
+
+/** 底部面板内嵌 FileManager:取当前激活标签的会话。 */
+function BottomFileManager() {
+  const tabs = useTabsStore((s) => s.tabs);
+  const activeTabId = useTabsStore((s) => s.activeTabId);
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  return <FileManager sessionId={activeTab?.sessionId ?? null} />;
 }

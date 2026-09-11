@@ -74,6 +74,11 @@ pub fn run() {
             commands::transfers::retry_transfer_task,
             commands::transfers::respond_transfer_conflict,
             commands::transfers::clear_transfer_tasks,
+            commands::local_fs::local_home_path,
+            commands::local_fs::list_local_entries,
+            commands::local_fs::create_local_dir,
+            commands::local_fs::rename_local_entry,
+            commands::local_fs::delete_local_entries,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

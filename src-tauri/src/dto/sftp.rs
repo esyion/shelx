@@ -185,3 +185,23 @@ mod tests {
         assert_eq!(permission_string(None, RemoteFileType::File), "----------");
     }
 }
+
+/// 本地栏条目的文件类型字符串 → DTO(公开给 local_fs 命令复用)。
+pub(crate) fn parse_file_type(value: &str) -> RemoteFileTypeDto {
+    match value {
+        "dir" => RemoteFileTypeDto::Dir,
+        "symlink" => RemoteFileTypeDto::Symlink,
+        "other" => RemoteFileTypeDto::Other,
+        _ => RemoteFileTypeDto::File,
+    }
+}
+
+/// 本地栏权限字符串(mode + is_dir → `drwxr-xr-x`/`-rw-r--r--`)。
+pub(crate) fn permission_string_of(mode: u32, is_dir: bool) -> String {
+    let file_type = if is_dir {
+        crate::application::ports::RemoteFileType::Dir
+    } else {
+        crate::application::ports::RemoteFileType::File
+    };
+    permission_string(Some(mode), file_type)
+}

@@ -16,6 +16,7 @@ import { TabBar } from "@/components/layout/tab-bar";
 import { Workspace } from "@/components/layout/workspace";
 import { BottomPanel } from "@/components/layout/bottom-panel";
 import { ToastHost } from "@/components/layout/toast-host";
+import { TransferConflictDialog } from "@/components/transfers/transfer-dialogs";
 import { AppDialogs } from "@/components/app-dialogs";
 import { useConnections } from "@/app/hooks/use-connections";
 import { listSessionStatus } from "@/app/api";
@@ -159,6 +160,7 @@ export function AppShell() {
       <HostKeyConfirmDialog />
       <AuthPromptDialog />
       <AppDialogs />
+      <TransferConflictDialog />
       <ToastHost />
     </div>
   );

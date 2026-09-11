@@ -6,6 +6,7 @@
  */
 import {
   connectionsApi,
+  localFsApi,
   sessionsApi,
   settingsApi,
   sftpApi,
@@ -126,3 +127,18 @@ export const respondTransferConflict = transferApi.respondTransferConflict;
 
 /** 清理任务记录。 */
 export const clearTransferTasks = transferApi.clearTransferTasks;
+
+/** 本地主目录。 */
+export const localHomePath = localFsApi.localHomePath;
+
+/** 列出本地条目。 */
+export const listLocalEntries = localFsApi.listLocalEntries;
+
+/** 新建本地目录。 */
+export const createLocalDir = localFsApi.createLocalDir;
+
+/** 重命名本地条目。 */
+export const renameLocalEntry = localFsApi.renameLocalEntry;
+
+/** 删除本地文件。 */
+export const deleteLocalEntries = localFsApi.deleteLocalEntries;

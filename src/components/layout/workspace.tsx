@@ -7,6 +7,7 @@
 import { Monitor, FolderCode, TerminalSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TerminalView } from "@/components/terminal/terminal-view";
+import { FileManager } from "@/components/files/file-manager";
 import { cn } from "@/lib/utils";
 import { useTabsStore, type WorkspaceView } from "@/stores/tabs";
 
@@ -76,7 +77,7 @@ export function Workspace() {
           <Centered text="监控视图 — M3 实现(免 Agent 采集 + Recharts)" />
         )}
         {activeTab.view === "files" && (
-          <Centered text="文件视图 — M2 实现(SFTP 双栏)" />
+          <FileManager sessionId={activeTab.sessionId} />
         )}
       </div>
     </div>
