@@ -7,3 +7,10 @@
 //! - `settings/`:JSON 设置与布局持久化
 //!
 //! 约束:不向上层泄露驱动类型,通过应用层端口返回业务可理解的结果。
+
+pub mod events;
+pub mod secrets;
+pub mod settings;
+pub mod sqlite;
+pub mod ssh;
+pub mod terminal_channel;

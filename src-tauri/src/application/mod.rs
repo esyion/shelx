@@ -5,4 +5,13 @@
 //! 外部依赖(文件、网络、钥匙串、时钟)一律以 port trait 声明,
 //! 实现放 infrastructure 层。
 
+pub mod connections;
 pub mod greet;
+pub mod ports;
+pub mod prompt;
+pub mod sessions;
+pub mod settings;
+pub mod terminals;
+
+#[cfg(test)]
+pub mod test_support;

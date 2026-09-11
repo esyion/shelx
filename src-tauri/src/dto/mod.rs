@@ -4,4 +4,8 @@
 //! 禁止把内部实体、数据库模型或第三方库类型直接暴露给前端。
 
 pub mod common;
+pub mod connection;
 pub mod greet;
+pub mod session;
+pub mod settings;
+pub mod terminal;

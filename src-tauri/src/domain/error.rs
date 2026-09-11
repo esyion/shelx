@@ -9,6 +9,12 @@ pub enum DomainError {
     /// 主机地址为空,连接配置无法成立。
     #[error("主机地址不能为空")]
     EmptyHost,
+    /// 登录用户名为空。
+    #[error("用户名不能为空")]
+    EmptyUsername,
+    /// 端口不在 1–65535 范围内;载荷保留原始值(可能超出 u16)用于提示。
+    #[error("端口非法: {0}")]
+    InvalidPort(i64),
     /// 状态机尝试了非法流转。
     #[error("非法状态流转: {from} -> {to}")]
     InvalidStatusTransition {

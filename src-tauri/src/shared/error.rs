@@ -11,14 +11,26 @@ use serde::Serialize;
 pub enum IpcErrorCode {
     /// 请求参数未通过边界校验(空值、超长、非法格式)。
     InvalidArgument,
+    /// 目标资源不存在(连接/分组/会话/终端/任务)。
+    NotFound,
     /// 认证失败:密码/私钥口令错误,或服务器拒绝该认证方式(PRD §6.2)。
     AuthFailed,
+    /// 认证方式需要凭据但存储中没有,前端应弹输入框补收(PRD §6.2)。
+    AuthCredentialsRequired,
     /// 主机公钥指纹与已记录的不一致,TOFU 策略阻断(PRD §6.2)。
     HostkeyChanged,
+    /// 首次主机指纹未获用户确认(拒绝或超时)。
+    HostkeyRejected,
+    /// 会话已断开,通道操作不可用。
+    SessionClosed,
     /// 远端文件或命令操作被服务端权限拒绝。
     PermissionDenied,
+    /// 凭据存储不可用(钥匙串初始化失败且降级存储不可用)。
+    KeyringUnavailable,
     /// 网络读写超时。
     NetTimeout,
+    /// 网络不可达或连接被拒绝(细节见消息)。
+    NetUnreachable,
     /// 未归类的内部错误;details 可携带脱敏上下文。
     Internal,
 }

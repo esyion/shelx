@@ -25,8 +25,43 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .manage(state::AppState::new())
-        .invoke_handler(tauri::generate_handler![commands::greet::greet])
+        .setup(|app| {
+            // 设置/布局落在平台配置目录(AGENTS.md §10);此目录必须可用。
+            use tauri::Manager;
+            let config_dir = app.path().app_config_dir().expect("无法解析应用配置目录");
+            std::fs::create_dir_all(&config_dir)
+                .unwrap_or_else(|err| panic!("配置目录创建失败({}): {err}", config_dir.display()));
+            app.manage(state::AppState::initialize(app.handle(), &config_dir));
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::greet::greet,
+            commands::connections::list_connections,
+            commands::connections::create_connection,
+            commands::connections::update_connection,
+            commands::connections::delete_connection,
+            commands::connections::duplicate_connection,
+            commands::connections::move_connection,
+            commands::groups::create_group,
+            commands::groups::rename_group,
+            commands::groups::delete_group,
+            commands::groups::move_group,
+            commands::settings::get_settings,
+            commands::settings::update_settings,
+            commands::settings::get_layout,
+            commands::settings::save_layout,
+            commands::sessions::connect_session,
+            commands::sessions::connect_quick_session,
+            commands::sessions::close_session,
+            commands::sessions::reconnect_session,
+            commands::sessions::list_session_status,
+            commands::sessions::respond_auth_prompt,
+            commands::sessions::respond_hostkey_confirm,
+            commands::terminals::open_terminal,
+            commands::terminals::write_terminal,
+            commands::terminals::resize_terminal,
+            commands::terminals::close_terminal,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

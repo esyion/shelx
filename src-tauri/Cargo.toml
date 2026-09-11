@@ -37,6 +37,11 @@ tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "time", "
 # --- 本地存储与凭据(PRD §7.1)---
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 keyring = "4.2.0"
+# 钥匙串不可用时的降级加密(设计文档 §7.4):机器指纹派生 AES-GCM 密钥
+machine-uid = "0.6"
+aes-gcm = "0.10"
+sha2 = "0.10"
+base64 = "0.22"
 
 # --- 系统对话框(私钥文件 / 下载目录选择,PRD §6.2)---
 tauri-plugin-dialog = "2"
@@ -46,6 +51,14 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tracing-appender = "0.2"
 dirs = "6"
+
+# --- ID 生成(跨 IPC/持久化统一 string,AGENTS.md §5)---
+uuid = { version = "1", features = ["v4"] }
+# --- 应用层 async 端口 trait 对象安全(async fn in trait 的 dyn 形态)---
+async-trait = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
