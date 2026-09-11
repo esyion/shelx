@@ -2,7 +2,7 @@
  * 设置域的 gateway 封装:命令名与入参形状对齐 Rust commands 层
  * (TECHNICAL_DESIGN §6.2)。失败统一抛 GatewayError。
  */
-import type { AppSettings, LayoutState } from "@/types";
+import type { AppSettings, AppSettingsPatch, LayoutState } from "@/types";
 import { invokeUnwrapped } from "./tauri";
 
 /** 读取应用设置(缺省字段自动回填默认值)。 */
@@ -15,7 +15,7 @@ export function getSettings(): Promise<AppSettings> {
  *
  * @param patch 仅包含要修改的分组/字段,如 `{ terminal: { fontSize: 15 } }`
  */
-export function updateSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
+export function updateSettings(patch: AppSettingsPatch): Promise<AppSettings> {
   return invokeUnwrapped("update_settings", { patch });
 }
 

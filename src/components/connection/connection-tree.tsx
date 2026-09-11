@@ -172,7 +172,7 @@ function TreeNode({
               "flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-xs hover:bg-accent",
               connecting && "opacity-60",
             )}
-            onDoubleClick={() => void api.connect(node.id, node.name)}
+            onDoubleClick={() => void api.connect(node.id, node.name, node.encoding)}
             title={`${node.username}@${node.host}:${node.port}${
               node.remark ? ` · ${node.remark}` : ""
             }`}
@@ -193,7 +193,7 @@ function TreeNode({
           </button>
         </ContextMenuTrigger>
         <ContextMenuContent>
-          <ContextMenuItem onClick={() => void api.connect(node.id, node.name)}>
+          <ContextMenuItem onClick={() => void api.connect(node.id, node.name, node.encoding)}>
             连接
           </ContextMenuItem>
           <ContextMenuItem onClick={() => openEdit(node.id)}>编辑…</ContextMenuItem>

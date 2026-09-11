@@ -77,3 +77,8 @@ export interface AppSettings {
  * 因此这里以未知形状对象表达(随 UI 演进,不构成稳定契约)。
  */
 export type LayoutState = Record<string, unknown>;
+
+/** 设置补丁:分组可选,组内字段可选(后端按对象深合并,TECHNICAL_DESIGN §6.2)。 */
+export type AppSettingsPatch = {
+  [K in keyof AppSettings]?: Partial<AppSettings[K]>;
+};

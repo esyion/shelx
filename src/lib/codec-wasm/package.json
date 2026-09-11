@@ -1,0 +1,16 @@
+{
+  "name": "shelx-codec",
+  "type": "module",
+  "description": "shelx 终端输入编码器(UTF-8/GBK,encoding_rs 的 WASM 构建)",
+  "version": "0.1.0",
+  "files": [
+    "shelx_codec_bg.wasm",
+    "shelx_codec.js",
+    "shelx_codec.d.ts"
+  ],
+  "main": "shelx_codec.js",
+  "types": "shelx_codec.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

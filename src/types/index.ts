@@ -14,6 +14,7 @@ export type {
 } from "./connections";
 export type {
   AppSettings,
+  AppSettingsPatch,
   AppearanceSettings,
   ConflictPolicy,
   ConnectionSettings,

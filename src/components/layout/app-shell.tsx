@@ -18,9 +18,11 @@ import { BottomPanel } from "@/components/layout/bottom-panel";
 import { ToastHost } from "@/components/layout/toast-host";
 import { useConnections } from "@/app/hooks/use-connections";
 import { listSessionStatus } from "@/app/api";
+import { initGbkEncoder } from "@/lib/codec";
 import { listenEvent, SESSION_EVENTS } from "@/gateway";
 import { useSessionsStore } from "@/stores/sessions";
-import { useTabsStore } from "@/stores/tabs";
+import { applyThemeClass, useSettingsStore } from "@/stores/settings";
+import { requestCloseTab, useTabsStore } from "@/stores/tabs";
 import { useUiStore } from "@/stores/ui";
 import type { SessionStatusEvent } from "@/types";
 
@@ -32,14 +34,26 @@ import type { SessionStatusEvent } from "@/types";
 export function AppShell() {
   const connections = useConnections();
 
+  // 初始化:布局恢复、设置加载与主题(F12)、会话快照与事件订阅。
   useEffect(() => {
-    const ui = useUiStore.getState();
-    void ui.restoreLayout();
-    // 启动快照 + 事件订阅(圆点/横幅数据源)。
+    void useUiStore.getState().restoreLayout();
+
+    void initGbkEncoder();
+    void useSettingsStore.getState().load().then(() => {
+      const theme = useSettingsStore.getState().settings?.appearance.theme;
+      if (theme) applyThemeClass(theme);
+    });
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const mediaHandler = () => {
+      const current = useSettingsStore.getState().settings?.appearance.theme;
+      if (current === "system") applyThemeClass("system");
+    };
+    media.addEventListener("change", mediaHandler);
+
     void listSessionStatus().then((sessions) => {
       useSessionsStore.getState().upsertMany(sessions);
     });
-    let cleanup: (() => void) | undefined;
+    let unlistenStatus: (() => void) | undefined;
     void listenEvent<SessionStatusEvent>(SESSION_EVENTS.statusChanged, (event) => {
       const existing = useSessionsStore.getState().byId[event.sessionId];
       useSessionsStore.getState().upsert({
@@ -56,9 +70,13 @@ export function AppShell() {
         );
       }
     }).then((unlisten) => {
-      cleanup = unlisten;
+      unlistenStatus = unlisten;
     });
-    return () => cleanup?.();
+
+    return () => {
+      media.removeEventListener("change", mediaHandler);
+      unlistenStatus?.();
+    };
   }, []);
 
   // 全局快捷键。
@@ -96,12 +114,22 @@ export function AppShell() {
           ui.setQuickConnectOpen(true);
           event.preventDefault();
           break;
-        case "w":
-          if (tabs.activeTabId) {
-            tabs.closeTab(tabs.activeTabId);
+        case "w": {
+          const active = tabs.tabs.find((t) => t.id === tabs.activeTabId);
+          if (active) {
+            void requestCloseTab(active).then((ok) => {
+              if (ok) useTabsStore.getState().closeTab(active.id);
+            });
             event.preventDefault();
           }
           break;
+        }
+        case ",": {
+          window.location.hash = "";
+          window.location.assign("/settings");
+          event.preventDefault();
+          break;
+        }
         case "tab":
           tabs.cycleNext();
           event.preventDefault();

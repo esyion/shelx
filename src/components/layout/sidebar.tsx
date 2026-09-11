@@ -5,7 +5,7 @@
 
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { PanelLeftClose, PanelLeftOpen, Zap } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, Settings, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUiStore } from "@/stores/ui";
 
@@ -60,7 +60,7 @@ export function Sidebar({ children }: { children: ReactNode }) {
         </Button>
       </div>
       <div className="min-h-0 flex-1 px-2 pb-2">{children}</div>
-      <div className="border-t p-2">
+      <div className="grid gap-1 border-t p-2">
         <Button
           size="sm"
           className="w-full justify-start text-xs"
@@ -71,6 +71,15 @@ export function Sidebar({ children }: { children: ReactNode }) {
           <kbd className="ml-auto rounded bg-muted px-1 text-[10px] text-muted-foreground">
             Ctrl+Shift+C
           </kbd>
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="w-full justify-start text-xs"
+          onClick={() => window.location.assign("/settings")}
+        >
+          <Settings className="size-4" />
+          设置
         </Button>
       </div>
     </aside>

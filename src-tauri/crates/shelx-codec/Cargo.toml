@@ -1,0 +1,12 @@
+[package]
+name = "shelx-codec"
+version = "0.1.0"
+edition = "2021"
+description = "shelx 终端输入编码器(UTF-8/GBK,encoding_rs 的 WASM 构建)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+encoding_rs = "0.8"

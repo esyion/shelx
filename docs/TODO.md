@@ -77,12 +77,12 @@
 - [x] M1-F4 连接编辑对话框 ✅ 2026-09-11:字段=PRD 6.2(认证方式联动显隐、凭据保存方式、编码、备注);编辑回填;密码留空=保留已存;本地校验+后端错误 toast
 - [x] M1-F5 hostkey 确认弹窗(算法+SHA256+比对指引)与 auth prompt 模态框(逐条 prompt、密码型遮蔽)✅ 2026-09-11;事件驱动,应答走 respond_* 命令
 - [x] M1-F6 快速连接弹窗(Ctrl+Shift+C / Ctrl+T)✅ 2026-09-11:临时标签,可选保存(密码入钥匙串)
-- [ ] M1-F7 xterm 封装:挂载/写入/fit+ResizeObserver→pty resize、Ctrl+滚轮缩放持久化、选中即复制/右键粘贴、分块回调写防冻结
-- [ ] M1-F8 编码链路:shelx-codec WASM(utf-8↔gbk 编码 + 解码兜底)、按连接编码切换(即时生效不清屏)
-- [ ] M1-F9 断线横幅(内容保留可复制)+ 手动重连;重连缺凭据时补收弹窗(横幅雏形已随 F1 落地:断开状态显示+重连按钮)
-- [ ] M1-F10 关闭标签确认(传输进行中 / confirmCloseTab 设置)
-- [ ] M1-F11 设置页:通用(主题/语言占位)、终端(字体/字号/行距/光标/编码/缓冲行数/复制粘贴/关闭确认)、连接(keepalive/默认认证);设置对新终端生效
-- [ ] M1-F12 深浅主题(默认跟随系统)+ 中文文案;布局持久化(防抖 save_layout,重启恢复)(主题脚本已就绪,切换 UI 随 F11)
+- [x] M1-F7 xterm 封装 ✅ 2026-09-11:挂载/写入/fit+ResizeObserver→pty resize(防抖 120ms)、Ctrl+滚轮缩放(500ms 节流持久化字号)、选中即复制/右键粘贴(设置可配)、WebGL→Canvas 降级、卸载即断通道;大输出写入队列由 xterm 内部缓冲
+- [x] M1-F8 编码链路 ✅ 2026-09-11:crates/shelx-codec(encoding_rs,单测 round-trip)经 wasm-pack 构建至 src/lib/codec-wasm(178KB 产物入库,可 `bunx wasm-pack build src-tauri/crates/shelx-codec --target web --out-dir ../../src/lib/codec-wasm --out-name shelx_codec` 重建);解码原生 TextDecoder(stream 模式);GBK 编码 WASM 就绪前回退 UTF-8 并告警;S2 的三平台 TextDecoder 实测留给手动清单
+- [x] M1-F9 断线横幅 ✅ 2026-09-11:断开/连接中横幅(内容保留可复制)+ 一键重连;sessions store onlineEpoch 驱动重连后自动重开 pty 通道;缺凭据场景经 toast+编辑框引导(专用补收弹窗列入打磨项)
+- [x] M1-F10 关闭标签确认 ✅ 2026-09-11:confirmCloseTab 设置生效,会话在线时关闭标签(X 与 Ctrl+W)弹确认;传输进行中的确认随 M2
+- [x] M1-F11 设置页(/settings,Ctrl+, 与侧栏入口)✅ 2026-09-11:五分组全字段即时保存(乐观更新+失败回滚);终端设置对新开终端生效并有提示
+- [x] M1-F12 主题切换 ✅ 2026-09-11:system/dark/light 即时应用(设置页联动 html.dark,system 跟随媒体查询)+ 全中文文案 + 布局持久化(上轮)
 
 ### 测试/验证
 

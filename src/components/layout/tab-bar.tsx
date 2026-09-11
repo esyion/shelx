@@ -6,7 +6,7 @@
 import { Button } from "@/components/ui/button";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { statusDotClass, useTabsStore } from "@/stores/tabs";
+import { requestCloseTab, statusDotClass, useTabsStore } from "@/stores/tabs";
 import { useSessionsStore } from "@/stores/sessions";
 import { useUiStore } from "@/stores/ui";
 
@@ -64,7 +64,9 @@ export function TabBar() {
               className="ml-0.5 shrink-0 rounded p-0.5 opacity-0 hover:bg-accent group-hover:opacity-100"
               onClick={(e) => {
                 e.stopPropagation();
-                closeTab(tab.id);
+                void requestCloseTab(tab).then((ok) => {
+                  if (ok) closeTab(tab.id);
+                });
               }}
             >
               <X className="size-3" />

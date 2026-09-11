@@ -41,7 +41,7 @@ export function useConnections() {
 
   /** 双击连接:建连成功开标签;失败提示(AUTH_CREDENTIALS_REQUIRED 引导编辑)。 */
   const connect = useCallback(
-    async (connId: string, title: string) => {
+    async (connId: string, title: string, encoding: "utf-8" | "gbk" = "utf-8") => {
       setConnectingId(connId);
       try {
         const session = await connectSession(connId);
@@ -50,6 +50,7 @@ export function useConnections() {
           sessionId: session.sessionId,
           connId,
           title,
+          encoding,
         });
         useUiStore.getState().toast(`已连接 ${title}`);
       } catch (err) {

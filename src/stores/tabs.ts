@@ -22,6 +22,8 @@ export interface Tab {
   view: WorkspaceView;
   /** 是否临时标签(快速连接)。 */
   temporary: boolean;
+  /** 连接编码(终端 IO 使用)。 */
+  encoding: "utf-8" | "gbk";
 }
 
 /** 标签栏 store。 */
@@ -36,6 +38,7 @@ export interface TabsStore {
     connId: string | null;
     title: string;
     temporary?: boolean;
+    encoding?: "utf-8" | "gbk";
   }): string;
   /** 关闭标签;相邻标签自动补位激活。 */
   closeTab(id: string): void;
@@ -58,13 +61,15 @@ export const useTabsStore = create<TabsStore>((set, get) => ({
   tabs: [],
   activeTabId: null,
 
-  openConnectionTab({ sessionId, connId, title, temporary = false }) {
+  openConnectionTab({ sessionId, connId, title, temporary = false, encoding = "utf-8" }) {
     const existing = get().tabs.find((t) => t.connId === connId && connId !== null);
     if (existing) {
       set({
         activeTabId: existing.id,
         tabs: get().tabs.map((t) =>
-          t.id === existing.id ? { ...t, sessionId: sessionId ?? t.sessionId } : t,
+          t.id === existing.id
+            ? { ...t, sessionId: sessionId ?? t.sessionId }
+            : t,
         ),
       });
       return existing.id;
@@ -76,6 +81,7 @@ export const useTabsStore = create<TabsStore>((set, get) => ({
       title,
       view: "terminal",
       temporary,
+      encoding,
     };
     set({ tabs: [...get().tabs, tab], activeTabId: tab.id });
     return tab.id;
@@ -115,4 +121,19 @@ export function statusDotClass(status: SessionStatus | undefined): string {
   if (status === "online") return "bg-emerald-500";
   if (status === "disconnected") return "bg-red-500";
   return "bg-muted-foreground/50";
+}
+
+/** 请求关闭标签(F10):确认开关开启且会话在线时弹确认。 */
+export async function requestCloseTab(tab: Tab): Promise<boolean> {
+  const { useSettingsStore } = await import("@/stores/settings");
+  const { useSessionsStore } = await import("@/stores/sessions");
+  const confirmClose =
+    useSettingsStore.getState().settings?.terminal.confirmCloseTab ?? true;
+  const online =
+    !!tab.sessionId &&
+    useSessionsStore.getState().byId[tab.sessionId]?.status === "online";
+  if (confirmClose && online) {
+    return window.confirm(`关闭标签「${tab.title}」?其终端会话仍在运行。`);
+  }
+  return true;
 }
