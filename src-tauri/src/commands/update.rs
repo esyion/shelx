@@ -114,10 +114,14 @@ pub async fn download_and_install_update(app: AppHandle) -> IpcResult<UpdateInst
 
     // macOS/Linux:download_and_install 返回后 install 已落盘但未重启;
     // Windows 路径下 update.install() 内部已 std::process::exit(0),不会到达这里。
-    // `App::restart` 返回类型 `!`,显式调用让编译器/读者明白意图。
+    // `App::restart` 返回类型 `!`,故 Windows 平台的返回路径单独标出,
+    // 避免编译器把 `IpcResult::ok` 判 unreachable。
     #[cfg(not(target_os = "windows"))]
     {
         app.restart();
     }
-    IpcResult::ok(UpdateInstallResultDto { installed: true })
+    #[cfg(target_os = "windows")]
+    {
+        IpcResult::ok(UpdateInstallResultDto { installed: true })
+    }
 }
