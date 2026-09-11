@@ -3,7 +3,7 @@
  */
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { FileEntry } from "@/types";
 
 /** 排序键。 */

@@ -4,7 +4,7 @@
  */
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import {
@@ -33,7 +33,6 @@ import {
 } from "@/app/api";
 import { isGatewayError } from "@/gateway";
 import { useFilePanel, type FilePanel, type SortKey } from "@/app/hooks/use-file-panel";
-import { useTabsStore } from "@/stores/tabs";
 import { useUiStore } from "@/stores/ui";
 import { useTransferStore } from "@/stores/transfer";
 import { formatBytes } from "@/lib/format";
@@ -55,7 +54,6 @@ function joinRemotePath(dir: string, name: string): string {
 /** 双栏文件管理器。 */
 export function FileManager({ sessionId }: FileManagerProps) {
   const toast = useUiStore((s) => s.toast);
-  const conflictTaskId = useUiStore((s) => s.conflictTaskId);
   const setConflictTaskId = useUiStore((s) => s.setConflictTaskId);
 
   // 本地面板 fetcher(路径入、entries 出)
@@ -147,8 +145,8 @@ interface FilePaneProps {
   side: "local" | "remote";
   panel: FilePanel;
   sessionId: string;
-  onUpload: (entries: FileEntry[]) => void;
-  onDownload: (entries: FileEntry[]) => void;
+  onUpload?: (entries: FileEntry[]) => void;
+  onDownload?: (entries: FileEntry[]) => void;
 }
 
 /** 单侧文件面板。 */
@@ -162,9 +160,9 @@ function FilePane({ side, panel, sessionId, onUpload, onDownload }: FilePaneProp
       if (entry.fileType === "dir") {
         void panel.navigate(joinRemotePath(panel.path, entry.name));
       } else if (isRemote) {
-        onDownload([entry]);
+        onDownload?.([entry]);
       } else {
-        onUpload([entry]);
+        onUpload?.([entry]);
       }
     },
     [panel, isRemote, onUpload, onDownload],
@@ -311,7 +309,7 @@ function FilePane({ side, panel, sessionId, onUpload, onDownload }: FilePaneProp
           </div>
         ) : (
           <ContextMenu>
-            <ContextMenuTrigger asChild>
+            <ContextMenuTrigger>
               <div
                 className="h-full cursor-default select-none"
                 onKeyDown={(e) => {
@@ -334,11 +332,11 @@ function FilePane({ side, panel, sessionId, onUpload, onDownload }: FilePaneProp
             </ContextMenuTrigger>
             <ContextMenuContent>
               {isRemote ? (
-                <ContextMenuItem onClick={() => onDownload(panel.selectedEntries)}>
+                <ContextMenuItem onClick={() => onDownload?.(panel.selectedEntries)}>
                   ↓ 下载到本地
                 </ContextMenuItem>
               ) : (
-                <ContextMenuItem onClick={() => onUpload(panel.selectedEntries)}>
+                <ContextMenuItem onClick={() => onUpload?.(panel.selectedEntries)}>
                   ↑ 上传到远端
                 </ContextMenuItem>
               )}

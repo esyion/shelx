@@ -3,14 +3,11 @@
 //! 安全约束:所有操作经 `LocalFs` 端口,路径规范化在 StdLocalFs 内处理;
 //! 删除需前端确认(PRD §6.4);无 shell 调用。
 
-use tauri::State;
-
 use crate::application::ports::LocalFs;
 use crate::dto::common::IpcResult;
 use crate::dto::sftp::FileEntryDto;
-use crate::dto::sftp::{DeleteRemoteResultDto, SessionPathRequestDto};
+use crate::dto::sftp::SessionPathRequestDto;
 use crate::shared::error::{IpcError, IpcErrorCode};
-use crate::state::AppState;
 
 /// 本地操作错误 → IPC 错误码。
 fn local_err(message: String) -> IpcError {
@@ -38,7 +35,12 @@ pub fn list_local_entries(request: SessionPathRequestDto) -> IpcResult<Vec<FileE
     };
     let mut result = Vec::new();
     for (name, is_dir) in entries {
-        let full = format!("{}{}{}", path.trim_end_matches(['/', '\\']), std::path::MAIN_SEPARATOR, name);
+        let full = format!(
+            "{}{}{}",
+            path.trim_end_matches(['/', '\\']),
+            std::path::MAIN_SEPARATOR,
+            name
+        );
         let size = fs.file_size(&full).ok().flatten().unwrap_or(0);
         let mode = if is_dir { 0o755 } else { 0o644 };
         let file_type = if is_dir { "dir" } else { "file" };
@@ -67,9 +69,7 @@ pub fn create_local_dir(request: SessionPathRequestDto) -> IpcResult<()> {
 
 /// 重命名本地条目(同级新名)。
 #[tauri::command]
-pub fn rename_local_entry(
-    request: crate::dto::sftp::RenameRemoteEntryRequestDto,
-) -> IpcResult<()> {
+pub fn rename_local_entry(request: crate::dto::sftp::RenameRemoteEntryRequestDto) -> IpcResult<()> {
     let fs = StdLocalFsBridge::new();
     let new_path = crate::application::sftp::join_sibling(&request.path, &request.new_name);
     match fs.rename(&request.path, &new_path) {
@@ -114,10 +114,16 @@ impl LocalFs for StdLocalFsBridge {
     fn ensure_dir(&self, path: &str) -> Result<(), String> {
         self.inner.ensure_dir(path)
     }
-    fn open_read(&self, path: &str) -> Result<Box<dyn crate::application::ports::LocalFile>, String> {
+    fn open_read(
+        &self,
+        path: &str,
+    ) -> Result<Box<dyn crate::application::ports::LocalFile>, String> {
         self.inner.open_read(path)
     }
-    fn create_write(&self, path: &str) -> Result<Box<dyn crate::application::ports::LocalFile>, String> {
+    fn create_write(
+        &self,
+        path: &str,
+    ) -> Result<Box<dyn crate::application::ports::LocalFile>, String> {
         self.inner.create_write(path)
     }
     fn rename(&self, old_path: &str, new_path: &str) -> Result<(), String> {

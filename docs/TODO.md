@@ -105,27 +105,27 @@
 - [x] M2-B5 目录递归 ✅ 2026-09-11:上传 walk_local(栈式 BFS)+ 下载 walk_remote(SFTP 通道递归);同组 groupId;远端父目录 ensure 逐段 mkdir
 - [x] M2-B6 进度推送与容错 ✅ 2026-09-11:进度 200ms 节流 + 状态变化即时 emit;网络错误自动重试 2 次(500ms/1s 指数退避,从头传输;断点续传 P1);取消 AtomicBool 置位 + 冲突等待 oneshot 唤醒
 - [x] M2-B7 传输命令 ✅ 2026-09-11:7 命令(enqueue_upload/download/list/cancel/retry/respond_conflict/clear);transfer_history 表落库随 M2 收尾
-- [ ] M2-B8 本地栏命令:local_home/list/mkdir/rename/delete/pick_local_folder(dialog 插件)
-- [ ] M2-B9 集成测试(docker sshd):上传下载 round-trip 哈希校验、目录树递归、冲突四策略、取消留分片、并发调度、失败重试、超大目录 list 分页性能
+- [x] M2-B8 本地栏命令 ✅ 2026-09-11:local_home_path / list_local_entries / create_local_dir / rename_local_entry / delete_local_entries(5 命令注册);pick_local_folder 延后(前端用 Tauri 原生 dialog 插件)
+- [x] M2-B9 集成测试 ✅ 2026-09-11(部分):上传下载 round-trip 逐字节一致(100KB 冒烟);目录树递归上传(fake);冲突三策略 + 取消(fake);大文件哈希 + 并发调度 + 超大目录列入 M2 收尾
 
 ### 前端
 
 - [ ] M2-F1 双栏框架:本地/远程复用虚拟列表组件(TanStack Virtual)、连接后自动进入远端主目录
-- [ ] M2-F2 文件列表:列(图标/名称/大小人类可读/权限/修改时间)、目录优先 + 列头排序(中文 locale)、隐藏文件开关、单击选中/Ctrl/Shift 多选/Ctrl+A、F2/Delete/Enter、右键菜单
-- [ ] M2-F3 路径栏:面包屑 + 直接输入跳转 + 前进/后退历史;刷新不丢选择;变更后自动刷新
+- [x] M2-F2 文件列表 ✅ 2026-09-11:图标/名称/大小(人类可读)/权限/排序指示(名称/大小列头切换 asc/desc,中文 locale + 数值感知);隐藏文件开关;Ctrl 单击多选;F2 重命名+Delete 删除(确认);右键菜单(上传/下载/新建/刷新/重命名/删除);Shift 范围选与 Ctrl+A 列入打磨项
+- [x] M2-F3 路径栏 ✅ 2026-09-11:路径点击进入直接输入模式(Enter 确认/Escape 取消);上级/后退/前进按钮(useRef 历史);刷新不丢选择;传输后手动刷新
 - [ ] M2-F4 拖入上传(Tauri onDragDrop,含文件夹);右键下载(P0 兜底);拖出下载留 P1(R4)
-- [ ] M2-F5 传输中心:任务列表(方向/文件名/路径/大小/进度/速度/ETA/状态/取消/重试)、groupId 折叠、全局速率汇总、完成后清除、失败标红
-- [ ] M2-F6 冲突对话框(覆盖/跳过/保留两者/取消 + 应用到剩余)
-- [ ] M2-F7 chmod 对话框(owner/group/other × r/w/x 九勾选)
-- [ ] M2-F8 关闭标签/退出应用时有进行中传输的确认流(取消并关闭 / 后台继续 / 取消)
-- [ ] M2-F9 SFTP 错误 toast(服务端消息原文,超长截断),不静默失败
-- [ ] M2-F10 设置-传输组(并发任务数/分块大小/冲突默认策略/完成通知)
+- [x] M2-F5 传输中心 ✅ 2026-09-11:底部面板第二页签;方向/文件名/完整路径/大小/进度条+百分比/速度/ETA/状态/取消✕/重试↻/清除已完成;全局速率汇总;失败红色标注 + 错误原文;3s 快照兜底同步;groupId 折叠列入打磨项
+- [x] M2-F6 冲突对话框 ✅ 2026-09-11:四选(取消/跳过/保留两者/覆盖)+ "对剩余冲突应用同样选择"复选(组级);由 ui.conflictTaskId 驱动(引擎 awaiting_conflict → 事件 → 弹框)
+- [x] M2-F7 chmod 对话框 ✅ 2026-09-11:九宫格勾选(3 组 × r/w/x);实时预览 `rwxr-x---(750)`;应用后 toast 确认
+- [x] M2-F8 关闭标签确认(传输) ✅ 2026-09-11:关闭标签时检查 TransferStore 中该会话的进行中任务数,有则弹确认"取消传输并关闭?";退出应用确认随 M4
+- [x] M2-F9 SFTP 错误 toast ✅ 2026-09-11:所有文件操作失败经 isGatewayError → toast 展示服务端原文(权限拒绝/远端错误码区分);批量删除失败清单逐条展示首条 + 计数
+- [x] M2-F10 设置-传输组 ✅ 2026-09-11(M1-F11 已覆盖):并发任务数/分块大小(KiB)/冲突默认策略/完成通知开关;即时保存
 
 ### 测试/验证
 
-- [ ] M2-T1 前端 RTL:传输中心各状态渲染、冲突对话框分支
-- [ ] M2-T2 吞吐基准:500MB 单文件 vs `sftp` CLI,目标 ≥ 80%(风险项,不达标调分块/并发)
-- [ ] M2-T3 手动清单:2 万条目目录 60fps、弱网(丢包 20%)传输与重试、与 MobaXterm/WinSCP 互传
+- [ ] M2-T1 前端 RTL:传输中心各状态渲染、冲突对话框分支(M2 收尾)
+- [ ] M2-T2 吞吐基准:500MB 单文件 vs `sftp` CLI,目标 ≥ 80%(冒烟已实测 100KB @40MB/s;大文件基准随 M2 收尾)
+- [ ] M2-T3 手动清单:2 万条目目录 60fps、弱网传输与重试、与 MobaXterm/WinSCP 互传(M2 收尾;需真机)
 
 **M2 验收(PRD §10)**:与 MobaXterm/WinSCP 互传验证吞吐达标。
 
