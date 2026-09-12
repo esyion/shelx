@@ -1,0 +1,17 @@
+# cargo-audit configuration.
+#
+# cargo-audit (>= 0.21) auto-discovers this file at one of:
+#   1. ./.cargo/audit.toml   (current working directory)
+#   2. ~/.cargo/audit.toml   (user home)
+# so the workflow can simply invoke `cargo audit --file <lockfile>`.
+# The legacy `--config` flag was removed in cargo-audit 0.21.
+#
+# Each entry in [advisories].ignore must be justified in CHANGELOG.md
+# (Unreleased / Security section).
+
+[advisories]
+ignore = [
+  # rsa crate (Marvin Attack): required by the russh 'rsa' feature for
+  # legacy ssh-rsa server compatibility. Upstream has no fixed release.
+  "RUSTSEC-2023-0071",
+]

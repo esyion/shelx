@@ -52,7 +52,9 @@ jobs:
         with:
           tool: cargo-audit
       - name: cargo audit
-        # --config picks up audit.toml in repo root, which ignores
-        # RUSTSEC-2023-0071 (rsa / Marvin Attack) with justification in
-        # CHANGELOG.md Unreleased / Security.
-        run: cargo audit --file src-tauri/Cargo.lock --config audit.toml
+        # cargo-audit (>= 0.21) auto-discovers ./.cargo/audit.toml from
+        # the current working directory; the legacy --config flag was
+        # removed. The ignore list there covers RUSTSEC-2023-0071
+        # (rsa / Marvin Attack) with justification in CHANGELOG.md
+        # Unreleased / Security.
+        run: cargo audit --file src-tauri/Cargo.lock
