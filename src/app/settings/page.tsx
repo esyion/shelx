@@ -31,7 +31,10 @@ export default function SettingsPage() {
   }, [load]);
 
   /** 即时保存:失败提示并回滚(store 已处理)。 */
-  const save = (patchValue: Parameters<typeof patch>[0], okMessage?: string) => {
+  const save = (
+    patchValue: Parameters<typeof patch>[0],
+    okMessage?: string,
+  ) => {
     void patch(patchValue).then((ok) => {
       if (ok && okMessage) toast(okMessage);
       if (!ok) toast("保存失败,已恢复原值", "error");
@@ -65,7 +68,8 @@ export default function SettingsPage() {
           <NativeSelect
             value={settings.appearance.theme}
             onChange={(e) => {
-              const theme = e.target.value as AppSettings["appearance"]["theme"];
+              const theme = e.target
+                .value as AppSettings["appearance"]["theme"];
               setTheme(theme);
               save({ appearance: { theme } });
             }}
@@ -106,7 +110,9 @@ export default function SettingsPage() {
               inputMode="decimal"
               value={settings.terminal.lineHeight}
               onChange={(e) =>
-                save({ terminal: { lineHeight: Number(e.target.value) || 1.2 } })
+                save({
+                  terminal: { lineHeight: Number(e.target.value) || 1.2 },
+                })
               }
             />
           </Row>
@@ -115,7 +121,9 @@ export default function SettingsPage() {
               inputMode="numeric"
               value={settings.terminal.scrollback}
               onChange={(e) =>
-                save({ terminal: { scrollback: Number(e.target.value) || 5000 } })
+                save({
+                  terminal: { scrollback: Number(e.target.value) || 5000 },
+                })
               }
             />
           </Row>
@@ -127,7 +135,8 @@ export default function SettingsPage() {
               onChange={(e) =>
                 save({
                   terminal: {
-                    cursorStyle: e.target.value as AppSettings["terminal"]["cursorStyle"],
+                    cursorStyle: e.target
+                      .value as AppSettings["terminal"]["cursorStyle"],
                   },
                 })
               }
@@ -143,7 +152,8 @@ export default function SettingsPage() {
               onChange={(e) =>
                 save({
                   terminal: {
-                    encoding: e.target.value as AppSettings["terminal"]["encoding"],
+                    encoding: e.target
+                      .value as AppSettings["terminal"]["encoding"],
                   },
                 })
               }
@@ -279,7 +289,7 @@ export default function SettingsPage() {
       </Section>
 
       <footer className="pb-6 text-center text-xs text-muted-foreground">
-        shelx{currentVersion ? ` v${currentVersion}` : ""} · 数据仅存本地(~/.shelx 与系统配置目录)
+        shelx{currentVersion ? ` v${currentVersion}` : ""}
       </footer>
     </main>
   );
@@ -343,7 +353,9 @@ function SwitchRow({
     <Label className="justify-between gap-3">
       <span>
         {label}
-        {hint && <span className="ml-1 text-xs text-muted-foreground">{hint}</span>}
+        {hint && (
+          <span className="ml-1 text-xs text-muted-foreground">{hint}</span>
+        )}
       </span>
       <Switch checked={checked} onCheckedChange={onChange} />
     </Label>
