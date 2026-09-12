@@ -1,18 +1,30 @@
 /**
  * 应用内版本检测 store(AGENTS.md §4.1 表示层职责)。
  *
- * 启动时静默检测一次;优先走 Tauri `check_for_update` 命令(权威),
- * 失败时降级到 GitHub Releases API(便于纯浏览器开发场景)。
+ * 与 transpop 的 `use-app-updater` 等价:
+ *   - 启动时静默读取当前版本号,不自动检查;
+ *   - 用户主动触发检查(弹窗内"重新检查"按钮);
+ *   - 检查超时由 `@tauri-apps/plugin-updater` 的 `check({ timeout })` 接管,
+ *     不在前端再发任何 GitHub fetch,从根本上规避 CSP / 状态机缺口。
  *
- * 设计原则:
- *   - 不阻塞 UI:启动检测在后台,失败静默(不弹 toast)。
- *   - 用户可手动重检(更新弹窗"重新检查"按钮)。
- *   - 图标"染色"由 `status === "available"` 驱动,不展示详细 changelog
- *     (详细说明在弹窗内按需渲染)。
+ * 状态机: idle → checking → up-to-date | available | error。
+ * `finally` 块通过 try/catch/finally 保证状态一定离开 "checking"。
+ *
+ * 设计取舍:本 store 不持有 toast 能力,失败结果通过返回值交给 UI 层
+ * 统一 toast(与 `useUiStore.toast` 风格一致),避免在领域 store 里
+ * 耦合 UI 实现。
  */
 import { create } from "zustand";
-import { appMetaApi, fetchLatestRelease, invokeCmd, isTauri } from "@/gateway";
-import type { GithubRelease, UpdateInfo } from "@/types";
+import type { Update } from "@tauri-apps/plugin-updater";
+
+import { isTauri } from "@/gateway";
+import {
+  checkForUpdate,
+  discardUpdate,
+  downloadAndInstallUpdate,
+  getCurrentVersion,
+  relaunchApp,
+} from "@/gateway";
 
 /** 检测状态机。 */
 export type UpdateStatus =
@@ -22,41 +34,13 @@ export type UpdateStatus =
   | "available"
   | "error";
 
-/** 去前缀的 semver 比较:"v0.2.0" / "0.2.0" -> 数字三元组。 */
-function parseSemver(raw: string): [number, number, number] | null {
-  const trimmed = raw.replace(/^v/i, "").trim();
-  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(trimmed);
-  if (!m) return null;
-  return [Number(m[1]), Number(m[2]), Number(m[3])];
-}
-
-/** 严格大于。预发布版本视为小于其正式版(用户已同意此简化策略)。 */
-export function isNewer(latest: string, current: string): boolean {
-  const l = parseSemver(latest);
-  const c = parseSemver(current);
-  if (!l || !c) return false;
-  for (let i = 0; i < 3; i++) {
-    if (l[i] > c[i]) return true;
-    if (l[i] < c[i]) return false;
-  }
-  return false;
-}
-
-/**
- * Tauri 命令返回的更新信息。失败或非 Tauri 环境时回落到 GitHub Releases。
- *
- * `available` 是后端已经做了 semver 比较后的结果,前端可直接信赖,
- * 不再二次比较——这是与 GitHub Releases 路径的接口差异(后者需要前端自己比)。
- */
 export interface UpdateStore {
   /** 当前应用版本号;启动加载前为 null。 */
   currentVersion: string | null;
   /** Tauri updater 报告的可用更新版本号(去除 `v` 前缀)。 */
   updateVersion: string | null;
-  /** Tauri updater 给出的 release notes(Markdown 源)。 */
+  /** release notes(Markdown 源);无更新或插件未返回时为 null。 */
   notes: string | null;
-  /** GitHub Releases 拉到的最新 release(用于发布时间/资源/跳转链接展示)。 */
-  latest: GithubRelease | null;
   /** 检测状态机。 */
   status: UpdateStatus;
   /** 最近一次失败消息(便于 UI 展示 / 调试)。 */
@@ -64,99 +48,104 @@ export interface UpdateStore {
   /** 上次成功检测时间戳(用于显示"X 分钟前检查过")。 */
   lastCheckedAt: number | null;
 
-  /** 启动时静默检测一次:加载当前版本 + 走 Tauri 命令(失败降级 GitHub API)。 */
+  /** 启动时静默读取当前版本号;不做任何网络请求。 */
   init(): Promise<void>;
-  /** 用户主动重检:跳过缓存,失败要 toast。 */
+  /**
+   * 用户主动检查。非 Tauri 环境直接返回 `"idle"`,由 UI 自行提示。
+   * 成功/失败/超时都会返回对应的 `UpdateStatus`,UI 据此 toast。
+   */
   checkNow(): Promise<UpdateStatus>;
+  /**
+   * 下载并安装更新;成功后调用 `relaunchApp` 重启。
+   * 失败抛 Error 由 UI 捕获 toast;无更新对象时返回 `false`。
+   */
+  installUpdate(): Promise<boolean>;
 }
 
-export const useUpdateStore = create<UpdateStore>((set, get) => ({
-  currentVersion: null,
-  updateVersion: null,
-  notes: null,
-  latest: null,
-  status: "idle",
-  errorMessage: null,
-  lastCheckedAt: null,
+export const useUpdateStore = create<UpdateStore>((set, get) => {
+  /** 当前持有的 Update 对象(由 `checkForUpdate` 返回,`installUpdate` 消费)。 */
+  let updateRef: Update | null = null;
+  /** 防止并发点击导致多次检查。 */
+  let checking = false;
 
-  async init() {
-    if (get().status !== "idle") return;
-    // 先加载当前版本(失败也无碍——纯浏览器场景拿不到)。
-    try {
-      const { version } = await appMetaApi.getAppVersion();
-      set({ currentVersion: version });
-    } catch {
-      /* 静默 */
-    }
-    await runCheck(set, get, /* silent */ true);
-  },
+  return {
+    currentVersion: null,
+    updateVersion: null,
+    notes: null,
+    status: "idle",
+    errorMessage: null,
+    lastCheckedAt: null,
 
-  async checkNow() {
-    set({ status: "checking", errorMessage: null });
-    return runCheck(set, get, /* silent */ false);
-  },
-}));
+    async init() {
+      if (!isTauri()) return;
+      if (get().currentVersion !== null) return;
+      try {
+        const version = await getCurrentVersion();
+        set({ currentVersion: version });
+      } catch {
+        /* 静默:启动期读不到版本不影响后续检查 */
+      }
+    },
 
-/**
- * 共享检测流程:Tauri 命令优先,失败降级 GitHub API。
- *
- * @param set zustand setState
- * @param get zustand getState
- * @param silent true=启动静默(失败不弹 toast),false=用户主动(失败要弹)
- */
-async function runCheck(
-  set: (
-    partial: Partial<UpdateStore> | ((s: UpdateStore) => Partial<UpdateStore>),
-  ) => void,
-  get: () => UpdateStore,
-  silent: boolean,
-): Promise<UpdateStatus> {
-  let next: UpdateStatus = "up-to-date";
+    async checkNow() {
+      if (!isTauri()) return "idle" as UpdateStatus;
+      if (checking) return get().status;
+      checking = true;
+      set({ status: "checking", errorMessage: null });
 
-  // 1) 优先走 Tauri updater 命令
-  if (isTauri()) {
-    try {
-      const info = await invokeCmd<UpdateInfo>("check_for_update");
-      if (info.available) {
+      try {
+        await discardUpdate(updateRef);
+        updateRef = null;
+
+        const update = await checkForUpdate();
+        updateRef = update;
+
+        if (!update) {
+          set({
+            status: "up-to-date",
+            updateVersion: null,
+            notes: null,
+            errorMessage: null,
+            lastCheckedAt: Date.now(),
+          });
+          return "up-to-date";
+        }
+
         set({
+          currentVersion: update.currentVersion,
+          updateVersion: update.version,
+          notes: update.body?.trim() || null,
           status: "available",
-          updateVersion: info.version,
-          notes: info.notes ?? null,
           errorMessage: null,
           lastCheckedAt: Date.now(),
         });
         return "available";
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        set({
+          status: "error",
+          errorMessage: message,
+          lastCheckedAt: Date.now(),
+        });
+        return "error";
+      } finally {
+        checking = false;
       }
-      // Tauri 已确认无更新——继续到 GitHub 路径拉 release notes 给 UI 展示。
-      next = "up-to-date";
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      // Tauri 命令失败(如离线、endpoint 未配):降级到 GitHub API
-      if (!silent) {
-        // eslint-disable-next-line no-console
-        console.warn("check_for_update 失败,降级到 GitHub API:", message);
-      }
-    }
-  }
+    },
 
-  // 2) 降级路径:GitHub Releases API(同时拿到 release notes / 发布时间 / 下载链接)
-  try {
-    const release = await fetchLatestRelease({ force: !silent });
-    const current = get().currentVersion;
-    const newer = current ? isNewer(release.tag_name, current) : false;
-    next = newer ? "available" : "up-to-date";
-    set({
-      latest: release,
-      status: next,
-      updateVersion: newer ? release.tag_name.replace(/^v/, "") : null,
-      notes: newer ? release.body || null : null,
-      errorMessage: null,
-      lastCheckedAt: Date.now(),
-    });
-    return next;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    set({ status: "error", errorMessage: message });
-    return "error";
-  }
-}
+    async installUpdate() {
+      const update = updateRef;
+      if (!update) return false;
+      try {
+        await downloadAndInstallUpdate(update, () => {
+          /* 进度事件:本次重构不展示进度条,后续如需展示可在此处 patch state */
+        });
+        await relaunchApp();
+        return true;
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        throw new Error(`更新安装失败,请稍后重试(${message})`);
+      }
+    },
+  };
+});

@@ -53,10 +53,4 @@ export type {
   TransferTask,
 } from "./transfer";
 export type { DiskInfo, MetricsSample } from "./monitor";
-export type {
-  AppVersion,
-  GithubRelease,
-  GithubReleaseAsset,
-  UpdateInfo,
-  UpdateInstallResult,
-} from "./release";
+export type { AppVersion, UpdateInfo } from "./release";

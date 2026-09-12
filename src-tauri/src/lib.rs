@@ -25,6 +25,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // 设置/布局落在平台配置目录(AGENTS.md §10);此目录必须可用。
@@ -85,8 +86,6 @@ pub fn run() {
             commands::monitor::start_monitor,
             commands::monitor::stop_monitor,
             commands::monitor::recent_monitor_samples,
-            commands::update::check_for_update,
-            commands::update::download_and_install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

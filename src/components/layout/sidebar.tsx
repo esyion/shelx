@@ -31,7 +31,7 @@ import { cn } from "@/lib/utils";
 import { SidebarMonitor } from "@/components/monitor/sidebar-monitor";
 import { useTabsStore } from "@/stores/tabs";
 import { useUiStore } from "@/stores/ui";
-import { downloadAndInstallUpdate } from "@/gateway";
+
 import { useUpdateStore } from "@/stores/update";
 
 /** 侧栏默认上半比例(连接树)。 */
@@ -148,43 +148,47 @@ function formatRelative(timestamp: number | null): string {
 /** 侧栏上的更新按钮:点击弹窗展示版本/发布说明/立即更新。 */
 function UpdateButton({ collapsed = false }: { collapsed?: boolean }) {
   const status = useUpdateStore((s) => s.status);
-  const latest = useUpdateStore((s) => s.latest);
   const current = useUpdateStore((s) => s.currentVersion);
   const updateVersion = useUpdateStore((s) => s.updateVersion);
   const notes = useUpdateStore((s) => s.notes);
   const errorMessage = useUpdateStore((s) => s.errorMessage);
   const lastCheckedAt = useUpdateStore((s) => s.lastCheckedAt);
   const checkNow = useUpdateStore((s) => s.checkNow);
+  const installUpdate = useUpdateStore((s) => s.installUpdate);
   const toast = useUiStore((s) => s.toast);
 
   const [open, setOpen] = useState(false);
 
   // 打开时强制刷一次,确保看到的是最新数据。
   useEffect(() => {
-    if (open && status !== "checking") void checkNow();
+    if (open && status !== "checking") runCheck();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const isAvailable = status === "available";
   const hasError = status === "error";
-  const title = isAvailable && latest
-    ? `发现新版本 ${latest.tag_name}(当前 v${current ?? "?"})`
+  const title = isAvailable && updateVersion
+    ? `发现新版本 v${updateVersion}(当前 v${current ?? "?"})`
     : "检查更新";
 
   const body = useMemo(() => previewNotes(notes), [notes]);
 
-  /** 触发 Tauri 安装流程——后端会接管进程。 */
+  /** 触发安装流程;失败由 store 抛错,此处统一 toast。 */
   const startInstall = () => {
+    setOpen(false);
     toast("正在下载更新…");
-    void downloadAndInstallUpdate()
-      .then(() => {
-        toast("更新已就绪,应用即将重启", "info");
-        setOpen(false);
-      })
-      .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : String(err);
-        toast(`更新失败: ${msg}`, "error");
-      });
+    installUpdate().catch((err: unknown) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast(`更新失败: ${msg}`, "error");
+    });
+  };
+
+  /** 启动检查:store 内部捕获异常并落到 "error" 状态,UI 据此 toast。 */
+  const runCheck = () => {
+    void checkNow().then((next) => {
+      if (next === "error") toast("检查更新失败", "error");
+      if (next === "idle") toast("仅桌面安装版支持检查更新");
+    });
   };
 
   return (
@@ -235,11 +239,7 @@ function UpdateButton({ collapsed = false }: { collapsed?: boolean }) {
               variant="ghost"
               size="sm"
               disabled={status === "checking"}
-              onClick={() => {
-                void checkNow().then((next) => {
-                  if (next === "error") toast("检查更新失败", "error");
-                });
-              }}
+              onClick={runCheck}
             >
               {status === "checking" ? "检查中…" : "重新检查"}
             </Button>

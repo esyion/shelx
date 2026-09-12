@@ -18,10 +18,11 @@ export * as localFsApi from "./local_fs";
 export * as monitorApi from "./monitor";
 export * as systemInfoApi from "./system-info";
 export * as appMetaApi from "./app-meta";
-export { checkForUpdate, downloadAndInstallUpdate } from "./update";
 export {
-  fetchLatestRelease,
-  getReleaseRepository,
-  setReleaseRepository,
-  clearReleaseCache,
-} from "./release";
+  CHECK_TIMEOUT_MS,
+  checkForUpdate,
+  discardUpdate,
+  downloadAndInstallUpdate,
+  getCurrentVersion,
+  relaunchApp,
+} from "./update";
