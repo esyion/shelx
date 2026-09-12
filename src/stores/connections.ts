@@ -12,10 +12,12 @@ import {
   connectSession,
   createGroup,
   deleteConnection,
+  deleteGroup as deleteGroupApi,
   duplicateConnection,
   listConnections,
   moveConnection as moveConnectionApi,
   moveGroup as moveGroupApi,
+  renameGroup as renameGroupApi,
 } from "@/app/api";
 import { isGatewayError } from "@/gateway";
 import { useSessionsStore } from "@/stores/sessions";
@@ -48,8 +50,12 @@ export interface ConnectionsStore {
   moveConnection(connId: string, targetGroupId: string | null): Promise<void>;
   /** 移动分组到目标父级;targetParentId=null 移到根级兄弟之间。 */
   moveGroup(groupId: string, targetParentId: string | null): Promise<void>;
-  /** 新建分组(根级)。 */
-  addGroup(name: string): Promise<void>;
+  /** 新建分组;parentId=null 建在根级。 */
+  addGroup(name: string, parentId?: string | null): Promise<void>;
+  /** 重命名分组。 */
+  renameGroup(id: string, name: string): Promise<void>;
+  /** 删除分组(调用方负责二次确认)。 */
+  deleteGroup(id: string): Promise<void>;
   /** 切换分组折叠态。 */
   toggleGroup(id: string): void;
 }
@@ -147,13 +153,39 @@ export const useConnectionsStore = create<ConnectionsStore>((set, get) => ({
     }
   },
 
-  async addGroup(name) {
+  async addGroup(name, parentId = null) {
     try {
-      await createGroup(name, null);
+      await createGroup(name, parentId);
       await get().refresh();
     } catch (err) {
       useUiStore.getState().toast(
         isGatewayError(err) ? err.message : "新建分组失败",
+        "error",
+      );
+    }
+  },
+
+  async renameGroup(id, name) {
+    try {
+      await renameGroupApi(id, name);
+      await get().refresh();
+      useUiStore.getState().toast("分组已重命名");
+    } catch (err) {
+      useUiStore.getState().toast(
+        isGatewayError(err) ? err.message : "重命名失败",
+        "error",
+      );
+    }
+  },
+
+  async deleteGroup(id) {
+    try {
+      await deleteGroupApi(id, "promote-children");
+      await get().refresh();
+      useUiStore.getState().toast("分组已删除(子项已上移到父级)");
+    } catch (err) {
+      useUiStore.getState().toast(
+        isGatewayError(err) ? err.message : "删除分组失败",
         "error",
       );
     }
