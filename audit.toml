@@ -1,0 +1,12 @@
+# cargo-audit configuration.
+#
+# Each entry in [advisories].ignore must be justified in CHANGELOG.md
+# (Unreleased / Security section). The CLI flag
+# `cargo audit --config audit.toml` picks this file up automatically.
+
+[advisories]
+ignore = [
+  # rsa crate (Marvin Attack): required by the russh 'rsa' feature for
+  # legacy ssh-rsa server compatibility. Upstream has no fixed release.
+  "RUSTSEC-2023-0071",
+]
