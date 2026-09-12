@@ -80,7 +80,14 @@ function SidebarHeader() {
 
   return (
     <div className="flex shrink-0 items-center justify-between px-3 py-2">
-      <span className="text-sm font-semibold tracking-wide">shelx</span>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/shelx.svg"
+        alt="shelx"
+        width={88}
+        height={28}
+        className="h-5 w-auto"
+      />
       <div className="flex items-center gap-0.5">
         <UpdateButton />
         <Button
