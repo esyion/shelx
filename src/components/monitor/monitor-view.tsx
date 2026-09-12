@@ -248,6 +248,7 @@ function CpuChart({ samples }: { samples: MetricsSample[] }) {
         <YAxis domain={[0, 100]} tick={{ fontSize: 9 }} />
         <Tooltip
           contentStyle={{ fontSize: 10 }}
+          cursor={{ stroke: "oklch(var(--border))" }}
           formatter={(v) =>
             [`${Number(v).toFixed(1)}%`, "CPU"] as [string, string]
           }
@@ -280,6 +281,7 @@ function MemoryChart({ samples }: { samples: MetricsSample[] }) {
         />
         <Tooltip
           contentStyle={{ fontSize: 10 }}
+          cursor={{ stroke: "oklch(var(--border))" }}
           formatter={(v, name) =>
             [
               `${(Number(v) / 1024 / 1024 / 1024).toFixed(2)} GiB`,
@@ -327,6 +329,7 @@ function NetworkChart({ samples }: { samples: MetricsSample[] }) {
         />
         <Tooltip
           contentStyle={{ fontSize: 10 }}
+          cursor={{ stroke: "oklch(var(--border))" }}
           formatter={(v, name) =>
             [`${(Number(v) / 1024 / 1024).toFixed(2)} MB/s`, String(name)] as [
               string,
@@ -377,7 +380,10 @@ function LoadChart({ samples }: { samples: MetricsSample[] }) {
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
         <XAxis dataKey="time" hide />
         <YAxis tick={{ fontSize: 9 }} />
-        <Tooltip contentStyle={{ fontSize: 10 }} />
+        <Tooltip
+          contentStyle={{ fontSize: 10 }}
+          cursor={{ stroke: "oklch(var(--border))" }}
+        />
         <Line
           type="monotone"
           dataKey="load1"
