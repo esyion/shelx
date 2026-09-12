@@ -31,7 +31,7 @@ export function Workspace() {
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
         <TerminalSquare className="size-12 opacity-60" />
         <p className="text-base">双击左侧连接打开终端</p>
-        <p className="text-sm">或 Ctrl+Shift+C 快速连接</p>
+        <p className="text-sm">或点击 + 新建连接</p>
       </div>
     );
   }
@@ -70,21 +70,25 @@ export function Workspace() {
           const className = visible ? "relative h-full w-full" : "hidden";
           return (
             <div key={tab.id} className={className} data-terminal-root="">
-              {tab.view === "terminal" &&
-                (tab.sessionId ? (
+              {/* 终端一直挂载(同 tab 切到监控/文件不重建 pty),只用 className 控显隐。 */}
+              {tab.sessionId && (
+                <div className={tab.view === "terminal" ? "h-full w-full" : "hidden"}>
                   <TerminalView
                     sessionId={tab.sessionId}
                     encoding={tab.encoding}
                   />
-                ) : (
-                  <Centered text="正在建立会话…" />
-                ))}
-              {tab.view === "monitor" &&
-                (tab.sessionId ? (
+                </div>
+              )}
+              {tab.view === "terminal" && !tab.sessionId && (
+                <Centered text="正在建立会话…" />
+              )}
+              {tab.view === "monitor" && (
+                tab.sessionId ? (
                   <MonitorView sessionId={tab.sessionId} />
                 ) : (
                   <Centered text="正在建立会话…" />
-                ))}
+                )
+              )}
               {tab.view === "files" && (
                 <FileManager tabId={tab.id} sessionId={tab.sessionId} />
               )}
