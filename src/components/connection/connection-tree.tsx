@@ -311,16 +311,73 @@ function TreeNode({
   const openEdit = (connId: string | null) => {
     onOpenForm(connId);
   };
+
+  /** 在指定分组下新建子分组(由右键菜单触发)。 */
+  const addChildGroup = async (parentId: string, parentName: string) => {
+    const name = await promptDialog({
+      title: `在「${parentName}」下新建子分组`,
+      label: "子分组名称",
+      placeholder: "请输入子分组名称",
+      confirmText: "创建",
+    });
+    if (!name || !name.trim()) return;
+    await api.addGroup(name.trim(), parentId);
+  };
+
+  /** 重命名分组(由右键菜单触发)。 */
+  const renameGroup = async (groupId: string, currentName: string) => {
+    const next = await promptDialog({
+      title: "重命名分组",
+      label: `将「${currentName}」重命名为`,
+      initialValue: currentName,
+      confirmText: "保存",
+    });
+    if (!next || !next.trim() || next.trim() === currentName) return;
+    await api.renameGroup(groupId, next.trim());
+  };
+
+  /** 删除分组(由右键菜单触发,需二次确认)。 */
+  const deleteGroup = async (groupId: string, groupName: string) => {
+    const ok = await confirmDialog({
+      title: "删除分组",
+      description: `删除分组「${groupName}」?子项会上移到当前父级,连接/子分组不会被删除。`,
+      confirmText: "删除",
+      destructive: true,
+    });
+    if (!ok) return;
+    await api.deleteGroup(groupId);
+  };
   if (node.kind === "group") {
     const expanded = forceExpand || !api.collapsed.has(node.id);
     return (
       <li role="treeitem">
-        <GroupRow
-          id={node.id}
-          name={node.name}
-          expanded={expanded}
-          onToggle={() => api.toggleGroup(node.id)}
-        />
+        <ContextMenu>
+          <ContextMenuTrigger
+            render={
+              <GroupRow
+                id={node.id}
+                name={node.name}
+                expanded={expanded}
+                onToggle={() => api.toggleGroup(node.id)}
+              />
+            }
+          />
+          <ContextMenuContent>
+            <ContextMenuItem onClick={() => void addChildGroup(node.id, node.name)}>
+              新建子分组
+            </ContextMenuItem>
+            <ContextMenuItem onClick={() => void renameGroup(node.id, node.name)}>
+              重命名…
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              className="text-red-500"
+              onClick={() => void deleteGroup(node.id, node.name)}
+            >
+              删除分组…
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
         {expanded && node.children.length > 0 && (
           <ul className="ml-3 space-y-0.5 border-l pl-1" role="group">
             {node.children.map((child) => (
@@ -398,11 +455,14 @@ function GroupRow({
   name,
   expanded,
   onToggle,
+  onContextMenu,
 }: {
   id: string;
   name: string;
   expanded: boolean;
   onToggle: () => void;
+  /** 由 ContextMenuTrigger 通过 cloneElement 注入,阻止浏览器默认菜单 + 打开自定义菜单。 */
+  onContextMenu?: React.MouseEventHandler<HTMLDivElement>;
 }) {
   const draggableId = `g:${id}`;
   const droppableId = `group:${id}`;
@@ -426,6 +486,7 @@ function GroupRow({
   return (
     <div
       ref={setRefs}
+      onContextMenu={onContextMenu}
       className={cn(
         "flex items-center gap-1 rounded px-1 py-0.5 text-xs transition-colors",
         isOver && "bg-accent ring-1 ring-accent",
