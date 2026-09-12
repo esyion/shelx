@@ -1,5 +1,10 @@
 # shelx
 
+<p align="left">
+  <img src="https://raw.githubusercontent.com/esyion/shelx/main/public/shelx.svg"
+       alt="shelx logo" width="222" />
+</p>
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tauri 2](https://img.shields.io/badge/Tauri-2-orange.svg)](https://v2.tauri.app/)
 [![Next.js 16](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org/)
