@@ -4,6 +4,7 @@
  */
 "use client";
 
+import * as React from "react";
 import { useState } from "react";
 import {
   DndContext,
@@ -469,6 +470,7 @@ function ConnectionRow({
   hasStoredPassword,
   hasStoredPassphrase,
   onDoubleClick,
+  onContextMenu,
 }: {
   id: string;
   name: string;
@@ -480,6 +482,8 @@ function ConnectionRow({
   hasStoredPassword: boolean;
   hasStoredPassphrase: boolean;
   onDoubleClick: () => void;
+  /** 由 ContextMenuTrigger 通过 cloneElement 注入,阻止浏览器默认菜单 + 打开自定义菜单。 */
+  onContextMenu?: React.MouseEventHandler<HTMLDivElement>;
 }) {
   const draggableId = `c:${id}`;
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -490,6 +494,7 @@ function ConnectionRow({
     <div
       ref={setNodeRef}
       onDoubleClick={onDoubleClick}
+      onContextMenu={onContextMenu}
       className={cn(
         "group flex items-center gap-1 rounded px-1 py-0.5 text-xs transition-colors hover:bg-accent",
         isDragging && "opacity-40",
