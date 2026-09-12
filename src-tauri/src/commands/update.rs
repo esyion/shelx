@@ -39,7 +39,11 @@ pub async fn check_for_update(app: AppHandle) -> IpcResult<UpdateInfoDto> {
         Err(err) => {
             // 初始化失败(如离线、无 endpoint 配置):返回 available=false 而非错误,
             // 避免前端启动时被噪音打扰。
-            tracing::warn!(error = %err, "updater 初始化失败,跳过检查");
+            tracing::warn!(
+                error = %trim_err(err),
+                kind = "build",
+                "updater 初始化失败,跳过检查"
+            );
             return IpcResult::ok(UpdateInfoDto {
                 version: String::new(),
                 notes: None,
@@ -48,20 +52,48 @@ pub async fn check_for_update(app: AppHandle) -> IpcResult<UpdateInfoDto> {
         }
     };
 
+    tracing::info!(
+        current_version = env!("CARGO_PKG_VERSION"),
+        endpoints = ?app
+            .config()
+            .plugins
+            .0
+            .get("updater")
+            .and_then(|v| v.get("endpoints"))
+            .cloned()
+            .unwrap_or(serde_json::Value::Null),
+        "updater 开始检查更新"
+    );
+
     match updater.check().await {
-        Ok(Some(update)) => IpcResult::ok(UpdateInfoDto {
-            version: update.version.clone(),
-            notes: update.body.clone(),
-            available: true,
-        }),
-        Ok(None) => IpcResult::ok(UpdateInfoDto {
-            version: String::new(),
-            notes: None,
-            available: false,
-        }),
+        Ok(Some(update)) => {
+            tracing::info!(
+                remote_version = %update.version,
+                "updater 检测到新版本"
+            );
+            IpcResult::ok(UpdateInfoDto {
+                version: update.version.clone(),
+                notes: update.body.clone(),
+                available: true,
+            })
+        }
+        Ok(None) => {
+            tracing::info!("updater 检查完成:已是最新");
+            IpcResult::ok(UpdateInfoDto {
+                version: String::new(),
+                notes: None,
+                available: false,
+            })
+        }
         Err(err) => {
-            // 网络抖动/限流:静默返回无更新,不弹错误打扰用户。
-            tracing::warn!(error = %err, "updater 检查失败");
+            // 拆解错误:tauri-plugin-updater 把 reqwest/serde/签名错误都包成 UpdateError,
+            // Debug 输出能区分 Network / Serialize / Signature / Config 等子类型。
+            tracing::warn!(
+                error = %trim_err(&err),
+                error_debug = ?err,
+                kind = "check",
+                "updater 检查失败"
+            );
             IpcResult::ok(UpdateInfoDto {
                 version: String::new(),
                 notes: None,

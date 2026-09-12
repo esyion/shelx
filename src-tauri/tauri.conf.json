@@ -40,7 +40,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/esyion/shelx"
+        "https://github.com/esyion/shelx/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY0Q0Q0ODU4NjAzMEUzQUMKUldTczR6QmdXRWpOWlB2N05oSENaNFdhZDcwZGllRDhweXpTY0hhU29yWEZBdXJ5SjQwNHpldmMK",
       "windows": {

@@ -101,6 +101,7 @@ jobs:
           - label: Windows x64
             platform: windows-latest
             args: ""
+            config: src-tauri/tauri.windows.conf.json
     steps:
       - name: Checkout release tag
         uses: actions/checkout@v4
