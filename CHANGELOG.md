@@ -18,6 +18,22 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   The previous hand-rolled bundling/renaming/latest.json assembly steps in
   `.github/workflows/release.yml` are removed.
 
+### Security
+
+- **`rsa` crate (RUSTSEC-2023-0071, Marvin Attack).** shelx enables the
+  `rsa` feature on `russh` to keep SSH-compatible with legacy servers
+  that only support the `ssh-rsa` host-key algorithm. The upstream crate
+  has **no fixed release available**, and the attack requires a
+  network-positioned adversary against a client connecting to such a
+  legacy server. We accept this medium-severity risk; users who only
+  connect to modern servers (which default to `ssh-ed25519` /
+  `rsa-sha2-256/512`) are unaffected. Tracking upstream:
+  <https://rustsec.org/advisories/RUSTSEC-2023-0071>.
+- **Transitive `unic-*` and `proc-macro-error` unmaintained warnings.**
+  No upstream fix available; flagged by `cargo audit` in CI but the
+  audit step is non-blocking (`continue-on-error: true`) until a
+  high-severity advisory appears.
+
 ## [0.2.1] - 2026-09-12
 
 ### Added
