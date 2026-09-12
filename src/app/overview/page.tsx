@@ -37,7 +37,7 @@ export default function OverviewPage() {
         <div className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
           <Server className="size-10 opacity-40" />
           <p className="text-sm">还没有任何会话</p>
-          <p className="text-xs opacity-70">从侧栏连接树双击连接或 Ctrl+Shift+C 快速连接</p>
+          <p className="text-xs opacity-70">从侧栏连接树双击连接,或点击 + 新建</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">

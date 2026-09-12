@@ -150,8 +150,7 @@ export default function RootLayout({
   }, [router, setTheme]);
 
   // 全局快捷键:handler 通过 ref 同步,避免重复注册/解绑。
-  // 主页生效:Ctrl+B / Ctrl+J / Ctrl+T / Ctrl+W / Ctrl+Shift+C /
-  //          Alt+1/2/3 / Ctrl+Tab。
+  // 主页生效:Ctrl+B / Ctrl+J / Ctrl+W / Alt+1/2/3 / Ctrl+Tab。
   // 全局生效:Ctrl+, 打开设置页(用 next/navigation 客户端导航)。
   // 设置页其它快捷键 noop。
   const keyHandlerRef = useRef<(event: KeyboardEvent) => void>(() => {});
@@ -183,11 +182,6 @@ export default function RootLayout({
         return;
       }
       if (!ctrl) return;
-      if (event.shiftKey && event.key.toLowerCase() === "c") {
-        router.push("/quick-connect");
-        event.preventDefault();
-        return;
-      }
       switch (event.key.toLowerCase()) {
         case "b":
           ui.toggleSidebar();
@@ -195,10 +189,6 @@ export default function RootLayout({
           break;
         case "j":
           ui.toggleBottomPanel();
-          event.preventDefault();
-          break;
-        case "t":
-          router.push("/quick-connect");
           event.preventDefault();
           break;
         case "w": {
