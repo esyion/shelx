@@ -7,6 +7,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > Versions prior to `0.2.0` were internal iterations before the project
 > was open-sourced; their changes are summarized under "Unreleased / 0.2.0".
 
+## [Unreleased]
+
+### Changed
+
+- **Release pipeline now uses `tauri-apps/tauri-action@v1`.** Tag-triggered
+  matrix build across macOS Apple Silicon, macOS Intel, Linux x64, and
+  Windows x64; `latest.json` is now generated and uploaded by the action,
+  and the release is published only after all installers are uploaded.
+  The previous hand-rolled bundling/renaming/latest.json assembly steps in
+  `.github/workflows/release.yml` are removed.
+
 ## [0.2.1] - 2026-09-12
 
 ### Added

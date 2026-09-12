@@ -1,7 +1,7 @@
 name: Release
 
 # 触发条件:推送形如 vX.Y.Z 的 git tag。
-# 典型流程:本地 `bun run bump patch && git commit && git tag v0.2.1 && git push origin v0.2.1`。
+# 典型流程:本地 `bun run release` 后再 `git push origin v0.2.4`。
 on:
   push:
     tags:
@@ -12,262 +12,277 @@ permissions:
 
 concurrency:
   group: release-${{ github.ref_name }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
-  release:
-    name: Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+  create-release:
+    name: Create draft release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release-id: ${{ steps.create-release.outputs.result }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Verify release tag matches app version
+        shell: pwsh
+        run: |
+          $config = Get-Content 'src-tauri/tauri.conf.json' -Raw | ConvertFrom-Json
+          $expectedTag = "v$($config.version)"
+          if ($env:GITHUB_REF_NAME -ne $expectedTag) {
+            Write-Error "Release tag '$env:GITHUB_REF_NAME' does not match src-tauri/tauri.conf.json version '$($config.version)'. Expected tag '$expectedTag'."
+            exit 1
+          }
+
+      - name: Create clean draft release
+        id: create-release
+        uses: actions/github-script@v7
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        with:
+          result-encoding: string
+          script: |
+            const { owner, repo } = context.repo;
+            const tag = process.env.RELEASE_TAG;
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner,
+              repo,
+              per_page: 100,
+            });
+            const matching = releases.filter((release) => release.tag_name === tag);
+            const published = matching.find((release) => !release.draft);
+            if (published) {
+              core.setFailed(`Release ${tag} already exists and is published: ${published.html_url}`);
+              return '';
+            }
+            for (const draft of matching) {
+              core.info(`Deleting existing draft release ${draft.id} for ${tag}`);
+              await github.rest.repos.deleteRelease({ owner, repo, release_id: draft.id });
+            }
+            const { data: release } = await github.rest.repos.createRelease({
+              owner,
+              repo,
+              tag_name: tag,
+              name: `shelx ${tag}`,
+              body: [
+                `shelx ${tag} installer packages.`,
+                '',
+                'Download the asset that matches your operating system.',
+              ].join('\n'),
+              draft: true,
+              prerelease: tag.includes('-'),
+            });
+            core.info(`Created draft release ${release.id}: ${release.html_url}`);
+            return String(release.id);
+
+  publish-tauri:
+    name: Build ${{ matrix.label }} installer
+    needs: create-release
+    runs-on: ${{ matrix.platform }}
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - label: macOS Apple Silicon
+            platform: macos-latest
+            args: --target aarch64-apple-darwin
+          - label: macOS Intel
+            platform: macos-latest
+            args: --target x86_64-apple-darwin
+          - label: Linux x64
+            platform: ubuntu-22.04
+            args: ""
+          - label: Windows x64
+            platform: windows-latest
+            args: ""
     steps:
-      - name: Checkout
+      - name: Checkout release tag
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
 
-      - name: Setup Bun
+      - name: Install Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Setup Rust
+      - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-      - name: Cache Cargo
+      - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
 
-      - name: Install Linux system deps
-        if: runner.os == 'Linux'
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential pkg-config libssl-dev \
-            libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev \
             libwebkit2gtk-4.1-dev \
-            libsoup-3.0-dev \
-            file patchelf
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libfuse2 \
+            xdg-utils
 
-      - name: Install frontend deps
+      - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      # Tauri 私钥准备:支持原始两行(以 untrusted comment: 开头)或一行 base64。
-      # 两种写法都归一为两行文本写入临时文件,再让 tauri build 读 TAURI_SIGNING_PRIVATE_KEY_PATH。
-      - name: Prepare Tauri signing key
-        shell: bash
-        run: |
-          if [ -z "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ]; then
-            echo "❌ TAURI_SIGNING_PRIVATE_KEY secret 为空,产物不会带 updater 签名" >&2
-            exit 1
-          fi
-          RAW="${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}"
-          KEY_PATH="$RUNNER_TEMP/tauri_signing.key"
-          if echo "$RAW" | head -n1 | grep -q '^untrusted comment:'; then
-            printf '%s\n' "$RAW" > "$KEY_PATH"
-            echo "✅ 使用原始两行密钥文件格式"
-          else
-            # 一行 base64,补上首行注释,组成两行文件
-            ONE=$(printf '%s' "$RAW" | tr -d '\r\n')
-            printf 'untrusted comment: tauri signing key\n%s\n' "$ONE" > "$KEY_PATH"
-            echo "✅ 使用一行 base64 私钥,已构造两行文件"
-          fi
-          echo "TAURI_SIGNING_PRIVATE_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
-          echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" >> "$GITHUB_ENV"
-
-      - name: Build Tauri App (Linux)
-        if: runner.os == 'Linux'
-        run: bunx tauri build --bundles appimage,deb
-
-      - name: Build Tauri App (Windows)
-        if: runner.os == 'Windows'
+      - name: Verify updater signing secrets
         shell: pwsh
-        run: bunx tauri build --bundles msi
-
-      # macOS 暂未配 Apple 证书:出未签名 .app/.dmg,README 中说明用户首次打开需右键"打开"。
-      - name: Build Tauri App (macOS)
-        if: runner.os == 'macOS'
-        run: bunx tauri build --bundles app,dmg
-
-      # 把每平台产物改名(带版本号 + 平台后缀)并拷贝到 release-assets/。
-      - name: Prepare assets
-        shell: bash
+        env:
+          UPDATER_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          UPDATER_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          set -euxo pipefail
-          mkdir -p release-assets
-          VERSION="${GITHUB_REF_NAME#v}"  # v0.2.0 -> 0.2.0
+          if ([string]::IsNullOrWhiteSpace($env:UPDATER_PRIVATE_KEY)) {
+            throw 'Missing repository secret: TAURI_SIGNING_PRIVATE_KEY'
+          }
+          if ([string]::IsNullOrWhiteSpace($env:UPDATER_PRIVATE_KEY_PASSWORD)) {
+            throw 'Missing repository secret: TAURI_SIGNING_PRIVATE_KEY_PASSWORD'
+          }
 
-          case "${{ runner.os }}" in
-            Linux)
-              for art in \
-                "src-tauri/target/release/bundle/appimage/*.AppImage" \
-                "src-tauri/target/release/bundle/deb/*.deb"; do
-                for src in $art; do
-                  [ -f "$src" ] || continue
-                  ext="${src##*.}"
-                  base=$(basename "$src")
-                  # 去掉 tauri 自带的 <productName>_<version> 前缀,改成 shelx-VERSION-Linux-ARCH.ext
-                  new="shelx-${VERSION}-Linux.${ext}"
-                  cp "$src" "release-assets/$new"
-                  # updater 签名
-                  [ -f "${src}.sig" ] && cp "${src}.sig" "release-assets/${new}.sig"
-                  echo "✓ $new"
-                done
-              done
-              ;;
-            Windows)
-              pwsh -NoProfile -Command "
-                Get-ChildItem -Path 'src-tauri/target/release/bundle' -Recurse -Include *.msi |
-                  ForEach-Object {
-                    \$dest = \"shelx-${VERSION}-Windows.msi\"
-                    Copy-Item \$_.FullName \"release-assets/\$dest\"
-                    if (Test-Path \"\$(\$_.FullName).sig\") {
-                      Copy-Item \"\$(\$_.FullName).sig\" \"release-assets/\$dest.sig\"
-                    }
-                    Write-Host \"✓ \$dest\"
-                  }
-              "
-              ;;
-            macOS)
-              # .app 打成 zip(.dmg 已经是可分发格式,直接收)
-              for src in src-tauri/target/release/bundle/macos/*.app; do
-                [ -d "$src" ] || continue
-                zip_name="shelx-${VERSION}-macOS.zip"
-                ditto -c -k --sequesterRsrc --keepParent "$src" "release-assets/$zip_name"
-                echo "✓ $zip_name"
-              done
-              for src in src-tauri/target/release/bundle/dmg/*.dmg; do
-                [ -f "$src" ] || continue
-                dmg_name="shelx-${VERSION}-macOS.dmg"
-                cp "$src" "release-assets/$dmg_name"
-                echo "✓ $dmg_name"
-              done
-              ;;
-          esac
-          ls -la release-assets
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-assets-${{ runner.os }}
-          path: release-assets/*
-          if-no-files-found: error
-
-  publish:
-    name: Publish GitHub Release
-    runs-on: ubuntu-latest
-    needs: release
-    steps:
-      - name: Download all build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: release-assets-*
-          path: release-assets
-          merge-multiple: true
-
-      - name: Publish release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: shelx ${{ github.ref_name }}
-          prerelease: false
-          generate_release_notes: true
-          body: |
-            ## shelx ${{ github.ref_name }}
-
-            ### 下载
-
-            - **Windows**: `shelx-${{ github.ref_name }}-Windows.msi`(安装版)
-            - **macOS (Apple Silicon / Intel)**: `shelx-${{ github.ref_name }}-macOS.dmg`
-              或 `shelx-${{ github.ref_name }}-macOS.zip`(解压即用)
-              - ⚠️ 当前 macOS 产物**未做 Apple 公证**,首次打开请右键 → 打开,
-                或运行 `xattr -dr com.apple.quarantine /Applications/shelx.app`
-            - **Linux**: `shelx-${{ github.ref_name }}-Linux.AppImage`
-              或 `shelx-${{ github.ref_name }}-Linux.deb`
-
-            完整变更日志见仓库 [CHANGELOG.md](https://github.com/esyion/shelx/blob/main/CHANGELOG.md)。
-          files: release-assets/*
+      - name: Build and upload installers
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: '-'
+        with:
+          tauriScript: bunx tauri
+          releaseId: ${{ needs.create-release.outputs.release-id }}
+          tagName: ${{ github.ref_name }}
+          uploadUpdaterJson: true
+          args: ${{ matrix.args }}
 
-  # Tauri updater 客户端从 `releases/latest/download/latest.json` 读取可用版本与签名,
-  # 故必须另外产出一个 `latest.json` 并上传到 release assets。
-  # 资产命名按 cc-switch 的 assemble-latest-json 经验映射:产物文件名 -> tauri platform key。
-  latest-json:
-    name: Assemble latest.json
+  publish-release:
+    name: Publish GitHub Release
+    needs:
+      - create-release
+      - publish-tauri
     runs-on: ubuntu-latest
-    needs: publish
     permissions:
       contents: write
     steps:
-      - name: Install gh CLI
-        run: |
-          if ! command -v gh >/dev/null; then
-            sudo apt-get update && sudo apt-get install -y gh
-          fi
+      - name: Rewrite updater URLs to public release downloads
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const release_id = Number('${{ needs.create-release.outputs.release-id }}');
+            const assets = await github.paginate(
+              github.rest.repos.listReleaseAssets,
+              {
+                owner,
+                repo,
+                release_id,
+                per_page: 100,
+              },
+            );
+            const latestAsset = assets.find((asset) => asset.name === 'latest.json');
+            if (!latestAsset) {
+              core.setFailed('latest.json was not found in the draft release.');
+              return;
+            }
 
-      - name: Download all release assets
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euxo pipefail
-          mkdir -p dl
-          gh release download "$GITHUB_REF_NAME" --dir dl --repo "$GITHUB_REPOSITORY"
+            const response = await github.request(
+              'GET /repos/{owner}/{repo}/releases/assets/{asset_id}',
+              {
+                owner,
+                repo,
+                asset_id: latestAsset.id,
+                headers: {
+                  accept: 'application/octet-stream',
+                },
+              },
+            );
+            const latestJson = Buffer.from(response.data).toString('utf8');
+            const latest = JSON.parse(latestJson);
+            if (!latest.platforms || typeof latest.platforms !== 'object') {
+              core.setFailed('latest.json does not contain a valid platforms object.');
+              return;
+            }
 
-      - name: Generate latest.json
-        env:
-          REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          set -euxo pipefail
-          VERSION="${TAG#v}"
-          PUB_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          BASE="https://github.com/$REPO/releases/download/$TAG"
+            const { data: release } = await github.rest.repos.getRelease({
+              owner,
+              repo,
+              release_id,
+            });
+            const serverUrl = process.env.GITHUB_SERVER_URL || 'https://github.com';
+            const publicUrlByApiUrl = new Map(
+              assets.map((asset) => [
+                asset.url,
+                `${serverUrl}/${owner}/${repo}/releases/download/${encodeURIComponent(release.tag_name)}/${encodeURIComponent(asset.name)}`,
+              ]),
+            );
+            const existingPublicUrls = new Set(publicUrlByApiUrl.values());
+            let rewrittenCount = 0;
 
-          mac_url=""; mac_sig=""
-          win_url=""; win_sig=""
-          linux_url=""; linux_sig=""
+            for (const [platformName, platform] of Object.entries(latest.platforms)) {
+              if (!platform || typeof platform.url !== 'string') {
+                core.setFailed(`Updater entry ${platformName} does not contain a URL.`);
+                return;
+              }
+              if (existingPublicUrls.has(platform.url)) {
+                continue;
+              }
 
-          shopt -s nullglob
-          for sig in dl/*.sig; do
-            base=${sig%.sig}
-            fname=$(basename "$base")
-            url="$BASE/$fname"
-            sig_content=$(cat "$sig")
-            case "$fname" in
-              *.msi)
-                win_url="$url"; win_sig="$sig_content";;
-              *.AppImage)
-                linux_url="$url"; linux_sig="$sig_content";;
-            esac
-          done
+              const publicUrl = publicUrlByApiUrl.get(platform.url);
+              if (!publicUrl) {
+                core.setFailed(
+                  `No public release download URL found for ${platformName}: ${platform.url}`,
+                );
+                return;
+              }
 
-          tmp=$(mktemp)
-          {
-            echo '{'
-            echo "  \"version\": \"$VERSION\","
-            echo "  \"notes\": \"Release $TAG\","
-            echo "  \"pub_date\": \"$PUB_DATE\","
-            echo '  "platforms": {'
-            first=1
-            if [ -n "$win_url" ] && [ -n "$win_sig" ]; then
-              [ $first -eq 0 ] && echo ','
-              echo "    \"windows-x86_64\": {\"signature\": \"$win_sig\", \"url\": \"$win_url\"}"
-              first=0
-            fi
-            if [ -n "$linux_url" ] && [ -n "$linux_sig" ]; then
-              [ $first -eq 0 ] && echo ','
-              echo "    \"linux-x86_64\": {\"signature\": \"$linux_sig\", \"url\": \"$linux_url\"}"
-              first=0
-            fi
-            echo '  }'
-            echo '}'
-          } > "$tmp"
-          echo "Generated:" && cat "$tmp"
-          mv "$tmp" latest.json
+              platform.url = publicUrl;
+              rewrittenCount += 1;
+            }
 
-      - name: Upload latest.json to release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euxo pipefail
-          gh release upload "$GITHUB_REF_NAME" latest.json --clobber --repo "$GITHUB_REPOSITORY"
+            const data = Buffer.from(`${JSON.stringify(latest, null, 2)}\n`, 'utf8');
+            await github.rest.repos.deleteReleaseAsset({
+              owner,
+              repo,
+              asset_id: latestAsset.id,
+            });
+            await github.rest.repos.uploadReleaseAsset({
+              owner,
+              repo,
+              release_id,
+              name: 'latest.json',
+              data,
+              headers: {
+                'content-type': 'application/json',
+                'content-length': data.length,
+              },
+            });
+            core.info(
+              `Rewrote ${rewrittenCount} updater URL(s) to public GitHub Release downloads.`,
+            );
+
+      - name: Publish release after all installers are uploaded
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const release_id = Number('${{ needs.create-release.outputs.release-id }}');
+            const { data: release } = await github.rest.repos.updateRelease({
+              owner,
+              repo,
+              release_id,
+              draft: false,
+            });
+            core.info(`Published ${release.html_url}`);
