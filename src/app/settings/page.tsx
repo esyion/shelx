@@ -11,7 +11,8 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Switch } from "@/components/ui/switch";
 import { ArrowLeft } from "lucide-react";
-import { applyThemeClass, useSettingsStore } from "@/stores/settings";
+import { useTheme } from "next-themes";
+import { useSettingsStore } from "@/stores/settings";
 import { useUiStore } from "@/stores/ui";
 import { useUpdateStore } from "@/stores/update";
 import type { AppSettings } from "@/types";
@@ -23,6 +24,7 @@ export default function SettingsPage() {
   const load = useSettingsStore((s) => s.load);
   const toast = useUiStore((s) => s.toast);
   const currentVersion = useUpdateStore((s) => s.currentVersion);
+  const { setTheme } = useTheme();
 
   useEffect(() => {
     void load();
@@ -64,7 +66,7 @@ export default function SettingsPage() {
             value={settings.appearance.theme}
             onChange={(e) => {
               const theme = e.target.value as AppSettings["appearance"]["theme"];
-              applyThemeClass(theme);
+              setTheme(theme);
               save({ appearance: { theme } });
             }}
           >

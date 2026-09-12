@@ -4,7 +4,7 @@
  */
 import { create } from "zustand";
 import { getSettings, updateSettings } from "@/app/api";
-import type { AppSettings, AppSettingsPatch, ThemeMode } from "@/types";
+import type { AppSettings, AppSettingsPatch } from "@/types";
 
 /** 设置 store。 */
 export interface SettingsStore {
@@ -58,14 +58,4 @@ function deepMerge<T>(base: T, patch: object): T {
         : value;
   }
   return result as T;
-}
-
-/** 应用主题到 <html> 类(F12:settings 与 THEME_INIT 脚本共用同一约定)。 */
-export function applyThemeClass(theme: ThemeMode): void {
-  if (typeof document === "undefined") return;
-  const dark =
-    theme === "dark" ||
-    (theme === "system" &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches);
-  document.documentElement.classList.toggle("dark", dark);
 }

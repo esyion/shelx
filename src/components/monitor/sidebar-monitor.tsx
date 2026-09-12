@@ -11,6 +11,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Info } from "lucide-react";
+import { useRouter } from "next/navigation";
 import {
   startMonitor,
   stopMonitor,
@@ -18,7 +19,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { formatBytes } from "@/lib/format";
 import { useSessionsStore } from "@/stores/sessions";
-import { useUiStore } from "@/stores/ui";
 import type { MetricsSample } from "@/types";
 
 /** 侧栏常驻采样间隔(秒);同 workspace 默认一致,避免与 Alt+2 视图争间隔。 */
@@ -38,7 +38,7 @@ export function SidebarMonitor({ sessionId }: SidebarMonitorProps) {
   const serverInfo = useSessionsStore((s) =>
     sessionId ? s.byId[sessionId]?.serverInfo : undefined,
   );
-  const setSystemInfoSessionId = useUiStore((s) => s.setSystemInfoSessionId);
+  const router = useRouter();
   /** 仅持有「是否已至少有一个样本」,用于切换 Empty 与进度条视图。 */
   const [hasSample, setHasSample] = useState(false);
   const [latest, setLatest] = useState<MetricsSample | null>(null);
@@ -120,7 +120,7 @@ export function SidebarMonitor({ sessionId }: SidebarMonitorProps) {
           size="icon"
           className="ml-auto size-6"
           title="查看系统信息"
-          onClick={() => setSystemInfoSessionId(sessionId)}
+          onClick={() => router.push(`/sessions/info?id=${sessionId}`)}
         >
           <Info className="size-3.5" />
         </Button>

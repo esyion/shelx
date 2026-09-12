@@ -8,8 +8,17 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   BarChart3,
   CircleArrowUp,
@@ -17,12 +26,12 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
-  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SidebarMonitor } from "@/components/monitor/sidebar-monitor";
 import { useTabsStore } from "@/stores/tabs";
 import { useUiStore } from "@/stores/ui";
+import { downloadAndInstallUpdate } from "@/gateway";
 import { useUpdateStore } from "@/stores/update";
 
 /** 侧栏默认上半比例(连接树)。 */
@@ -35,7 +44,6 @@ const TREE_MAX_PCT = 80;
 export function Sidebar({ children }: { children: ReactNode }) {
   const collapsed = useUiStore((s) => s.sidebarCollapsed);
   const toggle = useUiStore((s) => s.toggleSidebar);
-  const setQuickConnectOpen = useUiStore((s) => s.setQuickConnectOpen);
 
   if (collapsed) {
     return (
@@ -50,15 +58,6 @@ export function Sidebar({ children }: { children: ReactNode }) {
           <PanelLeftOpen className="size-4" />
         </Button>
         <UpdateButton collapsed />
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-8"
-          title="快速连接 (Ctrl+Shift+C)"
-          onClick={() => setQuickConnectOpen(true)}
-        >
-          <Zap className="size-4" />
-        </Button>
       </aside>
     );
   }
@@ -125,34 +124,134 @@ function SidebarHeader() {
  *     鼠标移上去提示具体版本号;
  *   - 点击打开更新对话框(详见 UpdateDialog)。
  */
+/** 弹窗正文行数上限,超过折叠并加省略号。 */
+const NOTES_PREVIEW_LINES = 12;
+
+/** release body 折叠到前若干行。 */
+function previewNotes(body: string | null | undefined): string {
+  if (!body) return "无发布说明。";
+  const lines = body.split(/\r?\n/);
+  if (lines.length <= NOTES_PREVIEW_LINES) return body;
+  return `${lines.slice(0, NOTES_PREVIEW_LINES).join("\n")}…`;
+}
+
+/** "X 分钟前 / X 小时前"。 */
+function formatRelative(timestamp: number | null): string {
+  if (!timestamp) return "尚未检查";
+  const delta = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+  if (delta < 60) return "刚刚";
+  if (delta < 3600) return `${Math.floor(delta / 60)} 分钟前`;
+  if (delta < 86400) return `${Math.floor(delta / 3600)} 小时前`;
+  return `${Math.floor(delta / 86400)} 天前`;
+}
+
+/** 侧栏上的更新按钮:点击弹窗展示版本/发布说明/立即更新。 */
 function UpdateButton({ collapsed = false }: { collapsed?: boolean }) {
   const status = useUpdateStore((s) => s.status);
   const latest = useUpdateStore((s) => s.latest);
   const current = useUpdateStore((s) => s.currentVersion);
-  const setOpen = useUiStore((s) => s.setUpdateDialogOpen);
+  const updateVersion = useUpdateStore((s) => s.updateVersion);
+  const notes = useUpdateStore((s) => s.notes);
+  const errorMessage = useUpdateStore((s) => s.errorMessage);
+  const lastCheckedAt = useUpdateStore((s) => s.lastCheckedAt);
+  const checkNow = useUpdateStore((s) => s.checkNow);
+  const toast = useUiStore((s) => s.toast);
+
+  const [open, setOpen] = useState(false);
+
+  // 打开时强制刷一次,确保看到的是最新数据。
+  useEffect(() => {
+    if (open && status !== "checking") void checkNow();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const isAvailable = status === "available";
+  const hasError = status === "error";
   const title = isAvailable && latest
     ? `发现新版本 ${latest.tag_name}(当前 v${current ?? "?"})`
     : "检查更新";
 
+  const body = useMemo(() => previewNotes(notes), [notes]);
+
+  /** 触发 Tauri 安装流程——后端会接管进程。 */
+  const startInstall = () => {
+    toast("正在下载更新…");
+    void downloadAndInstallUpdate()
+      .then(() => {
+        toast("更新已就绪,应用即将重启", "info");
+        setOpen(false);
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast(`更新失败: ${msg}`, "error");
+      });
+  };
+
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      className={collapsed ? "size-8" : "size-7"}
-      title={title}
-      onClick={() => setOpen(true)}
-      data-testid="update-button"
-      data-update-available={isAvailable ? "true" : "false"}
-    >
-      <CircleArrowUp
-        className={cn(
-          "size-4 transition-opacity",
-          isAvailable ? "opacity-100 text-blue-500" : "opacity-40",
-        )}
-      />
-    </Button>
+    <>
+      <Button
+        variant="ghost"
+        size="icon"
+        className={collapsed ? "size-8" : "size-7"}
+        title={title}
+        onClick={() => setOpen(true)}
+        data-testid="update-button"
+        data-update-available={isAvailable ? "true" : "false"}
+      >
+        <CircleArrowUp
+          className={cn(
+            "size-4 transition-opacity",
+            isAvailable ? "opacity-100 text-blue-500" : "opacity-40",
+          )}
+        />
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {isAvailable ? "发现新版本" : hasError ? "检查更新失败" : "已是最新版本"}
+            </DialogTitle>
+            <DialogDescription>
+              {isAvailable && updateVersion
+                ? `v${current ?? "?"} → v${updateVersion}`
+                : hasError
+                  ? errorMessage ?? "请稍后重试"
+                  : current
+                    ? `当前版本 v${current}`
+                    : "正在准备版本信息…"}
+            </DialogDescription>
+          </DialogHeader>
+          <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-3 text-xs leading-relaxed [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {hasError
+              ? "无法连接到更新服务,稍后重试或访问项目页面查看。"
+              : body}
+          </pre>
+          <DialogFooter>
+            <span className="mr-auto text-xs text-muted-foreground">
+              上次检查:{formatRelative(lastCheckedAt)}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={status === "checking"}
+              onClick={() => {
+                void checkNow().then((next) => {
+                  if (next === "error") toast("检查更新失败", "error");
+                });
+              }}
+            >
+              {status === "checking" ? "检查中…" : "重新检查"}
+            </Button>
+            {isAvailable && (
+              <Button size="sm" onClick={startInstall}>
+                立即更新
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -234,27 +333,16 @@ function SidebarBody({ children }: { children: ReactNode }) {
   );
 }
 
-/** 底部:快速连接 + 设置。 */
+/** 底部:设置。 */
 function SidebarFooter() {
-  const setQuickConnectOpen = useUiStore((s) => s.setQuickConnectOpen);
+  const router = useRouter();
   return (
     <div className="grid shrink-0 gap-1 border-t p-2">
       <Button
         size="sm"
-        className="w-full justify-start text-xs"
-        onClick={() => setQuickConnectOpen(true)}
-      >
-        <Zap className="size-4" />
-        快速连接
-        <kbd className="ml-auto rounded bg-muted px-1 text-[10px] text-muted-foreground">
-          Ctrl+Shift+C
-        </kbd>
-      </Button>
-      <Button
-        size="sm"
         variant="ghost"
         className="w-full justify-start text-xs"
-        onClick={() => window.location.assign("/settings")}
+        onClick={() => router.push("/settings")}
       >
         <Settings className="size-4" />
         设置

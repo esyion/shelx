@@ -1,14 +1,13 @@
 /**
- * 顶部标签栏(PRD §6.1):状态圆点、关闭按钮、新建(+)。
+ * 顶部标签栏(PRD §6.1):状态圆点、关闭按钮。
  */
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Plus, X } from "lucide-react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { requestCloseTab, statusDotClass, useTabsStore } from "@/stores/tabs";
 import { useSessionsStore } from "@/stores/sessions";
-import { useUiStore } from "@/stores/ui";
 
 /** 标签栏。 */
 export function TabBar() {
@@ -17,7 +16,6 @@ export function TabBar() {
   const setActive = useTabsStore((s) => s.setActive);
   const closeTab = useTabsStore((s) => s.closeTab);
   const sessionsById = useSessionsStore((s) => s.byId);
-  const setQuickConnectOpen = useUiStore((s) => s.setQuickConnectOpen);
 
   return (
     <div
@@ -74,15 +72,6 @@ export function TabBar() {
           </div>
         );
       })}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="mb-0.5 size-7 shrink-0"
-        title="新建标签 (Ctrl+T)"
-        onClick={() => setQuickConnectOpen(true)}
-      >
-        <Plus className="size-4" />
-      </Button>
     </div>
   );
 }
