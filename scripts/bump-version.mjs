@@ -210,6 +210,6 @@ export function readCurrentVersion() {
 }
 
 // 仅在直接执行(而非被 import)时跑 CLI 主流程。
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url.endsWith(process.argv[1]?.replace(/\\/g, "/") ?? "")) {
   main();
 }
