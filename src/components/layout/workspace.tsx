@@ -28,10 +28,10 @@ export function Workspace() {
 
   if (!activeTab) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
-        <TerminalSquare className="size-10 opacity-40" />
-        <p className="text-sm">双击左侧连接打开终端</p>
-        <p className="text-xs opacity-70">或 Ctrl+Shift+C 快速连接</p>
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
+        <TerminalSquare className="size-12 opacity-60" />
+        <p className="text-base">双击左侧连接打开终端</p>
+        <p className="text-sm">或 Ctrl+Shift+C 快速连接</p>
       </div>
     );
   }

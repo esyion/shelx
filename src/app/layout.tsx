@@ -15,6 +15,7 @@
 import { useEffect, useRef } from "react";
 import { Geist } from "next/font/google";
 import { ThemeProvider, useTheme } from "next-themes";
+import "./globals.css";
 import { usePathname, useRouter } from "next/navigation";
 import { useEventListener } from "usehooks-ts";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
