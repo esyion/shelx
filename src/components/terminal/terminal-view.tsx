@@ -34,9 +34,7 @@ export interface TerminalViewProps {
 /** xterm 宿主组件:每实例对应一条 pty 通道。 */
 export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const onlineEpoch = useSessionsStore(
-    (s) => s.onlineEpoch[sessionId] ?? 0,
-  );
+  const onlineEpoch = useSessionsStore((s) => s.onlineEpoch[sessionId] ?? 0);
   const status = useSessionsStore((s) => s.byId[sessionId]?.status);
 
   // xterm 实例与通道生命周期:随 online epoch 重建。
@@ -53,7 +51,8 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
     const terminalPrefs = settings?.terminal;
 
     const terminal = new Terminal({
-      fontFamily: terminalPrefs?.fontFamily ?? "Cascadia Mono, Consolas, monospace",
+      fontFamily:
+        terminalPrefs?.fontFamily ?? "Cascadia Mono, Consolas, monospace",
       fontSize: terminalPrefs?.fontSize ?? 13,
       lineHeight: terminalPrefs?.lineHeight ?? 1.2,
       cursorStyle: terminalPrefs?.cursorStyle ?? "bar",
@@ -104,10 +103,22 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
     });
 
     // 尺寸变化:防抖 fit → pty window_change。
+    // 注意:必须调用 fit.fit() 而不只是 proposeDimensions(),否则
+    // xterm 内部 viewport 仍是旧尺寸,后端 pty 收到新行数但 DOM
+    // 不缩,光标会停在画布外(用户看不到输入提示、滚动也不跟随)。
     const resizeObserver = new ResizeObserver(() => {
       if (pendingResize) clearTimeout(pendingResize);
       pendingResize = setTimeout(() => {
         if (disposed) return;
+        try {
+          // fit.fit() 调整 xterm canvas 到容器,但返回 void;
+          // 随后用 proposeDimensions() 拿到行列发后端。
+          fit.fit();
+        } catch {
+          // 容器隐藏/未布局时 fit 可能抛错;ResizeObserver 会继续观察,
+          // 下次尺寸变化再补 fit。
+          return;
+        }
         const dims = fit.proposeDimensions();
         if (dims && dims.cols > 0 && dims.rows > 0 && terminalId) {
           void resizeTerminal(terminalId, dims.cols, dims.rows);
@@ -121,7 +132,10 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
       if (!event.ctrlKey) return;
       event.preventDefault();
       const current = terminal.options.fontSize ?? 13;
-      const next = Math.min(72, Math.max(6, current + (event.deltaY < 0 ? 1 : -1)));
+      const next = Math.min(
+        72,
+        Math.max(6, current + (event.deltaY < 0 ? 1 : -1)),
+      );
       terminal.options.fontSize = next;
       try {
         fit.fit();
@@ -130,7 +144,10 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
       }
       scheduleFontSizePersist(next);
     };
-    host.addEventListener("wheel", wheelHandler, { passive: false, capture: true });
+    host.addEventListener("wheel", wheelHandler, {
+      passive: false,
+      capture: true,
+    });
 
     // 右键粘贴(PRD §6.3:行为可配,默认粘贴)。
     const contextMenuHandler = (event: MouseEvent) => {
@@ -150,9 +167,14 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
     host.addEventListener("contextmenu", contextMenuHandler);
 
     // 开 pty 通道;输出按连接编码流式解码写入。
-    void openTerminal(sessionId, terminal.cols || 80, terminal.rows || 24, (bytes) => {
-      terminal.write(decoder.decode(bytes));
-    })
+    void openTerminal(
+      sessionId,
+      terminal.cols || 80,
+      terminal.rows || 24,
+      (bytes) => {
+        terminal.write(decoder.decode(bytes));
+      },
+    )
       .then((handle) => {
         if (disposed) {
           void closeTerminal(handle.terminalId);
@@ -171,7 +193,9 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
       disposed = true;
       if (pendingResize) clearTimeout(pendingResize);
       resizeObserver.disconnect();
-      host.removeEventListener("wheel", wheelHandler, { capture: true } as EventListenerOptions);
+      host.removeEventListener("wheel", wheelHandler, {
+        capture: true,
+      } as EventListenerOptions);
       host.removeEventListener("contextmenu", contextMenuHandler);
       dataDisposable.dispose();
       selectionDisposable.dispose();
@@ -215,10 +239,12 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
                     useSessionsStore.getState().upsert(session);
                   } catch (err) {
                     const { useUiStore } = await import("@/stores/ui");
-                    useUiStore.getState().toast(
-                      err instanceof Error ? err.message : "重连失败",
-                      "error",
-                    );
+                    useUiStore
+                      .getState()
+                      .toast(
+                        err instanceof Error ? err.message : "重连失败",
+                        "error",
+                      );
                   }
                 });
               }}
