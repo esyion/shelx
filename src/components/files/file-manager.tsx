@@ -7,6 +7,15 @@
 import { useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
+  ArrowLeft,
+  ArrowRight,
+  ChevronUp,
+  Eye,
+  EyeOff,
+  FolderPlus,
+  RefreshCw,
+} from "lucide-react";
+import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
@@ -32,6 +41,7 @@ import { isGatewayError } from "@/gateway";
 import { useFilePanel, type FilePanel, type SortKey } from "@/app/hooks/use-file-panel";
 import { useFilePathsStore } from "@/stores/file-paths";
 import { useUiStore } from "@/stores/ui";
+import { confirmDialog, promptDialog } from "@/components/app-dialogs";
 import {
   enqueueDownloadAndShow,
   enqueueUploadAndShow,
@@ -160,7 +170,11 @@ function FilePane({ side, panel, sessionId, onUpload, onDownload }: FilePaneProp
 
   /** 新建文件夹。 */
   const handleMkdir = useCallback(async () => {
-    const name = window.prompt("新建文件夹名称:");
+    const name = await promptDialog({
+      title: "新建文件夹",
+      label: "文件夹名称",
+      placeholder: "请输入文件夹名称",
+    });
     if (!name || !name.trim()) return;
     try {
       const path = joinRemotePath(panel.path, name.trim());
@@ -178,7 +192,11 @@ function FilePane({ side, panel, sessionId, onUpload, onDownload }: FilePaneProp
   /** 重命名(F2)。 */
   const handleRename = useCallback(
     async (entry: FileEntry) => {
-      const newName = window.prompt(`重命名「${entry.name}」为:`, entry.name);
+      const newName = await promptDialog({
+        title: "重命名",
+        label: `将「${entry.name}」重命名为`,
+        initialValue: entry.name,
+      });
       if (!newName || !newName.trim() || newName === entry.name) return;
       try {
         if (isRemote) {
@@ -199,9 +217,14 @@ function FilePane({ side, panel, sessionId, onUpload, onDownload }: FilePaneProp
     async (entries: FileEntry[]) => {
       if (entries.length === 0) return;
       const names = entries.map((e) => e.name).join("、");
-      if (!window.confirm(`删除 ${entries.length} 项(${names})?${entries.some((e) => e.fileType === "dir") ? " 目录将递归删除。" : ""}`)) {
-        return;
-      }
+      const isDir = entries.some((e) => e.fileType === "dir");
+      const ok = await confirmDialog({
+        title: `删除 ${entries.length} 项`,
+        description: `${names}${isDir ? "\n目录将递归删除。" : ""}`,
+        confirmText: "删除",
+        destructive: true,
+      });
+      if (!ok) return;
       try {
         if (isRemote) {
           const paths = entries.map((e) => joinRemotePath(panel.path, e.name));
@@ -229,29 +252,72 @@ function FilePane({ side, panel, sessionId, onUpload, onDownload }: FilePaneProp
     <section className="flex min-w-0 flex-1 flex-col border rounded-md" aria-label={isRemote ? "远端文件" : "本地文件"}>
       {/* 工具栏:导航 + 刷新 + 新建 + 隐藏开关 */}
       <div className="flex items-center gap-0.5 border-b px-1 py-1">
-        <Button variant="ghost" size="icon" className="size-6" title="上级" onClick={panel.goUp}>
-          ↑
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          title="上级"
+          aria-label="上级"
+          onClick={panel.goUp}
+        >
+          <ChevronUp className="size-4" aria-hidden />
         </Button>
-        <Button variant="ghost" size="icon" className="size-6" title="后退" onClick={panel.goBack} disabled={!panel.canGoBack}>
-          ←
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          title="后退"
+          aria-label="后退"
+          onClick={panel.goBack}
+          disabled={!panel.canGoBack}
+        >
+          <ArrowLeft className="size-4" aria-hidden />
         </Button>
-        <Button variant="ghost" size="icon" className="size-6" title="前进" onClick={panel.goForward} disabled={!panel.canGoForward}>
-          →
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          title="前进"
+          aria-label="前进"
+          onClick={panel.goForward}
+          disabled={!panel.canGoForward}
+        >
+          <ArrowRight className="size-4" aria-hidden />
         </Button>
-        <Button variant="ghost" size="icon" className="size-6" title="刷新" onClick={() => void panel.refresh()}>
-          ⟳
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          title="刷新"
+          aria-label="刷新"
+          onClick={() => void panel.refresh()}
+        >
+          <RefreshCw className="size-4" aria-hidden />
         </Button>
-        <Button variant="ghost" size="icon" className="size-6" title="新建文件夹" onClick={() => void handleMkdir()}>
-          ⊕
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-6"
+          title="新建文件夹"
+          aria-label="新建文件夹"
+          onClick={() => void handleMkdir()}
+        >
+          <FolderPlus className="size-4" aria-hidden />
         </Button>
         <Button
           variant="ghost"
           size="icon"
           className={cn("size-6", panel.showHidden && "text-accent-foreground")}
-          title="隐藏文件开关"
+          title={panel.showHidden ? "隐藏文件(已显示)" : "隐藏文件(已隐藏)"}
+          aria-label={panel.showHidden ? "隐藏文件(已显示)" : "隐藏文件(已隐藏)"}
+          aria-pressed={panel.showHidden}
           onClick={panel.toggleHidden}
         >
-          ◈
+          {panel.showHidden ? (
+            <Eye className="size-4" aria-hidden />
+          ) : (
+            <EyeOff className="size-4" aria-hidden />
+          )}
         </Button>
         <span className="ml-auto text-[10px] text-muted-foreground">
           {panel.visibleEntries.length} 项
@@ -299,7 +365,7 @@ function FilePane({ side, panel, sessionId, onUpload, onDownload }: FilePaneProp
           </div>
         ) : (
           <ContextMenu>
-            <ContextMenuTrigger>
+            <ContextMenuTrigger className="h-full">
               <div
                 className="h-full cursor-default select-none"
                 onKeyDown={(e) => {
