@@ -12,190 +12,154 @@
 [![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088ff.svg)](.github/workflows/ci.yml)
 [![Release](https://img.shields.io/badge/Release-GitHub_Releases-2088ff.svg)](https://github.com/esyion/shelx/releases)
 
-> Lightweight, no-tracking, open-source **SSH + SFTP + server monitor**
-> desktop client for Windows, macOS and Linux.
+<br />
 
-## Download
+**shelx** is a single-window desktop client for the three jobs every
+operator does on a Linux box: open a shell, drag a file across, glance at
+the CPU. One SSH connection, three panels, no account, no telemetry, no
+phoning home.
 
-Pre-built installers live in [GitHub Releases](https://github.com/esyion/shelx/releases/latest).
-Pick the one that matches your platform:
+It is built for people who currently juggle Xshell for terminal,
+WinSCP for files, and a web panel for monitoring — same host, three
+tools, three copies of the credentials. shelx collapses that into one
+app that stays out of your way.
 
-| Platform | File | Notes |
-| --- | --- | --- |
-| Windows | `shelx-<version>-Windows.msi` | Run the installer. |
-| macOS (Apple Silicon / Intel) | `shelx-<version>-macOS.dmg` | See macOS notice below. |
-| macOS (alternative) | `shelx-<version>-macOS.zip` | Unzip and drag into `/Applications`. |
-| Linux | `shelx-<version>-Linux.AppImage` | `chmod +x` and run. |
-| Linux | `shelx-<version>-Linux.deb` | `sudo apt install ./...deb`. |
+---
 
-> **Updating from an older version?** shelx also checks for updates in-app:
-> the sidebar icon turns blue when a newer release is available on GitHub.
-> Click it to open the release dialog and jump to the download page.
->
-> **macOS notice (until we ship a notarized build):** the `.dmg` / `.zip`
-> artifacts are **unsigned and not notarized**. macOS Gatekeeper will block
-> the first open. Workarounds:
->
-> ```bash
-> # Option A — remove the quarantine attribute after copying to /Applications
-> xattr -dr com.apple.quarantine /Applications/shelx.app
->
-> # Option B — right-click the .app → Open → confirm the warning once
-> ```
->
-> Once a Developer ID is wired into the release pipeline this section will
-> shrink to a single line.
+## Why another client
 
-shelx bundles the three jobs every operator does into one window — open a
-shell, drag a file, glance at the CPU — without an Electron-sized footprint
-and without phoning home.
+Most tools in this space make a deal with you. FinalShell is closed,
+ad-supported, and stores credentials in an opaque format. Xshell's free
+edition caps your tabs. The Electron-based options (Tabby, electerm,
+WindTerm) eat a gigabyte of RAM once you have a dozen hosts open and
+hand-wave their security model. None of them handle GBK-encoded Chinese
+server output gracefully, which is a daily annoyance if you work with
+older domestic Linux boxes.
 
-## Highlights
+shelx takes the opposite trade. Everything is local. Credentials live in
+the OS keyring (with a documented AES-GCM fallback when the keyring is
+unavailable). The web view runs with a strict CSP and no remote scripts.
+There is no cloud sync, no account, no analytics endpoint, and no plugin
+runtime that could exfiltrate your terminal. The cost is that shelx
+deliberately does not do a lot of things.
 
-- 🪶 **Lightweight** — Tauri 2 + system WebView. Idle memory roughly a
-  tenth of Tabby / electerm.
-- 🔒 **Open & auditable** — MIT-licensed. Credentials are stored in the
-  OS keyring (with a documented AES-GCM fallback). No telemetry, no ads,
-  no forced login.
-- 🖥️ **Real terminal** — xterm.js 5.5 with the WebGL renderer; SSH
-  sessions are powered by `russh` on the Rust side.
-- 📁 **Dual-pane SFTP** — local ↔ remote drag-and-drop, queue, retry,
-  cancel, conflict handling.
-- 📊 **Server monitor** — CPU / memory / disk / network / load with
-  sparklines, all over a single SSH channel.
-- 🇨🇳 **GBK-friendly** — native GBK encoding support for older Chinese
-  Linux hosts.
+## What it does not do
 
-## Screenshots
+No zmodem / rz-sz. No Telnet, serial, RDP, or VNC. No jump-host chains
+or SSH agent forwarding. No built-in editor, no directory diff-sync, no
+threshold alerting, no history persistence, no team collaboration, no
+mobile, no Windows-server monitoring. If you need any of those, shelx is
+the wrong tool and that is fine.
 
-<!-- TODO: drop real screenshots once the marketing page is ready.
-     Until then the ASCII placeholders are intentional. -->
+---
 
-```
-┌───────────────────────────────────────────────────────────────┐
-│  ● prod-web-01   ● prod-db-01   ○ staging-api     + Add host │
-├──────────┬────────────────────────────────────────────────────┤
-│ Sessions │  $ tail -F /var/log/nginx/access.log                │
-│          │  10.0.4.21 - - [12/Sep/2026:03:14:12 +0000] ...    │
-│ ▸ web-01 │  10.0.4.22 - - [12/Sep/2026:03:14:12 +0000] ...    │
-│ ▸ db-01  │                                                    │
-│          │                                                    │
-├──────────┴──────────────────────┬─────────────────────────────┤
-│ Local: ~/project               │ Remote: /srv/app            │
-│ src/   dist/   README.md       │ src/   dist/   package.json │
-└────────────────────────────────┴─────────────────────────────┘
-```
+## What it looks like
 
-## Tech stack
+You open a saved host and the workspace shows three panels over the same
+connection. The tab strip across the top carries one colored dot per
+session: green online, amber connecting, red disconnected.
 
-- **Desktop shell** — [Tauri 2](https://v2.tauri.app/) (Rust backend).
-- **Frontend** — [Next.js 16](https://nextjs.org/) App Router
-  (**static export**, `output: 'export'`), React 19, TypeScript.
-- **UI** — Tailwind CSS v4 + shadcn/ui (Base UI) + Zustand.
-- **Backend** — Rust 2021, `russh` / `russh-sftp`, `rusqlite`,
-  `aes-gcm` + OS keyring for credential storage.
-- **Tooling** — `bun` for the frontend, `cargo` for the backend.
+**Terminal.** A full-window dark terminal with xterm.js inside. Tabs
+across the top, reconnect-on-disconnect, GBK encoding support so legacy
+Chinese servers don't render as mojibake.
 
-## Architecture at a glance
+**Files.** A dual-pane browser — local on the left, remote on the right —
+with a breadcrumb path, a toolbar (up / refresh / new folder / new file /
+rename / delete / chmod / show hidden), drag-and-drop upload and
+download, and a transfer queue with retry and conflict handling.
+Right-clicking a file on the remote side opens a 3×3 read/write/execute
+grid that live-previews the resulting `rwxr-xr-x` octal.
 
-```
-┌─────────────────────────── Tauri host ──────────────────────────┐
-│                                                                  │
-│   Next.js static export  ──invoke / events──▶   Rust backend    │
-│   (WebView, `src/app`)                          (`src-tauri/`)  │
-│         │                                              │        │
-│         ▼                                              ▼        │
-│   presentation → application                 presentation → …    │
-│   (hooks, api.ts)                            commands (thin)     │
-│                                              application → …     │
-│                                              domain (pure Rust)  │
-│                                              infrastructure      │
-└──────────────────────────────────────────────────────────────────┘
-```
+**Monitor.** A live dashboard pulled over the same SSH channel. A
+single-line system strip (hostname, kernel, uptime, current user), then
+a 2×2 grid of charts — CPU per-core area, memory stacked with a separate
+swap chart, network down/up dual-line with auto-scaled Y axis, load
+1/5/15 — and one progress-bar row per disk mount that turns amber over
+85% and red over 95%. Sample interval is configurable from 2 seconds to
+a minute.
 
-- The frontend **must** stay statically exportable. SSR / Server Actions /
-  dynamic route handlers are off-limits — the WebView serves `out/`.
-- All Rust ↔ frontend calls go through `src/gateway/tauri.ts` on the
-  frontend and `#[tauri::command]` in `src-tauri/src/commands/` on the
-  backend. Components never call `@tauri-apps/api` directly.
-- Layering and IPC contract rules are spelled out in
-  [`AGENTS.md`](AGENTS.md) — it is normative for new code.
+**Settings.** A single-column form, sectioned into cards: appearance,
+terminal, connection, transfer, monitor. Changes save immediately.
 
-## Getting started
+---
 
-### Prerequisites
+## First-time security check
 
-- **bun** — see <https://bun.sh>.
-- **Rust stable** with `clippy` and `rustfmt`:
-  ```bash
-  rustup component add clippy rustfmt
-  ```
-- **Tauri 2 system dependencies** for your OS — see the
-  [Tauri prerequisites guide](https://v2.tauri.app/start/prerequisites/).
+When you connect to a host shelx has never seen, it pops up a dialog
+with the algorithm and SHA256 fingerprint, with the line "verify the
+fingerprint matches before continuing". On the server you run
+`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` and compare. This is
+the only trust moment that matters for an SSH client, and shelx does
+not bury it.
 
-### Run the desktop app in dev mode
+---
+
+## Get started in 30 seconds
+
+1. **Download** the installer for your platform from
+   [GitHub Releases](https://github.com/esyion/shelx/releases/latest).
+
+   | Platform | File |
+   | --- | --- |
+   | Windows | `shelx-<version>-Windows.msi` |
+   | macOS | `shelx-<version>-macOS.dmg` |
+   | Linux | `shelx-<version>-Linux.AppImage` or `.deb` |
+
+2. **Install** — run the MSI, drag the .app into `/Applications`, or
+   `chmod +x` the AppImage.
+
+3. **Open shelx.** The sidebar is empty. Click the lightning-bolt
+   "快速连接" button (or Ctrl+Shift+C / Ctrl+T) and fill in host, port,
+   username, and auth method (password, private key, keyboard-interactive
+   for OTP, or SSH agent). Confirm the fingerprint when prompted.
+
+4. **You're in.** The terminal tab opens. Alt+1 / Alt+2 / Alt+3 flips
+   between terminal, monitor, and files on the same connection.
+
+Save the connection from the same dialog if you want it in the sidebar
+for next time. Credentials go to the OS keyring, never plaintext on disk.
+
+---
+
+## A few honest things you should know
+
+**macOS builds are not notarized yet.** Gatekeeper will block the first
+open. Two workarounds until Developer ID is wired in:
 
 ```bash
-bun install
-bun tauri dev
+# option A — strip the quarantine attribute after copying
+xattr -dr com.apple.quarantine /Applications/shelx.app
+
+# option B — right-click the .app the first time, choose Open, confirm once
 ```
 
-The first run compiles the Rust backend (a few minutes). Subsequent runs
-are incremental.
+**Linux packaging is not yet exercised in CI.** Windows and macOS are
+the primary build targets until the first batch of testers reports in.
+The AppImage and .deb do work, but expect rough edges on less-common
+distros.
 
-## Build & quality gates
+**The `rsa` crate is shipped despite an upstream advisory.**
+RUSTSEC-2023-0071 (Marvin Attack) affects the legacy `ssh-rsa` host-key
+algorithm. The upstream crate has no fixed release available, and the
+attack requires a network-positioned adversary against a client
+connecting to such a legacy server. shelx keeps the `rsa` feature on
+to stay compatible with those servers; users connecting to modern hosts
+(which default to `ssh-ed25519` and `rsa-sha2-256/512`) are unaffected.
+Tracked at <https://rustsec.org/advisories/RUSTSEC-2023-0071>.
 
-Run these locally before opening a PR; they mirror what CI runs on every
-push and PR.
+---
 
-```bash
-bun run build                                                 # Next.js static export → out/
-cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
-cargo test --manifest-path src-tauri/Cargo.toml
-bun run test                                                  # vitest
-bun tauri build                                               # produce installers / bundles
-```
+## Updates
 
-## Project layout
+shelx checks for new releases on GitHub and verifies them with a minisign
+signature. When a newer release is available, the sidebar's upload-arrow
+icon turns blue. Click it, read the release notes, hit "立即更新" — the
+app downloads, verifies, installs, and relaunches.
 
-```
-.
-├─ src/                  # Next.js frontend (presentation + frontend gateway)
-├─ src-tauri/            # Rust backend (commands / application / domain / infrastructure)
-│  ├─ src/
-│  ├─ capabilities/      # Tauri permission manifests
-│  ├─ migrations/        # schema migrations
-│  └─ tauri.conf.json
-├─ docs/                 # PRD, technical design, TODO, UI layout
-├─ tests/                # cross-layer / end-to-end tests
-├─ .github/              # workflows, issue & PR templates, security & CoC
-└─ AGENTS.md             # engineering rules (normative for new code)
-```
-
-## Documentation
-
-- [`docs/PRD.md`](docs/PRD.md) — product requirements and milestones.
-- [`docs/TECHNICAL_DESIGN.md`](docs/TECHNICAL_DESIGN.md) — architecture,
-  IPC contracts, layering.
-- [`docs/UI_LAYOUT.md`](docs/UI_LAYOUT.md) — UI structure & navigation.
-- [`docs/TODO.md`](docs/TODO.md) — milestone tracker.
-- [`AGENTS.md`](AGENTS.md) — engineering rules (must-read for
-  contributors).
-- [`CHANGELOG.md`](CHANGELOG.md) — release notes.
-
-## Contributing
-
-We welcome bug reports, documentation fixes, and focused PRs. Please start
-with [`CONTRIBUTING.md`](CONTRIBUTING.md); the layering and security rules
-in [`AGENTS.md`](AGENTS.md) are normative. By participating you agree to
-follow the [Code of Conduct](.github/CODE_OF_CONDUCT.md).
-
-## Security
-
-Found a vulnerability? **Do not** open a public issue — see
-[`SECURITY.md`](.github/SECURITY.md) for the private reporting channels.
+---
 
 ## License
 
-[MIT](LICENSE) © 2026 esyion.
+[MIT](LICENSE). Versions prior to 0.2.0 were internal iterations before
+the project was open-sourced; their changes are summarized in the
+[CHANGELOG](CHANGELOG.md) under 0.2.0.
