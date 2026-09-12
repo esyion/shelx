@@ -5,6 +5,7 @@
 "use client";
 
 import { useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -56,6 +57,7 @@ function joinRemotePath(dir: string, name: string): string {
 /** 双栏文件管理器。 */
 export function FileManager({ tabId, sessionId }: FileManagerProps) {
   const toast = useUiStore((s) => s.toast);
+  const router = useRouter();
 
   // 本地面板 fetcher(路径入、entries 出)
   const localFetcher = useCallback((path: string) => listLocalEntries(path), []);
@@ -112,13 +114,17 @@ export function FileManager({ tabId, sessionId }: FileManagerProps) {
         side="local"
         panel={local}
         sessionId={sessionId}
-        onUpload={(entries) => void handleUpload(entries, local, remote, sessionId)}
+        onUpload={(entries) =>
+          void handleUpload(entries, local, remote, sessionId, router.push)
+        }
       />
       <FilePane
         side="remote"
         panel={remote}
         sessionId={sessionId}
-        onDownload={(entries) => void handleDownload(entries, remote, local, sessionId)}
+        onDownload={(entries) =>
+          void handleDownload(entries, remote, local, sessionId, router.push)
+        }
       />
     </div>
   );
@@ -389,11 +395,12 @@ async function handleUpload(
   localPanel: FilePanel,
   remotePanel: FilePanel,
   sessionId: string,
+  navigate?: (href: string) => void,
 ): Promise<void> {
   if (entries.length === 0 || !remotePanel.path) return;
   for (const entry of entries) {
     const localPath = joinRemotePath(localPanel.path, entry.name);
-    await enqueueUploadAndShow(sessionId, localPath, remotePanel.path);
+    await enqueueUploadAndShow(sessionId, localPath, remotePanel.path, "ask", navigate);
   }
 }
 
@@ -403,10 +410,11 @@ async function handleDownload(
   remotePanel: FilePanel,
   localPanel: FilePanel,
   sessionId: string,
+  navigate?: (href: string) => void,
 ): Promise<void> {
   if (entries.length === 0 || !localPanel.path) return;
   for (const entry of entries) {
     const remotePath = joinRemotePath(remotePanel.path, entry.name);
-    await enqueueDownloadAndShow(sessionId, remotePath, localPanel.path);
+    await enqueueDownloadAndShow(sessionId, remotePath, localPanel.path, "ask", navigate);
   }
 }

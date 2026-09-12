@@ -39,15 +39,15 @@ import {
   countConnections,
   nodeKey,
   useFilteredTree,
-} from "@/app/hooks/use-connections";
-import type { useConnections } from "@/app/hooks/use-connections";
-import { useUiStore } from "@/stores/ui";
+} from "@/stores/connections";
+import type { ConnectionsStore } from "@/stores/connections";
 import { confirmDialog, promptDialog } from "@/components/app-dialogs";
 import { cn } from "@/lib/utils";
 import type { ConnectionNodeDto } from "@/types";
+import { useRouter } from "next/navigation";
 
-/** useConnections 的返回形状(避免重复声明)。 */
-type ConnectionsApi = ReturnType<typeof useConnections>;
+/** useConnectionsStore 的返回形状(避免重复声明)。 */
+type ConnectionsApi = ConnectionsStore;
 
 /** droppable 根级容器的固定 ID。 */
 const ROOT_DROPPABLE_ID = "root";
@@ -65,6 +65,7 @@ function resolveTargetGroup(overId: string | null): string | null | undefined {
  * @param api useConnections 的返回值
  */
 export function ConnectionTree({ api }: { api: ConnectionsApi }) {
+  const router = useRouter();
   const [keyword, setKeyword] = useState("");
   const filtered = useFilteredTree(api.tree, keyword);
   const total = countConnections(api.tree);
@@ -111,7 +112,7 @@ export function ConnectionTree({ api }: { api: ConnectionsApi }) {
           size="icon"
           className="size-8 shrink-0"
           title="新建连接"
-          onClick={() => useUiStore.getState().openEditDialog(null)}
+          onClick={() => router.push("/connections/new")}
         >
           <Plus className="size-4" />
         </Button>
@@ -156,6 +157,7 @@ export function ConnectionTree({ api }: { api: ConnectionsApi }) {
                     node={node}
                     api={api}
                     forceExpand={searching}
+                    router={router}
                   />
                 ))}
                 {filtered.length === 0 && (
@@ -228,13 +230,17 @@ function TreeNode({
   node,
   api,
   forceExpand,
+  router,
 }: {
   node: ConnectionNodeDto;
   api: ConnectionsApi;
   forceExpand: boolean;
+  router: ReturnType<typeof useRouter>;
 }) {
-  const openEdit = (connId: string | null) =>
-    useUiStore.getState().openEditDialog(connId);
+  const openEdit = (connId: string | null) => {
+    if (connId === null) router.push("/connections/new");
+    else router.push(`/connections/edit?id=${connId}`);
+  };
   if (node.kind === "group") {
     const expanded = forceExpand || !api.collapsed.has(node.id);
     return (
@@ -253,6 +259,7 @@ function TreeNode({
                 node={child}
                 api={api}
                 forceExpand={forceExpand}
+                router={router}
               />
             ))}
           </ul>

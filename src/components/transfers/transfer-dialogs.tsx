@@ -1,5 +1,7 @@
 /**
- * 传输相关弹窗:冲突决策(F6)+ chmod 九宫格(F7)。
+ * 传输相关弹窗:chmod 九宫格(F7)。
+ *
+ * 传输冲突决策已迁路由:/transfers/[taskId]/conflict(原 TransferConflictDialog 浮层)。
  */
 "use client";
 
@@ -14,65 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { respondTransferConflict } from "@/app/api";
-import { useTransferStore } from "@/stores/transfer";
 import { useUiStore } from "@/stores/ui";
-import type { ConflictDecision } from "@/types";
-
-/** 冲突决策弹窗:由 ui store 的 conflictTaskId 驱动(引擎 awaiting_conflict → 弹框)。 */
-export function TransferConflictDialog() {
-  const conflictTaskId = useUiStore((s) => s.conflictTaskId);
-  const setConflictTaskId = useUiStore((s) => s.setConflictTaskId);
-  const byId = useTransferStore((s) => s.byId);
-  const [applyToRemaining, setApplyToRemaining] = useState(false);
-
-  const open = conflictTaskId !== null;
-  const task = open ? byId[conflictTaskId] : undefined;
-
-  /** 应答并关闭。 */
-  const answer = async (decision: ConflictDecision) => {
-    if (!conflictTaskId) return;
-    await respondTransferConflict(conflictTaskId, decision, applyToRemaining);
-    setConflictTaskId(null);
-    setApplyToRemaining(false);
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(next) => !next && setConflictTaskId(null)}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle>目标已存在同名文件</DialogTitle>
-        </DialogHeader>
-        <div className="grid gap-2 text-sm">
-          {task && (
-            <p className="break-all text-xs text-muted-foreground">
-              {task.direction === "upload" ? task.remotePath : task.localPath}
-            </p>
-          )}
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Checkbox
-              checked={applyToRemaining}
-              onCheckedChange={(checked) => setApplyToRemaining(checked === true)}
-            />
-            对剩余冲突应用同样选择
-          </label>
-        </div>
-        <DialogFooter className="grid grid-cols-4 gap-1">
-          <Button variant="outline" onClick={() => setConflictTaskId(null)}>
-            取消
-          </Button>
-          <Button variant="outline" onClick={() => void answer("skip")}>
-            跳过
-          </Button>
-          <Button variant="outline" onClick={() => void answer("rename")}>
-            保留两者
-          </Button>
-          <Button onClick={() => void answer("overwrite")}>覆盖</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 /** chmod 弹窗属性。 */
 export interface ChmodDialogProps {

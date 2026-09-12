@@ -9,6 +9,7 @@
 
 import type { ReactNode } from "react";
 import { useCallback, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   BarChart3,
@@ -35,7 +36,7 @@ const TREE_MAX_PCT = 80;
 export function Sidebar({ children }: { children: ReactNode }) {
   const collapsed = useUiStore((s) => s.sidebarCollapsed);
   const toggle = useUiStore((s) => s.toggleSidebar);
-  const setQuickConnectOpen = useUiStore((s) => s.setQuickConnectOpen);
+  const router = useRouter();
 
   if (collapsed) {
     return (
@@ -55,7 +56,7 @@ export function Sidebar({ children }: { children: ReactNode }) {
           size="icon"
           className="size-8"
           title="快速连接 (Ctrl+Shift+C)"
-          onClick={() => setQuickConnectOpen(true)}
+          onClick={() => router.push("/quick-connect")}
         >
           <Zap className="size-4" />
         </Button>
@@ -129,7 +130,7 @@ function UpdateButton({ collapsed = false }: { collapsed?: boolean }) {
   const status = useUpdateStore((s) => s.status);
   const latest = useUpdateStore((s) => s.latest);
   const current = useUpdateStore((s) => s.currentVersion);
-  const setOpen = useUiStore((s) => s.setUpdateDialogOpen);
+  const router = useRouter();
 
   const isAvailable = status === "available";
   const title = isAvailable && latest
@@ -142,7 +143,7 @@ function UpdateButton({ collapsed = false }: { collapsed?: boolean }) {
       size="icon"
       className={collapsed ? "size-8" : "size-7"}
       title={title}
-      onClick={() => setOpen(true)}
+      onClick={() => router.push("/update")}
       data-testid="update-button"
       data-update-available={isAvailable ? "true" : "false"}
     >
@@ -236,13 +237,13 @@ function SidebarBody({ children }: { children: ReactNode }) {
 
 /** 底部:快速连接 + 设置。 */
 function SidebarFooter() {
-  const setQuickConnectOpen = useUiStore((s) => s.setQuickConnectOpen);
+  const router = useRouter();
   return (
     <div className="grid shrink-0 gap-1 border-t p-2">
       <Button
         size="sm"
         className="w-full justify-start text-xs"
-        onClick={() => setQuickConnectOpen(true)}
+        onClick={() => router.push("/quick-connect")}
       >
         <Zap className="size-4" />
         快速连接
@@ -254,7 +255,7 @@ function SidebarFooter() {
         size="sm"
         variant="ghost"
         className="w-full justify-start text-xs"
-        onClick={() => window.location.assign("/settings")}
+        onClick={() => router.push("/settings")}
       >
         <Settings className="size-4" />
         设置

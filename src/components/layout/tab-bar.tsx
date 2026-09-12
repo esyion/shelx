@@ -5,10 +5,10 @@
 
 import { Button } from "@/components/ui/button";
 import { Plus, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { requestCloseTab, statusDotClass, useTabsStore } from "@/stores/tabs";
 import { useSessionsStore } from "@/stores/sessions";
-import { useUiStore } from "@/stores/ui";
 
 /** 标签栏。 */
 export function TabBar() {
@@ -17,7 +17,7 @@ export function TabBar() {
   const setActive = useTabsStore((s) => s.setActive);
   const closeTab = useTabsStore((s) => s.closeTab);
   const sessionsById = useSessionsStore((s) => s.byId);
-  const setQuickConnectOpen = useUiStore((s) => s.setQuickConnectOpen);
+  const router = useRouter();
 
   return (
     <div
@@ -79,7 +79,7 @@ export function TabBar() {
         size="icon"
         className="mb-0.5 size-7 shrink-0"
         title="新建标签 (Ctrl+T)"
-        onClick={() => setQuickConnectOpen(true)}
+        onClick={() => router.push("/quick-connect")}
       >
         <Plus className="size-4" />
       </Button>
