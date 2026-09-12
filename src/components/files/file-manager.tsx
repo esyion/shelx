@@ -1,12 +1,10 @@
 /**
- * 双栏文件管理器(PRD §6.4):左=本地、右=远程;虚拟列表、面包屑、右键菜单、拖拽。
- * 底部面板内嵌入;连接后自动进入远端主目录。
+ * 双栏文件管理器(PRD §6.4):左=本地、右=远程;虚拟列表、面包屑、右键菜单。
+ * 系统级拖放由 AppShell 唯一监听,此处不重复注册。
  */
 "use client";
 
 import { useCallback, useEffect } from "react";
-import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import type { UnlistenFn } from "@tauri-apps/api/event";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -22,8 +20,6 @@ import {
   createRemoteDir,
   deleteLocalEntries,
   deleteRemoteEntries,
-  enqueueDownload,
-  enqueueUpload,
   listLocalEntries,
   listRemoteEntries,
   localHomePath,
@@ -33,14 +29,20 @@ import {
 } from "@/app/api";
 import { isGatewayError } from "@/gateway";
 import { useFilePanel, type FilePanel, type SortKey } from "@/app/hooks/use-file-panel";
+import { useFilePathsStore } from "@/stores/file-paths";
 import { useUiStore } from "@/stores/ui";
-import { useTransferStore } from "@/stores/transfer";
+import {
+  enqueueDownloadAndShow,
+  enqueueUploadAndShow,
+} from "./transfer-enqueue";
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { FileEntry } from "@/types";
 
 /** 双栏文件管理器属性。 */
 export interface FileManagerProps {
+  /** 所属标签 ID(用于回写面板路径到 store,供窗口级拖放定位)。 */
+  tabId: string;
   /** 当前标签的会话 ID(null = 标签尚无会话)。 */
   sessionId: string | null;
 }
@@ -52,9 +54,8 @@ function joinRemotePath(dir: string, name: string): string {
 }
 
 /** 双栏文件管理器。 */
-export function FileManager({ sessionId }: FileManagerProps) {
+export function FileManager({ tabId, sessionId }: FileManagerProps) {
   const toast = useUiStore((s) => s.toast);
-  const setConflictTaskId = useUiStore((s) => s.setConflictTaskId);
 
   // 本地面板 fetcher(路径入、entries 出)
   const localFetcher = useCallback((path: string) => listLocalEntries(path), []);
@@ -84,35 +85,18 @@ export function FileManager({ sessionId }: FileManagerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  // 拖拽上传:Tauri onDragDrop 监听(经全局窗口事件)
+  // 把当前面板路径写回 store:AppShell 窗口级拖放据此定位远端目标目录。
   useEffect(() => {
-    if (!sessionId) return;
-    let unlisten: UnlistenFn | undefined;
-    void getCurrentWebviewWindow()
-      .onDragDropEvent((event) => {
-        if (event.payload.type === "drop") {
-          const paths = event.payload.paths;
-          if (paths.length > 0 && remote.path) {
-            for (const localPath of paths) {
-              void enqueueUpload(sessionId, localPath, remote.path, "ask", (evt) => {
-                useTransferStore.getState().upsert(evt);
-                if (evt.status === "awaiting_conflict") {
-                  useUiStore.getState().setConflictTaskId(evt.taskId);
-                }
-              }).then((result) => {
-                toast(`已入队上传(${result.count} 个文件)`);
-              }).catch((err) => {
-                toast(isGatewayError(err) ? err.message : "上传入队失败", "error");
-              });
-            }
-          }
-        }
-      })
-      .then((fn) => {
-        unlisten = fn;
-      });
-    return () => unlisten?.();
-  }, [sessionId, remote.path, toast]);
+    useFilePathsStore.getState().setLocal(tabId, local.path || null);
+  }, [tabId, local.path]);
+  useEffect(() => {
+    useFilePathsStore.getState().setRemote(tabId, remote.path || null);
+  }, [tabId, remote.path]);
+  useEffect(() => {
+    return () => {
+      useFilePathsStore.getState().clear(tabId);
+    };
+  }, [tabId]);
 
   if (!sessionId) {
     return (
@@ -128,13 +112,13 @@ export function FileManager({ sessionId }: FileManagerProps) {
         side="local"
         panel={local}
         sessionId={sessionId}
-        onUpload={(entries) => void handleUpload(entries, local, remote, sessionId, toast, setConflictTaskId)}
+        onUpload={(entries) => void handleUpload(entries, local, remote, sessionId)}
       />
       <FilePane
         side="remote"
         panel={remote}
         sessionId={sessionId}
-        onDownload={(entries) => void handleDownload(entries, remote, local, sessionId, toast, setConflictTaskId)}
+        onDownload={(entries) => void handleDownload(entries, remote, local, sessionId)}
       />
     </div>
   );
@@ -405,24 +389,11 @@ async function handleUpload(
   localPanel: FilePanel,
   remotePanel: FilePanel,
   sessionId: string,
-  toast: (msg: string, variant?: "info" | "error") => void,
-  setConflict: (taskId: string) => void,
 ): Promise<void> {
   if (entries.length === 0 || !remotePanel.path) return;
   for (const entry of entries) {
     const localPath = joinRemotePath(localPanel.path, entry.name);
-    try {
-      const result = await enqueueUpload(sessionId, localPath, remotePanel.path, "ask", (evt) => {
-        useTransferStore.getState().upsert(evt);
-        if (evt.status === "awaiting_conflict") {
-          setConflict(evt.taskId);
-        }
-      });
-      toast(`已入队「${entry.name}」(${result.count} 个任务)`);
-      useUiStore.getState().toggleBottomPanel();
-    } catch (err) {
-      toast(isGatewayError(err) ? err.message : "上传入队失败", "error");
-    }
+    await enqueueUploadAndShow(sessionId, localPath, remotePanel.path);
   }
 }
 
@@ -432,23 +403,10 @@ async function handleDownload(
   remotePanel: FilePanel,
   localPanel: FilePanel,
   sessionId: string,
-  toast: (msg: string, variant?: "info" | "error") => void,
-  setConflict: (taskId: string) => void,
 ): Promise<void> {
   if (entries.length === 0 || !localPanel.path) return;
   for (const entry of entries) {
     const remotePath = joinRemotePath(remotePanel.path, entry.name);
-    try {
-      const result = await enqueueDownload(sessionId, remotePath, localPanel.path, "ask", (evt) => {
-        useTransferStore.getState().upsert(evt);
-        if (evt.status === "awaiting_conflict") {
-          setConflict(evt.taskId);
-        }
-      });
-      toast(`已入队「${entry.name}」(${result.count} 个任务)`);
-      useUiStore.getState().toggleBottomPanel();
-    } catch (err) {
-      toast(isGatewayError(err) ? err.message : "下载入队失败", "error");
-    }
+    await enqueueDownloadAndShow(sessionId, remotePath, localPanel.path);
   }
 }

@@ -5,6 +5,8 @@
 
 import { useEffect, useRef } from "react";
 import { useEventListener } from "usehooks-ts";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import { ConnectionTree } from "@/components/connection/connection-tree";
 import { ConnectionDialog } from "@/components/connection/connection-dialog";
 import { QuickConnectDialog } from "@/components/connection/quick-connect-dialog";
@@ -27,9 +29,11 @@ import { initGbkEncoder } from "@/lib/codec";
 import { listenEvent, SESSION_EVENTS } from "@/gateway";
 import { useSessionsStore } from "@/stores/sessions";
 import { applyThemeClass, useSettingsStore } from "@/stores/settings";
+import { useFilePathsStore } from "@/stores/file-paths";
 import { requestCloseTab, useTabsStore } from "@/stores/tabs";
 import { useUiStore } from "@/stores/ui";
 import { useUpdateStore } from "@/stores/update";
+import { enqueueUploadAndShow } from "@/components/files/transfer-enqueue";
 import type { SessionStatusEvent } from "@/types";
 
 /**
@@ -63,6 +67,7 @@ export function AppShell() {
     void listSessionStatus().then((sessions) => {
       useSessionsStore.getState().upsertMany(sessions);
     });
+
     let unlistenStatus: (() => void) | undefined;
     void listenEvent<SessionStatusEvent>(
       SESSION_EVENTS.statusChanged,
@@ -88,9 +93,46 @@ export function AppShell() {
       unlistenStatus = unlisten;
     });
 
+    // 窗口级拖放上传:整窗口唯一监听,避免顶部/底部 FileManager
+    // 各注册一份造成的重复入队。
+    let unlistenDrop: UnlistenFn | undefined;
+    void getCurrentWebviewWindow()
+      .onDragDropEvent((event) => {
+        if (event.payload.type !== "drop") return;
+        const paths = event.payload.paths;
+        if (paths.length === 0) return;
+        const { activeTabId } = useTabsStore.getState();
+        if (!activeTabId) {
+          useUiStore.getState().toast("请先打开一个会话再拖入文件", "error");
+          return;
+        }
+        const sessionId =
+          useTabsStore.getState().tabs.find((t) => t.id === activeTabId)
+            ?.sessionId ?? null;
+        if (!sessionId) {
+          useUiStore.getState().toast("当前标签尚未建立会话", "error");
+          return;
+        }
+        const remotePath =
+          useFilePathsStore.getState().byTab[activeTabId]?.remote ?? null;
+        if (!remotePath) {
+          useUiStore
+            .getState()
+            .toast("请先切换到「文件」视图并进入目标远端目录", "error");
+          return;
+        }
+        for (const localPath of paths) {
+          void enqueueUploadAndShow(sessionId, localPath, remotePath);
+        }
+      })
+      .then((fn) => {
+        unlistenDrop = fn;
+      });
+
     return () => {
       media.removeEventListener("change", mediaHandler);
       unlistenStatus?.();
+      unlistenDrop?.();
     };
   }, []);
 

@@ -86,7 +86,7 @@ export function Workspace() {
                   <Centered text="正在建立会话…" />
                 ))}
               {tab.view === "files" && (
-                <FileManager sessionId={tab.sessionId} />
+                <FileManager tabId={tab.id} sessionId={tab.sessionId} />
               )}
             </div>
           );

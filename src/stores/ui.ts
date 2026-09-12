@@ -6,7 +6,14 @@ import { create } from "zustand";
 import { getLayout, saveLayout } from "@/app/api";
 
 /** 底部面板页签。 */
-export type BottomPanel = "hidden" | "sftp" | "transfers";
+export type BottomPanel = "hidden" | "transfers";
+
+/** 底部面板最小高度(px),低于此视为挤占主区。 */
+export const BOTTOM_PANEL_MIN_PX = 120;
+/** 底部面板最大高度占视口比例,防把主区挤没。 */
+export const BOTTOM_PANEL_MAX_RATIO = 0.7;
+/** 底部面板默认高度占视口比例。 */
+export const BOTTOM_PANEL_DEFAULT_RATIO = 0.3;
 
 /** 轻量 toast 条目。 */
 export interface ToastItem {
@@ -23,8 +30,10 @@ export interface UiStore {
   sidebarMonitorVisible: boolean;
   /** 侧栏上下分块比例(上半 %,1-99);null 用默认 60。 */
   sidebarSplit: number | null;
-  /** 底部面板当前页签(Ctrl+J 在 hidden/sftp 间切换)。 */
+  /** 底部面板当前页签(Ctrl+J 在 hidden/transfers 间切换)。 */
   bottomPanel: BottomPanel;
+  /** 底部面板像素高度;null = 启动前未持久化,使用默认比例。 */
+  bottomPanelHeight: number | null;
   /** 连接编辑对话框:打开时携带连接 ID(null=新建)。 */
   editDialogConnId: string | null | undefined;
   /** 快速连接对话框是否打开。 */
@@ -43,6 +52,10 @@ export interface UiStore {
   toggleSidebar(): void;
   /** 切换底部面板(Ctrl+J)。 */
   toggleBottomPanel(): void;
+  /** 显式打开底部面板到指定页签。 */
+  showBottomPanel(panel: Exclude<BottomPanel, "hidden">): void;
+  /** 调整底部面板高度(由拖拽回调驱动,内部钳制到 [min, max*视口])。 */
+  setBottomPanelHeight(px: number): void;
   /** 显示/隐藏侧栏下半监控块。 */
   toggleSidebarMonitor(): void;
   /** 设置侧栏上下分块比例(由受控 ResizablePanel 拖动回调驱动)。 */
@@ -75,6 +88,7 @@ function persistLayout(state: UiStore): void {
       sidebarMonitorVisible: state.sidebarMonitorVisible,
       sidebarSplit: state.sidebarSplit,
       bottomPanel: state.bottomPanel,
+      bottomPanelHeight: state.bottomPanelHeight,
     });
   }, 500);
 }
@@ -84,6 +98,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
   sidebarMonitorVisible: true,
   sidebarSplit: null,
   bottomPanel: "hidden",
+  bottomPanelHeight: null,
   editDialogConnId: undefined,
   quickConnectOpen: false,
   systemInfoSessionId: null,
@@ -108,6 +123,18 @@ export const useUiStore = create<UiStore>((set, get) => ({
       ) {
         patch.sidebarSplit = layout.sidebarSplit;
       }
+      if (
+        layout.bottomPanel === "hidden" ||
+        layout.bottomPanel === "transfers"
+      ) {
+        patch.bottomPanel = layout.bottomPanel;
+      }
+      if (
+        typeof layout.bottomPanelHeight === "number" &&
+        layout.bottomPanelHeight >= BOTTOM_PANEL_MIN_PX
+      ) {
+        patch.bottomPanelHeight = layout.bottomPanelHeight;
+      }
       if (Object.keys(patch).length > 0) set(patch);
     } catch {
       // 首启无布局文件属正常,静默忽略。
@@ -131,8 +158,26 @@ export const useUiStore = create<UiStore>((set, get) => ({
 
   toggleBottomPanel() {
     set((state) => ({
-      bottomPanel: state.bottomPanel === "hidden" ? "sftp" : "hidden",
+      bottomPanel: state.bottomPanel === "hidden" ? "transfers" : "hidden",
     }));
+    persistLayout(get());
+  },
+
+  showBottomPanel(panel) {
+    set({ bottomPanel: panel });
+    persistLayout(get());
+  },
+
+  setBottomPanelHeight(px) {
+    const maxPx =
+      typeof window !== "undefined"
+        ? Math.floor(window.innerHeight * BOTTOM_PANEL_MAX_RATIO)
+        : 600;
+    const clamped = Math.max(
+      BOTTOM_PANEL_MIN_PX,
+      Math.min(Math.round(px), maxPx),
+    );
+    set({ bottomPanelHeight: clamped });
     persistLayout(get());
   },
 
