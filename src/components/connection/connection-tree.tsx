@@ -24,6 +24,16 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ConnectionFormFields } from "@/app/connections/hooks/connection-form-fields";
+import { useConnectionForm } from "@/app/connections/hooks/use-connection-form";
 import { Input } from "@/components/ui/input";
 import {
   ChevronDown,
@@ -44,7 +54,6 @@ import type { ConnectionsStore } from "@/stores/connections";
 import { confirmDialog, promptDialog } from "@/components/app-dialogs";
 import { cn } from "@/lib/utils";
 import type { ConnectionNodeDto } from "@/types";
-import { useRouter } from "next/navigation";
 
 /** useConnectionsStore 的返回形状(避免重复声明)。 */
 type ConnectionsApi = ConnectionsStore;
@@ -65,7 +74,6 @@ function resolveTargetGroup(overId: string | null): string | null | undefined {
  * @param api useConnections 的返回值
  */
 export function ConnectionTree({ api }: { api: ConnectionsApi }) {
-  const router = useRouter();
   const [keyword, setKeyword] = useState("");
   const filtered = useFilteredTree(api.tree, keyword);
   const total = countConnections(api.tree);
@@ -73,6 +81,33 @@ export function ConnectionTree({ api }: { api: ConnectionsApi }) {
 
   /** 当前拖拽中的 draggable id(用于 DragOverlay 渲染预览)。 */
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  /** 连接表单弹窗状态:null = 新建模式;string = 编辑该连接。 */
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingConnId, setEditingConnId] = useState<string | null>(null);
+
+  /** 打开新建/编辑弹窗(connId = null 表示新建)。 */
+  const openForm = (connId: string | null) => {
+    setEditingConnId(connId);
+    setFormOpen(true);
+  };
+
+  /** 关闭弹窗。 */
+  const closeForm = () => setFormOpen(false);
+
+  /**
+   * 表单 state 始终存在;关闭时不传 connId,避免 useConnectionForm 空跑回填请求。
+   * 编辑模式下的回填由 hook 内部 useEffect 接管。
+   */
+  const connForm = useConnectionForm({
+    connId: formOpen ? editingConnId ?? undefined : undefined,
+  });
+
+  /** 保存成功 → 关闭弹窗。 */
+  const onSave = async () => {
+    const ok = await connForm.save();
+    if (ok) closeForm();
+  };
 
   /** 5px 阈值避免点击误触发拖拽;@dnd-kit 默认就是 5。 */
   const sensors = useSensors(
@@ -112,7 +147,7 @@ export function ConnectionTree({ api }: { api: ConnectionsApi }) {
           size="icon"
           className="size-8 shrink-0"
           title="新建连接"
-          onClick={() => router.push("/connections/new")}
+          onClick={() => openForm(null)}
         >
           <Plus className="size-4" />
         </Button>
@@ -157,7 +192,7 @@ export function ConnectionTree({ api }: { api: ConnectionsApi }) {
                     node={node}
                     api={api}
                     forceExpand={searching}
-                    router={router}
+                    onOpenForm={openForm}
                   />
                 ))}
                 {filtered.length === 0 && (
@@ -173,6 +208,41 @@ export function ConnectionTree({ api }: { api: ConnectionsApi }) {
           {activeId ? <DragPreview nodeKey={activeId} /> : null}
         </DragOverlay>
       </DndContext>
+
+      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {editingConnId ? "编辑连接" : "新建连接"}
+            </DialogTitle>
+            <DialogDescription>
+              {editingConnId ? "修改现有 SSH 连接配置" : "添加一个 SSH 连接"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="-mx-4 max-h-[60vh] space-y-3 overflow-y-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <ConnectionFormFields
+              form={connForm.form}
+              set={connForm.set}
+              isEdit={!!editingConnId}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={closeForm}
+              disabled={connForm.saving}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={() => void onSave()}
+              disabled={connForm.saving || connForm.loading}
+            >
+              {connForm.saving ? "保存中…" : "保存"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -201,7 +271,7 @@ function EmptyTree() {
       <p className="text-xs text-muted-foreground">
         还没有连接
         <br />
-        点击上方 + 新建,或用快速连接
+        点击上方 + 新建第一个连接
       </p>
     </div>
   );
@@ -230,16 +300,15 @@ function TreeNode({
   node,
   api,
   forceExpand,
-  router,
+  onOpenForm,
 }: {
   node: ConnectionNodeDto;
   api: ConnectionsApi;
   forceExpand: boolean;
-  router: ReturnType<typeof useRouter>;
+  onOpenForm: (connId: string | null) => void;
 }) {
   const openEdit = (connId: string | null) => {
-    if (connId === null) router.push("/connections/new");
-    else router.push(`/connections/edit?id=${connId}`);
+    onOpenForm(connId);
   };
   if (node.kind === "group") {
     const expanded = forceExpand || !api.collapsed.has(node.id);
@@ -259,7 +328,7 @@ function TreeNode({
                 node={child}
                 api={api}
                 forceExpand={forceExpand}
-                router={router}
+                onOpenForm={onOpenForm}
               />
             ))}
           </ul>
