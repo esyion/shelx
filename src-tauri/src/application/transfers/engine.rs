@@ -47,9 +47,13 @@ pub(super) async fn run_task(
                 finish(service, record, TransferStatus::Cancelled, Some(reason));
                 return;
             }
-            Ok(Outcome::Target { local, remote }) => {
+            Ok(Outcome::Target {
+                local,
+                remote,
+                overwrite,
+            }) => {
                 set_status(service, record, TransferStatus::Transferring);
-                match transfer(service, record, &local, &remote).await {
+                match transfer(service, record, &local, &remote, overwrite).await {
                     Ok(()) => {
                         finish(service, record, TransferStatus::Completed, None);
                         return;
@@ -75,8 +79,13 @@ pub(super) async fn run_task(
 enum Outcome {
     /// 跳过(冲突决策为 Skip)。
     Skipped(String),
-    /// 临时目标(local/remote 之一为 .partial 路径)。
-    Target { local: String, remote: String },
+    /// 临时目标(local/remote 之一为 .partial 路径);overwrite 记录
+    /// 同名冲突已决策为"覆盖"(收尾需先删旧目标,见 transfer)。
+    Target {
+        local: String,
+        remote: String,
+        overwrite: bool,
+    },
 }
 
 /// 准备:确保父目录 → 计算总量 → 冲突预检与决策。
@@ -95,6 +104,7 @@ async fn prepare(
             set_total(record, size);
             let channel = sftp_channel(service, record).await?;
             ensure_parent_remote(&*channel, &record.remote()).await?;
+            let mut overwrite = false;
             if channel
                 .file_size(&record.remote())
                 .await
@@ -102,7 +112,10 @@ async fn prepare(
                 .flatten()
                 .is_some()
             {
-                match resolve_conflict(service, record, *policy).await? {
+                let decision = resolve_conflict(service, record, *policy).await?;
+                // 决策写回任务策略:自动重试沿用已答复结果,不再重复询问。
+                *policy = ConflictPolicy::from(decision);
+                match decision {
                     ConflictDecision::Skip => {
                         return Ok(Outcome::Skipped("已跳过(同名保留远端)".into()));
                     }
@@ -110,12 +123,13 @@ async fn prepare(
                         let renamed = unique_remote(&*channel, &record.remote()).await;
                         record.set_remote(renamed);
                     }
-                    ConflictDecision::Overwrite => {}
+                    ConflictDecision::Overwrite => overwrite = true,
                 }
             }
             Ok(Outcome::Target {
                 local: record.local(),
                 remote: format!("{}{PARTIAL_SUFFIX}", record.remote()),
+                overwrite,
             })
         }
         TransferDirection::Download => {
@@ -126,6 +140,7 @@ async fn prepare(
                 .map_err(|e| e.to_string())?
                 .ok_or("远端文件不存在")?;
             set_total(record, size);
+            let mut overwrite = false;
             if service
                 .local
                 .file_size(&record.local())
@@ -133,7 +148,10 @@ async fn prepare(
                 .flatten()
                 .is_some()
             {
-                match resolve_conflict(service, record, *policy).await? {
+                let decision = resolve_conflict(service, record, *policy).await?;
+                // 同上传:决策持久化,自动重试不重复询问。
+                *policy = ConflictPolicy::from(decision);
+                match decision {
                     ConflictDecision::Skip => {
                         return Ok(Outcome::Skipped("已跳过(同名保留本地)".into()));
                     }
@@ -141,7 +159,7 @@ async fn prepare(
                         let renamed = unique_local(service, &record.local());
                         record.set_local(renamed);
                     }
-                    ConflictDecision::Overwrite => {}
+                    ConflictDecision::Overwrite => overwrite = true,
                 }
             }
             if let Some(parent) = parent_of(&record.local()) {
@@ -153,17 +171,20 @@ async fn prepare(
             Ok(Outcome::Target {
                 local: format!("{}{PARTIAL_SUFFIX}", record.local()),
                 remote: record.remote(),
+                overwrite,
             })
         }
     }
 }
 
-/// 传输主体:分块顺序拷贝(底层按确认窗口流水线化)。
+/// 传输主体:分块顺序拷贝(底层按确认窗口流水线化);
+/// overwrite 时收尾先删旧目标再改名(SFTP v3/Windows rename 目标存在即失败)。
 async fn transfer(
     service: &Arc<TransferService>,
     record: &Arc<TaskRecord>,
     local_path: &str,
     remote_path: &str,
+    overwrite: bool,
 ) -> Result<(), String> {
     let start = Instant::now();
     let mut last_emit = Instant::now() - PROGRESS_STEP;
@@ -226,9 +247,25 @@ async fn transfer(
         }
     }
     // 分片 → 最终名(原子改名;失败视为传输错误触发重试)。
+    // SFTP v3(SSH_FXP_RENAME)与 Windows rename 在目标已存在时都会失败;
+    // 覆盖语义下先删旧目标再改名:无 posix-rename 扩展时,窗口期目标短暂
+    // 缺席是协议约束下的固有权衡(见 TECHNICAL_DESIGN §6.4)。
     match record.direction {
         TransferDirection::Upload => {
             let channel = sftp_channel(service, record).await?;
+            if overwrite
+                && channel
+                    .file_size(&record.remote())
+                    .await
+                    .ok()
+                    .flatten()
+                    .is_some()
+            {
+                channel
+                    .remove_file(&record.remote())
+                    .await
+                    .map_err(|e| format!("远端覆盖删除失败:{e}"))?;
+            }
             channel
                 .rename(
                     &format!("{}{PARTIAL_SUFFIX}", record.remote()),
@@ -238,6 +275,19 @@ async fn transfer(
                 .map_err(|e| e.to_string())?;
         }
         TransferDirection::Download => {
+            if overwrite
+                && service
+                    .local
+                    .file_size(&record.local())
+                    .ok()
+                    .flatten()
+                    .is_some()
+            {
+                service
+                    .local
+                    .remove_file(&record.local())
+                    .map_err(|e| format!("本地覆盖删除失败:{e}"))?;
+            }
             service
                 .local
                 .rename(

@@ -262,6 +262,97 @@ async fn conflict_keep_both_renames_remote() {
     );
 }
 
+/// 下载冲突 Ask→覆盖:fake 本地 rename 遵循 Windows 语义(目标存在即失败),
+/// 覆盖必须先删旧目标再改名;内容为新值且无分片残留(M4-FIX4 回归)。
+#[tokio::test]
+async fn conflict_download_overwrite_replaces_local() {
+    let fixture = setup().await;
+    fixture
+        .sftp
+        .channel
+        .seed_file("/srv/app.json", b"new content");
+    fixture.local.seed_file("/dl/app.json", b"old content");
+
+    let ids = fixture
+        .service
+        .enqueue_download(
+            &fixture.session_id,
+            "/srv/app.json",
+            "/dl",
+            ConflictPolicy::Ask,
+            fixture.sink.clone(),
+        )
+        .await
+        .unwrap();
+    wait_for(&fixture, &ids[0], TransferStatus::AwaitingConflict).await;
+    fixture.service.respond_conflict(
+        &ids[0],
+        crate::application::transfers::ConflictDecision::Overwrite,
+        false,
+    );
+    wait_for(&fixture, &ids[0], TransferStatus::Completed).await;
+    assert_eq!(
+        fixture.local.file_bytes("/dl/app.json"),
+        Some(b"new content".to_vec())
+    );
+    assert!(fixture
+        .local
+        .file_bytes("/dl/app.json.shelx-partial")
+        .is_none());
+}
+
+/// 上传冲突答复"覆盖"后注入一次首块失败:自动重试必须沿用已答复决策,
+/// 不得再次进入冲突等待(复现"覆盖后弹窗反复出现"的回归,M4-FIX4)。
+#[tokio::test]
+async fn conflict_overwrite_retry_reuses_decision() {
+    let fixture = setup().await;
+    fixture
+        .sftp
+        .channel
+        .seed_file("/dst/app.json", b"old content");
+    fixture.local.seed_file("/src/app.json", b"new content");
+
+    let ids = fixture
+        .service
+        .enqueue_upload(
+            &fixture.session_id,
+            "/src/app.json",
+            "/dst",
+            ConflictPolicy::Ask,
+            fixture.sink.clone(),
+        )
+        .await
+        .unwrap();
+    wait_for(&fixture, &ids[0], TransferStatus::AwaitingConflict).await;
+    // 任务停在冲突等待,尚未打开 partial:预置 partial 单元并注入一次首块失败。
+    let partial = "/dst/app.json.shelx-partial";
+    fixture.sftp.channel.seed_file(partial, b"");
+    if let Some(cell) = fixture.sftp.channel.file_cell(partial) {
+        cell.lock().expect("fake 文件锁").fail_appends = 1;
+    }
+    fixture.service.respond_conflict(
+        &ids[0],
+        crate::application::transfers::ConflictDecision::Overwrite,
+        false,
+    );
+    wait_for(&fixture, &ids[0], TransferStatus::Completed).await;
+
+    assert_eq!(
+        fixture.sftp.channel.file_bytes("/dst/app.json"),
+        Some(b"new content".to_vec())
+    );
+    assert!(fixture.sftp.channel.file_bytes(partial).is_none());
+    let asks = fixture
+        .sink
+        .events
+        .lock()
+        .expect("进度锁")
+        .iter()
+        .filter(|e| e.status == "awaiting_conflict")
+        .count();
+    assert_eq!(asks, 1, "自动重试不得再次询问冲突决策");
+}
+
 /// 目录上传:同组多任务,嵌套文件全部落远端且目录已确保。
 #[tokio::test]
 async fn directory_upload_walks_group() {
@@ -308,8 +399,14 @@ async fn transient_failure_retries_to_success() {
         .local
         .seed_file("/src/flaky.bin", b"0123456789abcdef");
 
-    // 预置远端写入目标的首块失败(FakeTransferStream.open 时注入)。
-    // 实现:先手动建立 partial 单元并置 fail_appends = 1。
+    // 入队前预置 partial 单元并注入一次首块失败:
+    // fake 的 open_write_stream 按 TRUNCATE 语义复用既有单元,
+    // 注入必然在首次传输时触发,重试时计数已耗尽。
+    let partial = "/dst/flaky.bin.shelx-partial";
+    fixture.sftp.channel.seed_file(partial, b"");
+    if let Some(cell) = fixture.sftp.channel.file_cell(partial) {
+        cell.lock().expect("fake 文件锁").fail_appends = 1;
+    }
     let ids = fixture
         .service
         .enqueue_upload(
@@ -321,17 +418,6 @@ async fn transient_failure_retries_to_success() {
         )
         .await
         .unwrap();
-    // 注入点:任务尚未开写前抢占 partial 单元不可行(faker 每次开写新建),
-    // 改为直接在 fake sftp 上预置 partial 单元并以 fail 计数注入。
-    // —— open_write_stream 总是新建单元,故注入改为:目标路径预置失败计数?
-    // 简化:通过 fake 的 file_cell 在任务进入 transferring 前设置不可行,
-    // 因此本用例改为验证"重试后仍可成功"的宏观行为:
-    // 直接消耗一次失败(预置同名 partial 单元带 fail)。
-    let partial = "/dst/flaky.bin.shelx-partial";
-    fixture.sftp.channel.seed_file(partial, b"");
-    if let Some(cell) = fixture.sftp.channel.file_cell(partial) {
-        cell.lock().expect("fake 文件锁").fail_appends = 1;
-    }
     wait_for(&fixture, &ids[0], TransferStatus::Completed).await;
     assert_eq!(
         fixture.sftp.channel.file_bytes("/dst/flaky.bin"),

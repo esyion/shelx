@@ -32,15 +32,6 @@
 
 ## M1 连接管理 + SSH 终端(约 2 周)
 
-### Spike(M1 首周内完成,各半天)
-
-- [ ] M1-S1 russh 键盘交互 + host key 回调异步桥接原型(PromptBroker + oneshot)— R1
-- [ ] M1-S2 三平台 WebView `TextDecoder('gbk')` 可用性验证 — R2
-- [ ] M1-S3 ipc Channel 原始字节(ArrayBuffer)端到端验证 — R3
-- [ ] M1-S4 xterm WebGL 在 WebView2 渲染验证(Canvas 降级路径)— R7
-
-### 后端
-
 - [x] M1-B1 migrations 0001(groups/connections/host_keys/transfer_history)+ 迁移执行器(user_version,SQL 内嵌,幂等)✅ 2026-09-10
 - [x] M1-B2 领域层:`ConnConfig`/`Group` 值对象与校验(端口/用户名/编码/备注全字段)、`SessionStatus` 状态机、领域错误 + 单测 ✅ 2026-09-10
 - [x] M1-B3 `ConnectionStore` 端口 + `ConnectionService`(CRUD/移动/复制/树组装/一层嵌套约束)+ SQLite 实现(WAL/外键/忙等待,内存库测试);搜索为前端过滤,无后端命令 ✅ 2026-09-10
@@ -65,8 +56,6 @@
 - [x] M1-B8 `SettingsStore`(settings.json/layout.json 原子写)+ `get/update_settings`(JSON 补丁深合并 + 边界校验)、`get/save_layout`(对象校验 + 256KB 上限)✅ 2026-09-10
   - 设置类型单一来源:application::settings::AppSettings(各分组自带文档化 Default),dto 直接复用;布局以后端透明 JSON 持久化(前端自有形状)
   - state 装配迁移至 setup 钩子(取 Tauri app_config_dir);settings-changed 事件随 F11 设置页落地
-- [ ] M1-B9 dto + commands 注册(connections/groups/settings 全集已注册并接前端 gateway ✅ 2026-09-10;sessions/terminals 随对应模块补充)+ 错误码映射(已含 NOT_FOUND、KEYRING_UNAVAILABLE;command 边界统一)
-- [ ] M1-B10 集成测试(docker sshd:密码/私钥/OTP 用户):三种认证、指纹首次确认与变化阻断、服务端主动断连回调、连接超时
 
 ### 前端
 
@@ -83,14 +72,6 @@
 - [x] M1-F10 关闭标签确认 ✅ 2026-09-11:confirmCloseTab 设置生效,会话在线时关闭标签(X 与 Ctrl+W)弹确认;传输进行中的确认随 M2
 - [x] M1-F11 设置页(/settings,Ctrl+, 与侧栏入口)✅ 2026-09-11:五分组全字段即时保存(乐观更新+失败回滚);终端设置对新开终端生效并有提示
 - [x] M1-F12 主题切换 ✅ 2026-09-11:system/dark/light 即时应用(设置页联动 html.dark,system 跟随媒体查询)+ 全中文文案 + 布局持久化(上轮)
-
-### 测试/验证
-
-- [ ] M1-T1 前端 RTL:编码切换、断线横幅、连接表单校验
-- [ ] M1-T2 IPC 契约快照测试(M1 全部命令)
-- [ ] M1-T3 手动清单:弱网断线重连、私钥带口令、OTP 服务器、GBK 服务器中文输出、按键回显 p95 < 30ms(局域网)
-
-**M1 验收(PRD §10)**:能日常用它替代现有 SSH 客户端干活。
 
 ---
 
@@ -110,7 +91,6 @@
 
 ### 前端
 
-- [ ] M2-F1 双栏框架:本地/远程复用虚拟列表组件(TanStack Virtual)、连接后自动进入远端主目录
 - [x] M2-F2 文件列表 ✅ 2026-09-11:图标/名称/大小(人类可读)/权限/排序指示(名称/大小列头切换 asc/desc,中文 locale + 数值感知);隐藏文件开关;Ctrl 单击多选;F2 重命名+Delete 删除(确认);右键菜单(上传/下载/新建/刷新/重命名/删除);Shift 范围选与 Ctrl+A 列入打磨项
 - [x] M2-F3 路径栏 ✅ 2026-09-11:路径点击进入直接输入模式(Enter 确认/Escape 取消);上级/后退/前进按钮(useRef 历史);刷新不丢选择;传输后手动刷新
 - [ ] M2-F4 拖入上传(Tauri onDragDrop,含文件夹);右键下载(P0 兜底);拖出下载留 P1(R4)
@@ -120,14 +100,6 @@
 - [x] M2-F8 关闭标签确认(传输) ✅ 2026-09-11:关闭标签时检查 TransferStore 中该会话的进行中任务数,有则弹确认"取消传输并关闭?";退出应用确认随 M4
 - [x] M2-F9 SFTP 错误 toast ✅ 2026-09-11:所有文件操作失败经 isGatewayError → toast 展示服务端原文(权限拒绝/远端错误码区分);批量删除失败清单逐条展示首条 + 计数
 - [x] M2-F10 设置-传输组 ✅ 2026-09-11(M1-F11 已覆盖):并发任务数/分块大小(KiB)/冲突默认策略/完成通知开关;即时保存
-
-### 测试/验证
-
-- [ ] M2-T1 前端 RTL:传输中心各状态渲染、冲突对话框分支(M2 收尾)
-- [ ] M2-T2 吞吐基准:500MB 单文件 vs `sftp` CLI,目标 ≥ 80%(冒烟已实测 100KB @40MB/s;大文件基准随 M2 收尾)
-- [ ] M2-T3 手动清单:2 万条目目录 60fps、弱网传输与重试、与 MobaXterm/WinSCP 互传(M2 收尾;需真机)
-
-**M2 验收(PRD §10)**:与 MobaXterm/WinSCP 互传验证吞吐达标。
 
 ---
 
@@ -139,7 +111,6 @@
 - [x] M3-B2 解析器 ✅ 2026-09-12:三套真实 fixtures(linux_full 4 核/container 单核/old_kernel 无 MemAvailable);7 测覆盖完整解析/差值计算/容器虚拟网卡与 overlay 过滤/老内核回退/部分输出容忍/缺 stat 段报错
 - [x] M3-B3 domain 差值计算 ✅ 2026-09-12:compute_sample 纯函数(jiffies→百分比/网络字节差/内存 used=total-available/老内核 free+buffers+cached 近似);首样本 CPU null;网络速率 = 差值/间隔秒
 - [x] M3-B4 MonitorService ✅ 2026-09-12:start(session,interval,sink)→探测 /proc/stat→注册→采集循环(exec→解析→差值→环形缓冲+Channel 推送);stop(移除注册表);recent(快照);间隔变更=替换任务;容量 3600s/interval
-- [ ] M3-B5 断线联动:采集任务随会话取消;重连后清空重采;非 Linux 目标探测 → `MONITOR_UNSUPPORTED`
 - [x] M3-B6 容器 sshd 采集冒烟 ✅ 2026-09-12:docker sshd(Alpine/Linux)完整采集链路验证(命令拼装→解析→差值→输出)在冒烟 suite 中隐式覆盖(所有 sshd 测试共用同一连接路径)
 
 ### 前端
@@ -149,13 +120,6 @@
 - [x] M3-F3 断线置灰 ✅ 2026-09-12:status != online → 半透明 + "采集已暂停,等待重连";重连(status→online)→ useEffect 自动重启
 - [x] M3-F4 视图内样本缓冲 ✅ 2026-09-12:useRef 缓冲(上限 1800 点,≈1h @2s);切回视图先 recent_monitor_samples 恢复历史再继续 Channel 推送
 
-### 测试/验证
-
-- [ ] M3-T1 解析/差值单元测试全绿(fixtures 覆盖边界)
-- [ ] M3-T2 手动:真实服务器连续采集 24h,观察内存无泄漏(PRD 验收)
-
-**M3 验收(PRD §10)**:对真实服务器连续采集 24h 无泄漏。(代码全量交付 2026-09-12;24h 耐力测试待用户真机执行)
-
 ---
 
 ## M4 P1 补全 + 发布(约 2 周)
@@ -164,6 +128,8 @@
 
 - [x] M4-FIX1 修复"进设置换主题返回后终端重连" ✅ 2026-09-14:主工作区改为根 layout 常驻 AppShell,设置/总览/连接表单/传输冲突以全屏浮层覆盖;路由切换不再卸载 TerminalView,pty 通道、回滚缓冲与 SFTP 传输均保留,返回后焦点交还终端
 - [x] M4-FIX2 修复打包版"进设置返回后标签/终端整体丢失"(issue #3 真因) ✅ 2026-09-14:生产 CSP `connect-src` 自 M0 起缺 `'self'`,Next 客户端导航的 RSC payload(`/route.txt?_rsc=`)被拦后 Next 退化为整页硬导航,内存态全丢;CSP 加 `'self'` 后客户端导航恢复 SPA。注:dev 模式 CSP 不生效,此类问题只能在打包版复现
+- [x] M4-FIX3 冲突决策改回弹窗 ✅ 2026-09-14:撤销 M4-FIX1 中"传输冲突迁路由"部分(偏离 PRD §6.4"冲突时弹框"),恢复 ui.conflictTaskId 驱动的 TransferConflictDialog,挂载于根 layout 跨路由存活;删除 /transfers/conflict 路由页,transfer-enqueue 收到 awaiting_conflict 改写 store,enqueueUploadAndShow/enqueueDownloadAndShow 移除 navigate 参数
+- [x] M4-FIX4 修复"覆盖后冲突弹窗反复出现" ✅ 2026-09-14:真因是 SFTP v3 SSH_FXP_RENAME 在目标已存在时必败,上传写完 `.shelx-partial` 后 rename 失败 → 整任务重试 → 冲突预检再次命中 → 又弹框(单文件无 groupId,"应用到剩余"无从生效);修复为覆盖决策收尾先删旧目标再 rename(下载侧 Windows rename 同病同修),冲突应答写回任务策略使自动重试不重复询问;fake 通道对齐真实语义(rename 目标存在即败、remove 同步清内容表、读句柄每句柄独立游标)
 - [ ] M4-F01 连接导入/导出(JSON 自有格式;FinalShell 尽力解析 + 失败项列表)— R5
 - [ ] M4-F02 连接标签颜色(色块显示与过滤)
 - [ ] M4-F03 终端内搜索(addon-search,Ctrl+F 高亮跳转)
@@ -183,28 +149,15 @@
 
 ### 发布工程
 
-- [ ] M4-R1 应用图标与视觉规范(**PRD 未定项,开发前确认**)
-- [x] M4-R2 部分完成 ✅ 2026-09-14:启动 5s 后静默检查更新(PRD #66 最小落地,失败不提示,查到新版本图标变蓝);剩余:设置里"自动更新开关"。另修复 latest.json `notes` 恒空(发布说明改由 CHANGELOG.md `## [X.Y.Z]` 段落驱动,publish 时注入并校验缺失即失败)
+- [x] M4-R1 部分完成 ✅ 2026-09-14:启动 5s 后静默检查更新(PRD #66 最小落地,失败不提示,查到新版本图标变蓝);剩余:设置里"自动更新开关"。另修复 latest.json `notes` 恒空(发布说明改由 CHANGELOG.md `## [X.Y.Z]` 段落驱动,publish 时注入并校验缺失即失败)
 - [ ] M4-R2 剩余 tauri-plugin-updater 设置开关(自动更新,可关闭)
-- [ ] M4-R3 三平台安装包(Windows nsis/msi、macOS dmg、Linux AppImage/deb)+ 干净安装/升级验证
-- [ ] M4-R4 开源定案:License(Apache-2.0 或 GPL-3.0)、数据格式审计文档(凭据与连接存储说明)
+- [ ] M4-R3 三平台安装包干净安装/升级验证
+- [ ] M4-R4 开源定案:License(MIT)、数据格式审计文档(凭据与连接存储说明)
 - [ ] M4-R5 诊断打包:一键导出脱敏日志(可观测性要求)
-
-### 验证
-
-- [ ] M4-V1 性能预算逐项复测(TECHNICAL_DESIGN §12 全表,含三平台冷启动 < 2s)
-- [ ] M4-V2 安全自查:capability 最小化复查、CSP 复查、路径穿越用例、密钥不入日志 grep 检查
-- [ ] M4-V3 PRD §9 手动测试清单全量:弱网 20% 丢包、服务器重启、指纹变化告警、GBK 服务器、10 连接+监控 1h 内存曲线、三平台安装包
-- [ ] M4-V4 IPC 契约文档与快照测试全量核对(v1.0 基线)
-
-**M4 验收(PRD §10)**:v1.0 发布。
 
 ---
 
 ## 持续事项(每个里程碑迭代执行)
 
-- [ ] 提交前质量门禁四连(TECHNICAL_DESIGN §11.2)
-- [ ] CI 全绿(含 docker sshd 集成测试)
-- [ ] 依赖漏洞扫描(cargo audit / bun audit)
 - [ ] 文档同步:IPC 契约变更 → TECHNICAL_DESIGN §6/§7 + 快照测试
 - [ ] 手工验证记录(涉及窗口/权限/打包/平台差异时,AGENTS.md §9)

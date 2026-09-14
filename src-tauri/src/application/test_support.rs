@@ -1,6 +1,7 @@
 //! 应用层共享测试基建:内存 fake 端口与构造辅助(仅测试编译)。
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::application::connections::{ConnectionDraft, ConnectionService};
@@ -467,6 +468,19 @@ impl crate::application::ports::SftpChannel for FakeSftpChannel {
         old_path: &str,
         new_path: &str,
     ) -> Result<(), crate::application::ports::TransportError> {
+        // SFTP v3 语义:目标已存在时 rename 失败(draft-ietf-secsh-filexfer-02 §6.5),
+        // 与未启用 posix-rename 扩展的真实服务端一致。
+        if self
+            .state
+            .files
+            .lock()
+            .expect("fake sftp 锁")
+            .contains_key(new_path)
+        {
+            return Err(crate::application::ports::TransportError::RemoteFs(
+                "rename 目标已存在(SFTP v3 语义)".into(),
+            ));
+        }
         let split = |path: &str| match path.rfind('/') {
             Some(0) => ("/".to_owned(), path[1..].to_owned()),
             Some(index) => (path[..index].to_owned(), path[index + 1..].to_owned()),
@@ -511,6 +525,8 @@ impl crate::application::ports::SftpChannel for FakeSftpChannel {
         if let Some(children) = dirs.get_mut(&parent) {
             children.retain(|e| e.name != name);
         }
+        drop(dirs);
+        self.state.files.lock().expect("fake sftp 锁").remove(path);
         Ok(())
     }
 
@@ -558,13 +574,23 @@ impl crate::application::ports::SftpChannel for FakeSftpChannel {
         Box<dyn crate::application::ports::TransferStream>,
         crate::application::ports::TransportError,
     > {
-        let cell = new_cell(&[]);
-        self.state
-            .files
-            .lock()
-            .expect("fake sftp 锁")
-            .insert(path.to_owned(), cell.clone());
-        Ok(Box::new(FakeTransferStream { cell }))
+        // TRUNCATE 打开语义:复用既有内容单元(保留 fail_appends 等注入),
+        // 清空内容并复位游标,与真实通道一致,保证失败注入确定触发。
+        let cell = {
+            let mut files = self.state.files.lock().expect("fake sftp 锁");
+            let cell = files.get(path).cloned().unwrap_or_else(|| new_cell(&[]));
+            files.insert(path.to_owned(), cell.clone());
+            cell
+        };
+        {
+            let mut file = cell.lock().expect("fake 文件锁");
+            file.bytes.clear();
+            file.position = 0;
+        }
+        Ok(Box::new(FakeTransferStream {
+            cell,
+            read_pos: AtomicUsize::new(0),
+        }))
     }
 
     async fn open_read_stream(
@@ -584,7 +610,10 @@ impl crate::application::ports::SftpChannel for FakeSftpChannel {
             .ok_or_else(|| {
                 crate::application::ports::TransportError::RemoteFs("远端文件不存在".into())
             })?;
-        Ok(Box::new(FakeTransferStream { cell }))
+        Ok(Box::new(FakeTransferStream {
+            cell,
+            read_pos: AtomicUsize::new(0),
+        }))
     }
 
     async fn file_size(
@@ -617,6 +646,8 @@ pub struct FakeFileState {
 /// fake 传输流。
 pub struct FakeTransferStream {
     cell: FakeFileCell,
+    /// 每句柄独立读游标(真实句柄语义:重开从头读,互不干扰)。
+    read_pos: AtomicUsize,
 }
 
 #[async_trait::async_trait]
@@ -641,11 +672,13 @@ impl crate::application::ports::TransferStream for FakeTransferStream {
         buf: &mut Vec<u8>,
         max: usize,
     ) -> Result<usize, crate::application::ports::TransportError> {
-        let mut state = self.cell.lock().expect("fake 文件锁");
+        let state = self.cell.lock().expect("fake 文件锁");
+        let pos = self.read_pos.load(Ordering::SeqCst);
+        let end = (pos + max).min(state.bytes.len());
         buf.clear();
-        let end = (state.position + max).min(state.bytes.len());
-        buf.extend_from_slice(&state.bytes[state.position..end]);
-        state.position = end;
+        buf.extend_from_slice(&state.bytes[pos..end]);
+        drop(state);
+        self.read_pos.store(end, Ordering::SeqCst);
         Ok(buf.len())
     }
 
@@ -713,15 +746,17 @@ fn new_cell(bytes: &[u8]) -> FakeFileCell {
 /// fake 本地句柄。
 struct FakeLocalHandle {
     cell: FakeFileCell,
+    /// 每句柄独立读游标(真实 File 语义:重开从头读)。
+    read_pos: usize,
 }
 
 impl crate::application::ports::LocalFile for FakeLocalHandle {
     fn read_chunk(&mut self, buf: &mut Vec<u8>, max: usize) -> Result<(), String> {
-        let mut state = self.cell.lock().expect("fake 文件锁");
+        let state = self.cell.lock().expect("fake 文件锁");
         buf.clear();
-        let end = (state.position + max).min(state.bytes.len());
-        buf.extend_from_slice(&state.bytes[state.position..end]);
-        state.position = end;
+        let end = (self.read_pos + max).min(state.bytes.len());
+        buf.extend_from_slice(&state.bytes[self.read_pos..end]);
+        self.read_pos = end;
         Ok(())
     }
 
@@ -804,7 +839,7 @@ impl crate::application::ports::LocalFs for FakeLocalFs {
             .get(path)
             .cloned()
             .ok_or("本地文件不存在")?;
-        Ok(Box::new(FakeLocalHandle { cell }))
+        Ok(Box::new(FakeLocalHandle { cell, read_pos: 0 }))
     }
 
     fn create_write(
@@ -817,11 +852,15 @@ impl crate::application::ports::LocalFs for FakeLocalFs {
             .expect("fake local 锁")
             .files
             .insert(path.to_owned(), cell.clone());
-        Ok(Box::new(FakeLocalHandle { cell }))
+        Ok(Box::new(FakeLocalHandle { cell, read_pos: 0 }))
     }
 
     fn rename(&self, old_path: &str, new_path: &str) -> Result<(), String> {
         let mut state = self.state.lock().expect("fake local 锁");
+        // Windows 语义:目标已存在时 rename 失败(std::fs::rename 实际行为)。
+        if state.files.contains_key(new_path) {
+            return Err("rename 目标已存在(Windows 语义)".into());
+        }
         let Some(cell) = state.files.remove(old_path) else {
             return Err("本地重命名源不存在".into());
         };

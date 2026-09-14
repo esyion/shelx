@@ -509,7 +509,7 @@ tracing 分级 info 默认;不记录密码/口令/密钥内容与完整指纹明
 
 桌面单窗口应用无多页面导航需求,路由保持最小集;路由内 hooks/api 经 gateway,不直接 invoke。
 
-**常驻外壳与浮层路由**:主工作区 UI 由根 layout 的 `AppShell` 常驻挂载(App Router layout 跨导航不重挂);`/settings`、`/overview`、连接表单、传输冲突等功能页由 layout 以全屏浮层(fixed inset-0)覆盖渲染。这样进入功能页不会卸载 `TerminalView`,终端 pty 通道、回滚缓冲与 SFTP 传输状态均保持;返回主页后焦点自动交还可见终端。`/` 路由本身渲染空内容,仅作为"无浮层"状态。
+**常驻外壳与浮层路由**:主工作区 UI 由根 layout 的 `AppShell` 常驻挂载(App Router layout 跨导航不重挂);`/settings`、`/overview`、连接表单等功能页由 layout 以全屏浮层(fixed inset-0)覆盖渲染。这样进入功能页不会卸载 `TerminalView`,终端 pty 通道、回滚缓冲与 SFTP 传输状态均保持;返回主页后焦点自动交还可见终端。`/` 路由本身渲染空内容,仅作为"无浮层"状态。传输冲突决策不迁路由,保持弹窗形态(PRD §6.4):`awaiting_conflict` 事件写入 ui store 的 `conflictTaskId`,由根 layout 挂载的 `TransferConflictDialog` 弹框收集四选决策。
 
 ### 8.2 gateway(`gateway/tauri.ts` + `index.ts`)
 
@@ -599,6 +599,10 @@ enqueue_upload(local, remoteDir, policy)
         可"应用到剩余") → respond_transfer_conflict
   → 全局队列(Semaphore 2) → Running:本地分块 32KiB,8 并发 write-at-offset
       写远端临时名 <name>.shelx-partial → 完成后 rename
+      (覆盖决策:先删旧目标再 rename —— SFTP v3 SSH_FXP_RENAME 与
+       Windows rename 在目标已存在时均失败;无 posix-rename 扩展时
+       删除与改名之间的短暂窗口为协议固有限制。冲突应答会写回任务
+       策略,自动重试沿用已答复决策,不重复弹框)
       进度 200ms 节流 → onProgress Channel
       网络类错误自动重试 2 次(指数退避)→ 仍败 → Failed(可手动 retry)
   取消 → CancellationToken → 保留 .shelx-partial(P1 断点续传基础)

@@ -8,9 +8,11 @@
  *   - 一次性初始化:布局恢复 / GBK 编码器 / 更新检查 / settings 加载与主题同步 /
  *     会话状态快照 / SESSION_EVENTS 订阅 / 窗口级拖放监听
  *   - 全局快捷键(主页生效分支,设置页只响应 Ctrl+,)
- *   - 事件驱动弹窗宿主:HostKey / AuthPrompt / AppDialogs(命令式 confirm/prompt)/ ToastHost
+ *   - 事件驱动弹窗宿主:HostKey / AuthPrompt / TransferConflict /
+ *     AppDialogs(命令式 confirm/prompt)/ ToastHost
  *
- * 已迁路由的弹窗(原 Dialog 浮层 → 真页面)不在此处挂载,见 TODO M4-F0x。
+ * 已迁路由的弹窗(连接表单/快速连接/系统信息/更新)不在此处挂载;
+ * 传输冲突决策保持弹窗形态(PRD §6.4"冲突时弹框")。
  */
 "use client";
 
@@ -28,6 +30,7 @@ import {
   HostKeyConfirmDialog,
 } from "@/components/connection/session-prompt-dialogs";
 import { AppDialogs } from "@/components/app-dialogs";
+import { TransferConflictDialog } from "@/components/transfers/transfer-dialogs";
 import { ToastHost } from "@/components/layout/toast-host";
 import { AppShell } from "@/components/layout/app-shell";
 import { listSessionStatus } from "@/app/api";
@@ -140,13 +143,7 @@ export default function RootLayout({
           return;
         }
         for (const localPath of paths) {
-          void enqueueUploadAndShow(
-            sessionId,
-            localPath,
-            remotePath,
-            "ask",
-            router.push,
-          );
+          void enqueueUploadAndShow(sessionId, localPath, remotePath, "ask");
         }
       })
       .then((fn) => {
@@ -236,7 +233,7 @@ export default function RootLayout({
           {/* 常驻工作区外壳:layout 跨导航不重挂,终端 pty 通道与
               SFTP/传输状态不因进入功能页而中断。 */}
           <AppShell />
-          {/* 功能页(设置/总览/连接表单/传输冲突)以全屏浮层覆盖工作区;
+          {/* 功能页(设置/总览/连接表单)以全屏浮层覆盖工作区;
               主页即外壳本身,children 为空。 */}
           {pathname !== "/" && (
             <div
@@ -251,6 +248,7 @@ export default function RootLayout({
           {/* 事件驱动弹窗与命令式服务(路由无关,跨路由存活) */}
           <HostKeyConfirmDialog />
           <AuthPromptDialog />
+          <TransferConflictDialog />
           <AppDialogs />
           <ToastHost />
         </ThemeProvider>

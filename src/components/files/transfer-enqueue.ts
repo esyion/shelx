@@ -1,9 +1,11 @@
 /**
  * 文件传输入队的统一封装:本地 → 远端 / 远端 → 本地共用同一段
- * "入队 + toast + 弹出传输中心 + 冲突跳路由" 流程,避免 AppProviders
+ * "入队 + toast + 弹出传输中心 + 冲突弹框" 流程,避免 AppProviders
  * 窗口级拖放与 FileManager 右键/双击上传出现重复监听或状态分叉。
  *
- * 路由化:冲突事件触发后,经 navigate 跳到 /transfers/[taskId]/conflict。
+ * 冲突决策:收到 `awaiting_conflict` 事件后写入 ui store 的
+ * conflictTaskId,由根 layout 挂载的 TransferConflictDialog 弹框收集决策
+ * (PRD §6.4)。
  */
 "use client";
 
@@ -15,27 +17,18 @@ import { isGatewayError } from "@/gateway";
 import { useTransferStore } from "@/stores/transfer";
 import { useUiStore } from "@/stores/ui";
 
-/** 路由跳转回调(由调用方注入 useRouter().push)。 */
-export type NavigateFn = (href: string) => void;
-
-/** 解析冲突路径(供调用方跳转)。 */
-export function conflictRoute(taskId: string): string {
-  return `/transfers/conflict?taskId=${taskId}`;
-}
-
 /** 上传:本地文件/目录 → 远端目录。 */
 export async function enqueueUploadAndShow(
   sessionId: string,
   localPath: string,
   remoteDir: string,
   conflictPolicy: "ask" | "overwrite" | "skip" | "rename" = "ask",
-  navigate?: NavigateFn,
 ): Promise<void> {
   try {
     const result = await enqueueUpload(sessionId, localPath, remoteDir, conflictPolicy, (evt) => {
       useTransferStore.getState().upsert(evt);
       if (evt.status === "awaiting_conflict") {
-        navigate?.(conflictRoute(evt.taskId));
+        useUiStore.getState().setConflictTaskId(evt.taskId);
       }
     });
     const name = basename(localPath);
@@ -55,13 +48,12 @@ export async function enqueueDownloadAndShow(
   remotePath: string,
   localDir: string,
   conflictPolicy: "ask" | "overwrite" | "skip" | "rename" = "ask",
-  navigate?: NavigateFn,
 ): Promise<void> {
   try {
     const result = await enqueueDownload(sessionId, remotePath, localDir, conflictPolicy, (evt) => {
       useTransferStore.getState().upsert(evt);
       if (evt.status === "awaiting_conflict") {
-        navigate?.(conflictRoute(evt.taskId));
+        useUiStore.getState().setConflictTaskId(evt.taskId);
       }
     });
     const name = basename(remotePath);

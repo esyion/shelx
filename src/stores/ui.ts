@@ -39,6 +39,8 @@ export interface UiStore {
   bottomPanelHeight: number | null;
   /** toast 列表。 */
   toasts: ToastItem[];
+  /** 待决策的传输冲突任务 ID；null = 无冲突弹窗（引擎 awaiting_conflict → 弹框，PRD §6.4）。 */
+  conflictTaskId: string | null;
   /** 启动时从后端恢复布局（幂等）。 */
   restoreLayout(): Promise<void>;
   /** 折叠/展开侧栏。 */
@@ -55,6 +57,8 @@ export interface UiStore {
   setSidebarSplit(value: number): void;
   /** 推送 toast（自动过期）。 */
   toast(message: string, variant?: ToastItem["variant"]): void;
+  /** 设置待决策冲突任务（null 关闭冲突弹窗）。 */
+  setConflictTaskId(taskId: string | null): void;
 }
 
 let toastSeq = 0;
@@ -81,6 +85,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
   bottomPanel: "hidden",
   bottomPanelHeight: null,
   toasts: [],
+  conflictTaskId: null,
 
   async restoreLayout() {
     try {
@@ -166,5 +171,9 @@ export const useUiStore = create<UiStore>((set, get) => ({
     setTimeout(() => {
       set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }));
     }, 4000);
+  },
+
+  setConflictTaskId(taskId) {
+    set({ conflictTaskId: taskId });
   },
 }));
