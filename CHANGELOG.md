@@ -34,6 +34,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   audit step is non-blocking (`continue-on-error: true`) until a
   high-severity advisory appears.
 
+## [0.2.12] - 2026-09-14
+
+### Fixed
+
+- **All tabs and terminals were lost after navigating to Settings (or any
+  page) and back in the packaged app** — the true root cause of issue #3.
+  The production CSP `connect-src` directive was missing `'self'`, so the
+  Next.js client router's RSC payload fetch (`/route.txt?_rsc=`) was blocked
+  and every cross-page navigation degraded into a full page reload, wiping
+  all in-memory state. Combined with the 0.2.10 resident-shell change,
+  navigation is now a true SPA: entering Settings/Overview/connection forms
+  keeps every terminal channel, scrollback and transfer intact.
+
 ## [0.2.11] - 2026-09-14
 
 ### Fixed

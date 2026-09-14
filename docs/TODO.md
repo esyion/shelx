@@ -163,6 +163,7 @@
 ### 功能补全(P1)
 
 - [x] M4-FIX1 修复"进设置换主题返回后终端重连" ✅ 2026-09-14:主工作区改为根 layout 常驻 AppShell,设置/总览/连接表单/传输冲突以全屏浮层覆盖;路由切换不再卸载 TerminalView,pty 通道、回滚缓冲与 SFTP 传输均保留,返回后焦点交还终端
+- [x] M4-FIX2 修复打包版"进设置返回后标签/终端整体丢失"(issue #3 真因) ✅ 2026-09-14:生产 CSP `connect-src` 自 M0 起缺 `'self'`,Next 客户端导航的 RSC payload(`/route.txt?_rsc=`)被拦后 Next 退化为整页硬导航,内存态全丢;CSP 加 `'self'` 后客户端导航恢复 SPA。注:dev 模式 CSP 不生效,此类问题只能在打包版复现
 - [ ] M4-F01 连接导入/导出(JSON 自有格式;FinalShell 尽力解析 + 失败项列表)— R5
 - [ ] M4-F02 连接标签颜色(色块显示与过滤)
 - [ ] M4-F03 终端内搜索(addon-search,Ctrl+F 高亮跳转)
