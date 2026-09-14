@@ -178,8 +178,15 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
       - name: Rewrite updater URLs to public release downloads
         uses: actions/github-script@v7
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
         with:
           script: |
             const { owner, repo } = context.repo;
@@ -214,6 +221,41 @@ jobs:
             const latest = JSON.parse(latestJson);
             if (!latest.platforms || typeof latest.platforms !== 'object') {
               core.setFailed('latest.json does not contain a valid platforms object.');
+              return;
+            }
+
+            // Release notes: CHANGELOG.md is the source of truth. Extract the
+            // section heading-matched for this tag (`## [X.Y.Z] ...`) and fail
+            // the release when missing/empty, so empty updater notes cannot ship.
+            const fs = require('fs');
+            const tag = process.env.RELEASE_TAG;
+            const version = tag.replace(/^v/, '');
+            const changelogLines = fs.readFileSync('CHANGELOG.md', 'utf8').split(/\r?\n/);
+            const headingIndex = changelogLines.findIndex(
+              (line) => /^##\s+/.test(line) && line.includes(`[${version}]`),
+            );
+            if (headingIndex === -1) {
+              core.setFailed(
+                `CHANGELOG.md has no "## [${version}]" section; add release notes for ${tag} before publishing.`,
+              );
+              return;
+            }
+            let sectionEnd = changelogLines.length;
+            for (let i = headingIndex + 1; i < changelogLines.length; i++) {
+              const line = changelogLines[i];
+              if (/^##\s+/.test(line) || /^\[[^\]]+\]:\s*/.test(line)) {
+                sectionEnd = i;
+                break;
+              }
+            }
+            const releaseNotes = changelogLines
+              .slice(headingIndex + 1, sectionEnd)
+              .join('\n')
+              .trim();
+            if (!releaseNotes) {
+              core.setFailed(
+                `The "## [${version}]" section in CHANGELOG.md is empty.`,
+              );
               return;
             }
 
@@ -253,6 +295,8 @@ jobs:
               rewrittenCount += 1;
             }
 
+            latest.notes = releaseNotes;
+
             const data = Buffer.from(`${JSON.stringify(latest, null, 2)}\n`, 'utf8');
             await github.rest.repos.deleteReleaseAsset({
               owner,
@@ -272,6 +316,21 @@ jobs:
             });
             core.info(
               `Rewrote ${rewrittenCount} updater URL(s) to public GitHub Release downloads.`,
+            );
+
+            const releaseBody = [
+              releaseNotes,
+              '',
+              'Download the asset that matches your operating system.',
+            ].join('\n');
+            await github.rest.repos.updateRelease({
+              owner,
+              repo,
+              release_id,
+              body: releaseBody,
+            });
+            core.info(
+              `Release body updated from CHANGELOG.md section [${version}].`,
             );
 
       - name: Publish release after all installers are uploaded

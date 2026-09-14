@@ -183,7 +183,8 @@
 ### 发布工程
 
 - [ ] M4-R1 应用图标与视觉规范(**PRD 未定项,开发前确认**)
-- [ ] M4-R2 tauri-plugin-updater 接入(自动更新开关,可关闭)
+- [x] M4-R2 部分完成 ✅ 2026-09-14:启动 5s 后静默检查更新(PRD #66 最小落地,失败不提示,查到新版本图标变蓝);剩余:设置里"自动更新开关"。另修复 latest.json `notes` 恒空(发布说明改由 CHANGELOG.md `## [X.Y.Z]` 段落驱动,publish 时注入并校验缺失即失败)
+- [ ] M4-R2 剩余 tauri-plugin-updater 设置开关(自动更新,可关闭)
 - [ ] M4-R3 三平台安装包(Windows nsis/msi、macOS dmg、Linux AppImage/deb)+ 干净安装/升级验证
 - [ ] M4-R4 开源定案:License(Apache-2.0 或 GPL-3.0)、数据格式审计文档(凭据与连接存储说明)
 - [ ] M4-R5 诊断打包:一键导出脱敏日志(可观测性要求)

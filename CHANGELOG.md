@@ -34,6 +34,27 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   audit step is non-blocking (`continue-on-error: true`) until a
   high-severity advisory appears.
 
+## [0.2.11] - 2026-09-14
+
+### Fixed
+
+- **Sidebar logo nearly invisible in light theme.** The wordmark was
+  hard-coded white; a light-theme variant (`shelx-light.svg`) is now
+  swapped in via the `dark:` class so both themes stay legible.
+- **Update dialog always said "no release notes".** `latest.json` was
+  generated with empty `notes` because tauri-action uploads into a
+  pre-created draft without body context. The publish job now extracts
+  the section for the released tag from this file, injects it into
+  `latest.json` and the release body, and fails the release if the
+  section is missing.
+
+### Added
+
+- **Silent update check on startup** (first step of PRD #66). About
+  five seconds after launch the app checks once in the background; the
+  sidebar icon turns blue when a newer release is found. Failures stay
+  silent, and manual checks keep their existing toast feedback.
+
 ## [0.2.1] - 2026-09-12
 
 ### Added
@@ -113,5 +134,6 @@ First publicly tagged release. Source-of-truth versions live in
   become blocking on the next minor.
 - No automatic updater wired yet (resolved in 0.2.1).
 
+[0.2.11]: https://github.com/esyion/shelx/releases/tag/v0.2.11
 [0.2.1]: https://github.com/esyion/shelx/releases/tag/v0.2.1
 [0.2.0]: https://github.com/esyion/shelx/releases/tag/v0.2.0
