@@ -67,6 +67,13 @@ export default function RootLayout({
 
     void initGbkEncoder();
     void useUpdateStore.getState().init();
+    // 启动静默检查更新(PRD #66 的最小落地):延时常驻初始化完成后执行,
+    // 避开启动期网络/IPC 竞争;返回值不 toast——查到新版本侧栏图标会变蓝,
+    // 失败或已是最新保持灰色,不打扰用户。用户手动检查仍走弹窗内带提示的路径。
+    const updateCheckTimer = setTimeout(() => {
+      const update = useUpdateStore.getState();
+      if (update.status === "idle") void update.checkNow();
+    }, 5_000);
     void useSettingsStore
       .getState()
       .load()
@@ -147,6 +154,7 @@ export default function RootLayout({
       });
 
     return () => {
+      clearTimeout(updateCheckTimer);
       unlistenStatus?.();
       unlistenDrop?.();
     };

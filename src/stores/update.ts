@@ -2,8 +2,9 @@
  * 应用内版本检测 store(AGENTS.md §4.1 表示层职责)。
  *
  * 与 transpop 的 `use-app-updater` 等价:
- *   - 启动时静默读取当前版本号,不自动检查;
- *   - 用户主动触发检查(弹窗内"重新检查"按钮);
+ *   - 启动时静默读取当前版本号;随后由根 layout 延时发起一次静默检查
+ *     (status 仍为 idle 时才执行),失败不提示,查到新版本仅驱动图标变蓝;
+ *   - 用户主动检查走弹窗(打开即查/「重新检查」按钮),结果由 UI toast;
  *   - 检查超时由 `@tauri-apps/plugin-updater` 的 `check({ timeout })` 接管,
  *     不在前端再发任何 GitHub fetch,从根本上规避 CSP / 状态机缺口。
  *

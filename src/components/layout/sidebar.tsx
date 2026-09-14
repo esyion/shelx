@@ -79,13 +79,24 @@ function SidebarHeader() {
 
   return (
     <div className="flex shrink-0 items-center justify-between px-3 py-2">
+      {/* logo 字标颜色随主题切换:<img> 引用的外部 SVG 穿不进页面 CSS
+          (currentColor/CSS 变量均无效),故用深浅两份资产按 .dark 类切换;
+          绿色提示符/光标为品牌色,两种主题共用。 */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/shelx-light.svg"
+        alt="shelx"
+        width={88}
+        height={28}
+        className="h-5 w-auto dark:hidden"
+      />
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src="/shelx.svg"
         alt="shelx"
         width={88}
         height={28}
-        className="h-5 w-auto"
+        className="hidden h-5 w-auto dark:block"
       />
       <div className="flex items-center gap-0.5">
         <UpdateButton />
@@ -120,8 +131,8 @@ function SidebarHeader() {
 /**
  * 侧栏上的更新按钮:
  *   - 默认灰色(opacity-40),无操作提示;
- *   - 检测到新版本时变彩色(opacity-100 + 蓝色 text-foreground),
- *     鼠标移上去提示具体版本号;
+ *   - 检测到新版本时变蓝(opacity-100 + text-blue-500),触发途径:
+ *     启动静默检查(layout 延时调用,失败不提示)或用户打开弹窗检查;
  *   - 点击打开更新对话框(详见 UpdateDialog)。
  */
 /** 弹窗正文行数上限,超过折叠并加省略号。 */
