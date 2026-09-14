@@ -1,7 +1,9 @@
 /**
- * 应用根 layout:HTML 骨架 + ThemeProvider + 全局副作用与事件驱动弹窗宿主。
+ * 应用根 layout:HTML 骨架 + 常驻工作区外壳 + ThemeProvider + 全局副作用与事件驱动弹窗宿主。
  *
  * 跨路由共享,所有路由可访问:
+ *   - 常驻外壳 <AppShell>:跨导航不重挂,功能页(设置等)以全屏浮层覆盖其上,
+ *     终端 pty 通道与 SFTP 会话不因路由切换中断
  *   - 主题:ThemeProvider(next-themes) + FOUC 防闪烁脚本内置
  *   - 一次性初始化:布局恢复 / GBK 编码器 / 更新检查 / settings 加载与主题同步 /
  *     会话状态快照 / SESSION_EVENTS 订阅 / 窗口级拖放监听
@@ -27,6 +29,7 @@ import {
 } from "@/components/connection/session-prompt-dialogs";
 import { AppDialogs } from "@/components/app-dialogs";
 import { ToastHost } from "@/components/layout/toast-host";
+import { AppShell } from "@/components/layout/app-shell";
 import { listSessionStatus } from "@/app/api";
 import { initGbkEncoder } from "@/lib/codec";
 import { listenEvent, SESSION_EVENTS } from "@/gateway";
@@ -222,7 +225,21 @@ export default function RootLayout({
           enableSystem
           storageKey="theme"
         >
-          {children}
+          {/* 常驻工作区外壳:layout 跨导航不重挂,终端 pty 通道与
+              SFTP/传输状态不因进入功能页而中断。 */}
+          <AppShell />
+          {/* 功能页(设置/总览/连接表单/传输冲突)以全屏浮层覆盖工作区;
+              主页即外壳本身,children 为空。 */}
+          {pathname !== "/" && (
+            <div
+              className="fixed inset-0 z-50 overflow-y-auto bg-background"
+              /* 浮层挂载即接管焦点,避免按键穿透到底下终端。 */
+              tabIndex={-1}
+              autoFocus
+            >
+              {children}
+            </div>
+          )}
           {/* 事件驱动弹窗与命令式服务(路由无关,跨路由存活) */}
           <HostKeyConfirmDialog />
           <AuthPromptDialog />

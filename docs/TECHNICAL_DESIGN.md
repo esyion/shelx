@@ -509,6 +509,8 @@ tracing 分级 info 默认;不记录密码/口令/密钥内容与完整指纹明
 
 桌面单窗口应用无多页面导航需求,路由保持最小集;路由内 hooks/api 经 gateway,不直接 invoke。
 
+**常驻外壳与浮层路由**:主工作区 UI 由根 layout 的 `AppShell` 常驻挂载(App Router layout 跨导航不重挂);`/settings`、`/overview`、连接表单、传输冲突等功能页由 layout 以全屏浮层(fixed inset-0)覆盖渲染。这样进入功能页不会卸载 `TerminalView`,终端 pty 通道、回滚缓冲与 SFTP 传输状态均保持;返回主页后焦点自动交还可见终端。`/` 路由本身渲染空内容,仅作为"无浮层"状态。
+
 ### 8.2 gateway(`gateway/tauri.ts` + `index.ts`)
 
 - 唯一 `invoke` / `Channel` / `listen` 出口;按域导出函数(`connections.list()`、`sessions.connect(id)`、`terminals.open(...)` 等)。
