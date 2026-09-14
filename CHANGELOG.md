@@ -34,6 +34,28 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   audit step is non-blocking (`continue-on-error: true`) until a
   high-severity advisory appears.
 
+## [0.2.13] - 2026-09-14
+
+### Fixed
+
+- **Transfers with the "overwrite" decision failed at the final rename.**
+  When a same-name conflict was resolved as overwrite, the finalize step
+  renamed the `.partial` file over the existing target, which SFTP v3
+  (and the Windows file API) rejects. The engine now deletes the old
+  target before renaming, and the answered decision is written back to
+  the task's conflict policy so automatic retries no longer re-open the
+  dialog.
+
+### Changed
+
+- **Transfer conflict prompt is a modal dialog again.** The
+  `transfers/conflict` route introduced in the earlier dialog-to-route
+  migration is removed; conflicts now resolve through a command-style
+  `TransferConflictDialog` driven by the UI store (`conflictTaskId`)
+  while the engine waits in `awaiting_conflict`.
+- **Global UI restyle to a Twitter-style theme** — refreshed semantic
+  color tokens in `globals.css` and root layout styling.
+
 ## [0.2.12] - 2026-09-14
 
 ### Fixed
