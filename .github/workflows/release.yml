@@ -323,10 +323,15 @@ jobs:
               '',
               'Download the asset that matches your operating system.',
             ].join('\n');
+            // tag_name must be passed explicitly: PATCHing a draft without it
+            // makes GitHub reset the tag to an "untagged-*" placeholder, and
+            // publishing then re-points the release away from the pushed tag
+            // (breaking every `releases/download/<tag>/...` updater URL).
             await github.rest.repos.updateRelease({
               owner,
               repo,
               release_id,
+              tag_name: tag,
               body: releaseBody,
             });
             core.info(
@@ -343,6 +348,9 @@ jobs:
               owner,
               repo,
               release_id,
+              // See the note in the rewrite step: PATCH without tag_name can
+              // reset the release tag to an "untagged-*" placeholder.
+              tag_name: context.ref.replace('refs/tags/', ''),
               draft: false,
             });
             core.info(`Published ${release.html_url}`);
