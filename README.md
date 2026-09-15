@@ -1,165 +1,122 @@
-# shelx
-
-<p align="left">
-  <img src="https://raw.githubusercontent.com/esyion/shelx/main/public/shelx.svg"
-       alt="shelx logo" width="222" />
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="public/shelx.svg">
+    <img src="public/shelx-light.svg" alt="shelx" height="40">
+  </picture>
 </p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tauri 2](https://img.shields.io/badge/Tauri-2-orange.svg)](https://v2.tauri.app/)
-[![Next.js 16](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org/)
-[![Rust 2021](https://img.shields.io/badge/Rust-2021-brown.svg)](https://www.rust-lang.org/)
-[![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088ff.svg)](.github/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/Release-GitHub_Releases-2088ff.svg)](https://github.com/esyion/shelx/releases)
+<p align="center">
+  <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-<br />
+<p align="center">
+  <a href="https://github.com/esyion/shelx/releases/latest"><img src="https://img.shields.io/github/v/release/esyion/shelx" alt="latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT"></a>
+</p>
 
-**shelx** is a single-window desktop client for the three jobs every
-operator does on a Linux box: open a shell, drag a file across, glance at
-the CPU. One SSH connection, three panels, no account, no telemetry, no
-phoning home.
+# shelx
 
-It is built for people who currently juggle Xshell for terminal,
-WinSCP for files, and a web panel for monitoring — same host, three
-tools, three copies of the credentials. shelx collapses that into one
-app that stays out of your way.
+SSH, a file pane, and a look at CPU. That's the whole app.
 
----
+I built this because SSH clients keep getting heavier, and most of that weight is stuff I never open. Tunnels, plugin stores, remote desktop, packet tools, five kinds of session log. Fine for someone. For me — and, I think, for about 80% of people who "need a terminal" — the daily loop is: connect, type, copy a file, glance at whether the box is dying. One window should be enough.
 
-## Why another client
+The layout is borrowed from [FinalShell](https://www.finalshell.net.cn/): connection tree on the left, tabs on top, and terminal / files / monitor sharing the same workspace. I sat in that arrangement for years. It still feels like the right one. Thanks, FinalShell.
 
-Most tools in this space make a deal with you. FinalShell is closed,
-ad-supported, and stores credentials in an opaque format. Xshell's free
-edition caps your tabs. The Electron-based options (Tabby, electerm,
-WindTerm) eat a gigabyte of RAM once you have a dozen hosts open and
-hand-wave their security model. None of them handle GBK-encoded Chinese
-server output gracefully, which is a daily annoyance if you work with
-older domestic Linux boxes.
-
-shelx takes the opposite trade. Everything is local. Credentials live in
-the OS keyring (with a documented AES-GCM fallback when the keyring is
-unavailable). The web view runs with a strict CSP and no remote scripts.
-There is no cloud sync, no account, no analytics endpoint, and no plugin
-runtime that could exfiltrate your terminal. The cost is that shelx
-deliberately does not do a lot of things.
-
-## What it does not do
-
-No zmodem / rz-sz. No Telnet, serial, RDP, or VNC. No jump-host chains
-or SSH agent forwarding. No built-in editor, no directory diff-sync, no
-threshold alerting, no history persistence, no team collaboration, no
-mobile, no Windows-server monitoring. If you need any of those, shelx is
-the wrong tool and that is fine.
-
----
-
-## What it looks like
-
-You open a saved host and the workspace shows three panels over the same
-connection. The tab strip across the top carries one colored dot per
-session: green online, amber connecting, red disconnected.
-
-**Terminal.** A full-window dark terminal with xterm.js inside. Tabs
-across the top, reconnect-on-disconnect, GBK encoding support so legacy
-Chinese servers don't render as mojibake.
-
-**Files.** A dual-pane browser — local on the left, remote on the right —
-with a breadcrumb path, a toolbar (up / refresh / new folder / new file /
-rename / delete / chmod / show hidden), drag-and-drop upload and
-download, and a transfer queue with retry and conflict handling.
-Right-clicking a file on the remote side opens a 3×3 read/write/execute
-grid that live-previews the resulting `rwxr-xr-x` octal.
-
-**Monitor.** A live dashboard pulled over the same SSH channel. A
-single-line system strip (hostname, kernel, uptime, current user), then
-a 2×2 grid of charts — CPU per-core area, memory stacked with a separate
-swap chart, network down/up dual-line with auto-scaled Y axis, load
-1/5/15 — and one progress-bar row per disk mount that turns amber over
-85% and red over 95%. Sample interval is configurable from 2 seconds to
-a minute.
-
-**Settings.** A single-column form, sectioned into cards: appearance,
-terminal, connection, transfer, monitor. Changes save immediately.
-
----
-
-## First-time security check
-
-When you connect to a host shelx has never seen, it pops up a dialog
-with the algorithm and SHA256 fingerprint, with the line "verify the
-fingerprint matches before continuing". On the server you run
-`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` and compare. This is
-the only trust moment that matters for an SSH client, and shelx does
-not bury it.
-
----
-
-## Get started in 30 seconds
-
-1. **Download** the installer for your platform from
-   [GitHub Releases](https://github.com/esyion/shelx/releases/latest).
-
-   | Platform | File |
-   | --- | --- |
-   | Windows | `shelx-<version>-Windows.msi` |
-   | macOS | `shelx-<version>-macOS.dmg` |
-   | Linux | `shelx-<version>-Linux.AppImage` or `.deb` |
-
-2. **Install** — run the MSI, drag the .app into `/Applications`, or
-   `chmod +x` the AppImage.
-
-3. **Open shelx.** The sidebar is empty. Click the lightning-bolt
-   "快速连接" button (or Ctrl+Shift+C / Ctrl+T) and fill in host, port,
-   username, and auth method (password, private key, keyboard-interactive
-   for OTP, or SSH agent). Confirm the fingerprint when prompted.
-
-4. **You're in.** The terminal tab opens. Alt+1 / Alt+2 / Alt+3 flips
-   between terminal, monitor, and files on the same connection.
-
-Save the connection from the same dialog if you want it in the sidebar
-for next time. Credentials go to the OS keyring, never plaintext on disk.
-
----
-
-## A few honest things you should know
-
-**macOS builds are not notarized yet.** Gatekeeper will block the first
-open. Two workarounds until Developer ID is wired in:
-
-```bash
-# option A — strip the quarantine attribute after copying
-xattr -dr com.apple.quarantine /Applications/shelx.app
-
-# option B — right-click the .app the first time, choose Open, confirm once
+```
+┌──────────────┬─────────────────────────────────┐
+│ connections  │  tabs                            │
+│              ├──────────────────────────────────┤
+│  tree        │  terminal  ·  files  ·  monitor  │
+│              ├──────────────────────────────────┤
+│  cpu / mem   │  transfers                       │
+└──────────────┴─────────────────────────────────┘
 ```
 
-**Linux packaging is not yet exercised in CI.** Windows and macOS are
-the primary build targets until the first batch of testers reports in.
-The AppImage and .deb do work, but expect rough edges on less-common
-distros.
+Desktop app for Windows, macOS, and Linux. The UI is Chinese right now.
 
-**The `rsa` crate is shipped despite an upstream advisory.**
-RUSTSEC-2023-0071 (Marvin Attack) affects the legacy `ssh-rsa` host-key
-algorithm. The upstream crate has no fixed release available, and the
-attack requires a network-positioned adversary against a client
-connecting to such a legacy server. shelx keeps the `rsa` feature on
-to stay compatible with those servers; users connecting to modern hosts
-(which default to `ssh-ed25519` and `rsa-sha2-256/512`) are unaffected.
-Tracked at <https://rustsec.org/advisories/RUSTSEC-2023-0071>.
+## Install
 
----
+Grab a build from [Releases](https://github.com/esyion/shelx/releases/latest):
 
-## Updates
+| Platform | File |
+| --- | --- |
+| Windows x64 | `*-setup.exe` (NSIS) |
+| macOS Apple Silicon | `*_aarch64.dmg` |
+| macOS Intel | `*_x64.dmg` |
+| Linux x64 | `.deb`, `.rpm`, or AppImage |
 
-shelx checks for new releases on GitHub and verifies them with a minisign
-signature. When a newer release is available, the sidebar's upload-arrow
-icon turns blue. Click it, read the release notes, hit "立即更新" — the
-app downloads, verifies, installs, and relaunches.
+Installers are not Apple / Microsoft signed yet. On macOS, if Gatekeeper blocks it: right-click → Open, or System Settings → Privacy & Security → Open Anyway.
 
----
+After install, shelx checks GitHub Releases on its own and verifies the package with minisign. When an update is out, the sidebar arrow turns blue.
+
+## SSH
+
+Double-click a host in the tree. Password, OpenSSH private key, keyboard-interactive (OTP), or ssh-agent. Empty key path tries `~/.ssh/id_ed25519`, then `id_ecdsa`, then `id_rsa`. On Windows, agent looks at `openssh-ssh-agent` first, then Pageant.
+
+First connect shows the SHA-256 host fingerprint and waits (TOFU). If that fingerprint later changes, the connection is refused — nothing silent. Keepalive is 30s by default, three misses and it's down.
+
+The terminal is xterm.js (WebGL when the GPU cooperates). Copy-on-select and right-click paste are on by default. `Ctrl` + wheel changes the font size. Encoding is UTF-8 or GBK per host, for older Chinese boxes. Disconnect keeps the buffer so you can still read and copy; a banner has the reconnect button.
+
+One SSH session carries the terminal, the file pane, and the monitor. Switching views does not tear down the pty.
+
+## Files
+
+Dual pane: local left, remote right. List, mkdir, rename (`F2`), delete (`Del`), show-hidden, sort by name or size. Drop files onto the window to upload into the current remote directory. Right-click to upload / download.
+
+Transfers go through a queue in the bottom panel (`Ctrl+J`): progress, speed, ETA, cancel, retry. Same-name conflicts ask you — overwrite, skip, or keep both. Default concurrency is 2. Failed transfers retry twice with backoff; cancelled ones leave a `.shelx-partial` file.
+
+## Monitor
+
+Linux servers only. It reads `/proc` over the same SSH connection — not an agent, not SNMP.
+
+CPU (total + per core), memory, swap, network, disks, load, uptime. Disk bars turn orange past 85% and red past 95%. Compact bars sit under the connection tree; the workspace view is charts. Sampling is 2 / 5 / 10 / 30 / 60 seconds. Non-Linux hosts say they aren't supported instead of inventing numbers.
+
+Connect also grabs hostname, kernel, distro, CPU model, and memory once, for the system-info dialog.
+
+## Connections
+
+The left tree is the address book. Groups, search, drag to rearrange. Right-click to connect, edit, clone, or delete. Clone copies the host, not the secrets.
+
+Passwords never go into SQLite. They go to the OS keyring (Keychain / Credential Manager / Secret Service). If the keyring isn't there, they land in an AES-GCM file under `~/.agents-plus/shelx`. You can also keep a password for this session only, or not save it at all.
+
+No jump host. No port forwarding. No plugin system. On purpose.
+
+## Shortcuts
+
+| Key | Action |
+| --- | --- |
+| `Ctrl+,` | Settings |
+| `Ctrl+B` | Sidebar |
+| `Ctrl+J` | Transfer panel |
+| `Ctrl+W` | Close tab |
+| `Ctrl+Tab` | Next tab |
+| `Alt+1` / `2` / `3` | Terminal / monitor / files |
+| `Ctrl` + mouse wheel | Terminal font size |
+
+Settings save as you change them: theme, font, scrollback, keepalive, transfer concurrency, conflict policy, sample interval. Window layout (sidebar split, panel height) is remembered.
+
+## Build
+
+Need [Rust](https://rustup.rs/), [Bun](https://bun.sh/), and the [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) for your OS.
+
+```bash
+git clone https://github.com/esyion/shelx.git
+cd shelx
+bun install
+bun tauri dev      # run
+bun tauri build    # installer
+```
+
+Data lives in `~/.agents-plus/shelx` (SQLite, logs, fallback secrets). Settings and layout go in the OS app-config directory (`com.krmeow.shelx`).
+
+Stack: Tauri 2, russh, russh-sftp, SQLite. Frontend is a Next.js static export with xterm.js and React.
+
+## Thanks
+
+The window is a straight nod to **FinalShell**. If you've used it, you'll know where everything is in about ten seconds.
+
+Bugs and ideas: [Issues](https://github.com/esyion/shelx/issues). How to hack on it: [CONTRIBUTING.md](CONTRIBUTING.md). Security reports go through [SECURITY.md](.github/SECURITY.md), not a public issue.
 
 ## License
 
-[MIT](LICENSE). Versions prior to 0.2.0 were internal iterations before
-the project was open-sourced; their changes are summarized in the
-[CHANGELOG](CHANGELOG.md) under 0.2.0.
+[MIT](LICENSE). © 2026 [esyion](https://github.com/esyion)
