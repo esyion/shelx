@@ -7,6 +7,48 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > Versions prior to `0.2.0` were internal iterations before the project
 > was open-sourced; their changes are summarized under "Unreleased / 0.2.0".
 
+## [0.2.15] - 2026-09-17
+
+### Changed
+
+- **Upgraded `rustls` to 0.23.45.** Pulled in via `cargo update` to pick
+  up the latest patch release of the TLS stack used by `reqwest` /
+  `rustls`. No behavioral or configuration changes.
+
+## [0.2.14] - 2026-09-17
+
+### Added
+
+- **Settings page now ships 8 built-in terminal color schemes.**
+  `GitHub Light`, `GitHub Dark`, `Dracula`, `One Dark`, `Solarized Light`,
+  `Solarized Dark`, `Monokai`, and `Tomorrow Night` are exposed via a
+  new `TerminalColorScheme` contract (Rust enum + matching frontend
+  type). Picking a scheme applies it to every already-open terminal
+  immediately, not only to tabs opened afterwards.
+- **Terminal preferences live in a dedicated data layer.**
+  `src/lib/terminal-prefs.ts` and `src/lib/terminal-schemes.ts` own the
+  palette tables and the user override; the Settings page splits into
+  `terminal-section.tsx` plus a shared `form-controls.tsx`, and
+  `page.tsx` shrinks accordingly. Old configs with `default` are
+  migrated to `GitHub Light` on read.
+- **Application-layer tests for the terminal scheme migration.**
+  `src-tauri/src/application/settings/tests.rs` covers the legacy
+  `default` → `GitHub Light` upgrade path so the contract change is
+  regression-protected.
+
+### Changed
+
+- **Development server moved from port 3000 to 56789.** Reduces the
+  chance of colliding with other local dev servers; production
+  builds and the bundled WebView are unaffected.
+
+### Docs
+
+- **README rewritten in English and Chinese.** Quick start, build,
+  signing-key setup, and the macOS `xattr` quarantine workaround are
+  now documented in both languages, with feature screenshots kept in
+  English.
+
 ## [Unreleased]
 
 ### Changed
@@ -169,6 +211,10 @@ First publicly tagged release. Source-of-truth versions live in
   become blocking on the next minor.
 - No automatic updater wired yet (resolved in 0.2.1).
 
+[0.2.15]: https://github.com/esyion/shelx/releases/tag/v0.2.15
+[0.2.14]: https://github.com/esyion/shelx/releases/tag/v0.2.14
+[0.2.13]: https://github.com/esyion/shelx/releases/tag/v0.2.13
+[0.2.12]: https://github.com/esyion/shelx/releases/tag/v0.2.12
 [0.2.11]: https://github.com/esyion/shelx/releases/tag/v0.2.11
 [0.2.1]: https://github.com/esyion/shelx/releases/tag/v0.2.1
 [0.2.0]: https://github.com/esyion/shelx/releases/tag/v0.2.0
