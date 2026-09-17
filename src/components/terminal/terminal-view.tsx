@@ -11,6 +11,7 @@ import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { FitAddon } from "@xterm/addon-fit";
+import { resolveTerminalTheme } from "@/lib/terminal-schemes";
 import { tryLoadWebglAddon } from "./webgl-addon";
 import {
   closeTerminal,
@@ -34,8 +35,12 @@ export interface TerminalViewProps {
 /** xterm 宿主组件:每实例对应一条 pty 通道。 */
 export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const terminalRef = useRef<Terminal | null>(null);
   const onlineEpoch = useSessionsStore((s) => s.onlineEpoch[sessionId] ?? 0);
   const status = useSessionsStore((s) => s.byId[sessionId]?.status);
+  const colorScheme = useSettingsStore(
+    (s) => s.settings?.terminal.colorScheme ?? "github_light",
+  );
 
   // xterm 实例与通道生命周期:随 online epoch 重建。
   useEffect(() => {
@@ -57,9 +62,10 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
       lineHeight: terminalPrefs?.lineHeight ?? 1.2,
       cursorStyle: terminalPrefs?.cursorStyle ?? "bar",
       scrollback: terminalPrefs?.scrollback ?? 5000,
-      theme: { background: "transparent" },
+      theme: resolveTerminalTheme(terminalPrefs?.colorScheme),
       allowProposedApi: true,
     });
+    terminalRef.current = terminal;
     const fit = new FitAddon();
     terminal.loadAddon(fit);
     terminal.open(host);
@@ -208,6 +214,7 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
         // 忽略二次 dispose 异常。
       }
       webglAddon = null;
+      terminalRef.current = null;
       try {
         fit.dispose();
       } catch {
@@ -216,6 +223,13 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
       terminal.dispose();
     };
   }, [sessionId, onlineEpoch, status, encoding]);
+
+  // 配色方案变化:仅热更新主题,不重建 pty 通道(WebGL 下同样生效)。
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    terminal.options.theme = resolveTerminalTheme(colorScheme);
+  }, [colorScheme]);
 
   return (
     <div className="relative h-full w-full bg-background">

@@ -41,6 +41,10 @@ fn service() -> SettingsService {
 fn returns_defaults_when_never_saved() {
     let settings = service().get().unwrap();
     assert_eq!(settings.terminal.scrollback, 5000);
+    assert_eq!(
+        settings.terminal.color_scheme,
+        super::TerminalColorScheme::GithubLight
+    );
     assert_eq!(settings.connection.keepalive_interval_secs, 30);
     assert_eq!(settings.transfer.max_concurrent_tasks, 2);
     assert_eq!(settings.monitor.default_interval_secs, 5);
@@ -88,6 +92,50 @@ fn unknown_fields_tolerated_and_type_mismatch_rejected() {
     assert!(svc
         .update(json!({ "terminal": { "fontSize": "大" } }))
         .is_err());
+}
+
+/// 配色方案补丁持久化;未知取值被拒绝且不落盘。
+#[test]
+fn color_scheme_patch_persists_and_unknown_rejected() {
+    let svc = service();
+    svc.update(json!({ "terminal": { "colorScheme": "dracula" } }))
+        .unwrap();
+    assert_eq!(
+        svc.get().unwrap().terminal.color_scheme,
+        super::TerminalColorScheme::Dracula
+    );
+    assert!(svc
+        .update(json!({ "terminal": { "colorScheme": "hotdog" } }))
+        .is_err());
+    assert_eq!(
+        svc.get().unwrap().terminal.color_scheme,
+        super::TerminalColorScheme::Dracula,
+        "拒绝后保持原值"
+    );
+}
+
+/// 旧版设置缺 colorScheme 或存有已移除的 "default"(跟随应用)时,回退 GitHub Light。
+#[test]
+fn legacy_settings_fall_back_to_github_light() {
+    let store = FakeSettingsStore::default();
+    *store.settings.lock().expect("settings 锁") =
+        Some(r#"{"terminal":{"fontSize":14}}"#.to_owned());
+    let svc = SettingsService::new(Box::new(store));
+    let settings = svc.get().unwrap();
+    assert_eq!(settings.terminal.font_size, 14);
+    assert_eq!(
+        settings.terminal.color_scheme,
+        super::TerminalColorScheme::GithubLight
+    );
+
+    let store = FakeSettingsStore::default();
+    *store.settings.lock().expect("settings 锁") =
+        Some(r#"{"terminal":{"colorScheme":"default"}}"#.to_owned());
+    let svc = SettingsService::new(Box::new(store));
+    assert_eq!(
+        svc.get().unwrap().terminal.color_scheme,
+        super::TerminalColorScheme::GithubLight
+    );
 }
 
 /// 布局:非对象拒绝;对象透传持久化并可读回。

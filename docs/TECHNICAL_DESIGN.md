@@ -392,7 +392,10 @@ TransferTask  { taskId, groupId?, sessionId, connId?, direction:'upload'|'downlo
                 status:'queued'|'preparing'|'awaiting_conflict'|'running'|'completed'|'failed'|'canceled',
                 speedBps?, error? }
 AppSettings   { appearance:{theme:'system'|'dark'|'light', language:'zh'|'en'},
-                terminal:{fontFamily, fontSize, lineHeight, cursorStyle, encoding,
+                terminal:{fontFamily, fontSize, lineHeight,
+                          colorScheme:'default'|'dracula'|'tokyo_night'|'one_dark'|'nord'|
+                                     'solarized_dark'|'solarized_light'|'github_light',
+                          cursorStyle, encoding,
                           scrollback, copyOnSelect, rightClickPaste, confirmCloseTab},
                 connection:{keepaliveIntervalSecs, defaultAuthMethod},
                 transfer:{maxConcurrentTasks, chunkSizeKiB, defaultConflictPolicy, notifyOnComplete},

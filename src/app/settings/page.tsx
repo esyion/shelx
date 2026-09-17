@@ -7,15 +7,15 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
-import { Switch } from "@/components/ui/switch";
 import { ArrowLeft } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSettingsStore } from "@/stores/settings";
 import { useUiStore } from "@/stores/ui";
 import { useUpdateStore } from "@/stores/update";
 import type { AppSettings } from "@/types";
+import { Row, Section, SwitchRow } from "./form-controls";
+import { TerminalSection } from "./terminal-section";
 
 /** 设置页。 */
 export default function SettingsPage() {
@@ -87,100 +87,7 @@ export default function SettingsPage() {
         </Row>
       </Section>
 
-      <Section title="终端" hint="对新开的终端生效;已开终端不受影响">
-        <Row label="字体">
-          <Input
-            className="w-64"
-            value={settings.terminal.fontFamily}
-            onChange={(e) => save({ terminal: { fontFamily: e.target.value } })}
-          />
-        </Row>
-        <div className="grid grid-cols-3 gap-3">
-          <Row label="字号 (px)">
-            <Input
-              inputMode="numeric"
-              value={settings.terminal.fontSize}
-              onChange={(e) =>
-                save({ terminal: { fontSize: Number(e.target.value) || 13 } })
-              }
-            />
-          </Row>
-          <Row label="行距">
-            <Input
-              inputMode="decimal"
-              value={settings.terminal.lineHeight}
-              onChange={(e) =>
-                save({
-                  terminal: { lineHeight: Number(e.target.value) || 1.2 },
-                })
-              }
-            />
-          </Row>
-          <Row label="回滚缓冲 (行)">
-            <Input
-              inputMode="numeric"
-              value={settings.terminal.scrollback}
-              onChange={(e) =>
-                save({
-                  terminal: { scrollback: Number(e.target.value) || 5000 },
-                })
-              }
-            />
-          </Row>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Row label="光标样式">
-            <NativeSelect
-              value={settings.terminal.cursorStyle}
-              onChange={(e) =>
-                save({
-                  terminal: {
-                    cursorStyle: e.target
-                      .value as AppSettings["terminal"]["cursorStyle"],
-                  },
-                })
-              }
-            >
-              <option value="bar">竖线</option>
-              <option value="block">块</option>
-              <option value="underline">下划线</option>
-            </NativeSelect>
-          </Row>
-          <Row label="默认编码">
-            <NativeSelect
-              value={settings.terminal.encoding}
-              onChange={(e) =>
-                save({
-                  terminal: {
-                    encoding: e.target
-                      .value as AppSettings["terminal"]["encoding"],
-                  },
-                })
-              }
-            >
-              <option value="utf-8">UTF-8</option>
-              <option value="gbk">GBK</option>
-            </NativeSelect>
-          </Row>
-        </div>
-        <SwitchRow
-          label="选中即复制"
-          checked={settings.terminal.copyOnSelect}
-          onChange={(v) => save({ terminal: { copyOnSelect: v } })}
-        />
-        <SwitchRow
-          label="右键粘贴"
-          hint="关闭后右键显示系统菜单"
-          checked={settings.terminal.rightClickPaste}
-          onChange={(v) => save({ terminal: { rightClickPaste: v } })}
-        />
-        <SwitchRow
-          label="关闭标签前确认"
-          hint="会话在线时关闭标签弹确认"
-          checked={settings.terminal.confirmCloseTab}
-          onChange={(v) => save({ terminal: { confirmCloseTab: v } })}
-        />
-      </Section>
+      <TerminalSection settings={settings.terminal} save={save} />
 
       <Section title="连接">
         <Row label="keepalive 间隔 (秒)" hint="0 = 关闭;默认 30">
@@ -295,69 +202,3 @@ export default function SettingsPage() {
   );
 }
 
-/** 分组卡片。 */
-function Section({
-  title,
-  hint,
-  children,
-}: {
-  title: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-lg border p-4">
-      <div className="mb-3">
-        <h2 className="text-sm font-medium">{title}</h2>
-        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-      </div>
-      <div className="grid gap-3">{children}</div>
-    </section>
-  );
-}
-
-/** 标签 + 控件行。 */
-function Row({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="grid gap-1.5">
-      <Label className="text-xs text-muted-foreground">
-        {label}
-        {hint && <span className="ml-1 opacity-60">({hint})</span>}
-      </Label>
-      {children}
-    </div>
-  );
-}
-
-/** 开关行。 */
-function SwitchRow({
-  label,
-  hint,
-  checked,
-  onChange,
-}: {
-  label: string;
-  hint?: string;
-  checked: boolean;
-  onChange: (value: boolean) => void;
-}) {
-  return (
-    <Label className="justify-between gap-3">
-      <span>
-        {label}
-        {hint && (
-          <span className="ml-1 text-xs text-muted-foreground">{hint}</span>
-        )}
-      </span>
-      <Switch checked={checked} onCheckedChange={onChange} />
-    </Label>
-  );
-}

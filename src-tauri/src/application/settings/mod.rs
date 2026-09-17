@@ -75,6 +75,28 @@ pub enum TerminalEncoding {
     Gbk,
 }
 
+/// 终端配色方案(PRD 用户故事 19;GitHub Light 为默认)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminalColorScheme {
+    /// Dracula。
+    Dracula,
+    /// Tokyo Night。
+    TokyoNight,
+    /// One Dark。
+    OneDark,
+    /// Nord。
+    Nord,
+    /// Solarized Dark。
+    SolarizedDark,
+    /// Solarized Light。
+    SolarizedLight,
+    /// GitHub Light(默认);旧配置的 "default" 迁移到此方案。
+    #[default]
+    #[serde(alias = "default")]
+    GithubLight,
+}
+
 /// 默认认证方式(取值与连接契约一致)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -125,6 +147,8 @@ pub struct TerminalSettings {
     pub font_size: u8,
     /// 行距倍数。
     pub line_height: f32,
+    /// 配色方案。
+    pub color_scheme: TerminalColorScheme,
     /// 光标样式。
     pub cursor_style: CursorStyle,
     /// 默认编码。
@@ -194,6 +218,7 @@ impl Default for TerminalSettings {
             font_family: "Cascadia Mono, Consolas, monospace".into(),
             font_size: 13,
             line_height: 1.2,
+            color_scheme: TerminalColorScheme::GithubLight,
             cursor_style: CursorStyle::Bar,
             encoding: TerminalEncoding::Utf8,
             scrollback: 5000,

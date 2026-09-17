@@ -15,6 +15,16 @@ export type CursorStyle = "bar" | "block" | "underline";
 /** 终端编码。 */
 export type TerminalEncoding = "utf-8" | "gbk";
 
+/** 终端配色方案(与 Rust `TerminalColorScheme` 枚举取值一致;github_light 为默认)。 */
+export type TerminalColorScheme =
+  | "dracula"
+  | "tokyo_night"
+  | "one_dark"
+  | "nord"
+  | "solarized_dark"
+  | "solarized_light"
+  | "github_light";
+
 /** 默认认证方式(取值与连接契约一致)。 */
 export type DefaultAuthMethod =
   | "password"
@@ -36,6 +46,7 @@ export interface TerminalSettings {
   fontFamily: string;
   fontSize: number;
   lineHeight: number;
+  colorScheme: TerminalColorScheme;
   cursorStyle: CursorStyle;
   encoding: TerminalEncoding;
   scrollback: number;

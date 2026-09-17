@@ -22,6 +22,7 @@ export type {
   Language,
   LayoutState,
   MonitorSettings,
+  TerminalColorScheme,
   TerminalEncoding,
   TerminalSettings,
   ThemeMode,
