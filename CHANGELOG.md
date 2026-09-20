@@ -7,6 +7,38 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > Versions prior to `0.2.0` were internal iterations before the project
 > was open-sourced; their changes are summarized under "Unreleased / 0.2.0".
 
+## [0.2.17] - 2026-09-20
+
+### Added
+
+- **Automatic update checking moved to a Rust background service.**
+  A resident loop now checks GitHub for new versions — first check
+  10 seconds after launch, every 4 hours afterwards, retrying 5 minutes
+  after a failure — replacing the old one-shot frontend timer that
+  silently gave up on any transient network hiccup. When a new version
+  is found, the sidebar update icon lights up via the new
+  `app-update-available` event; the result is cached so the icon
+  survives webview reloads (`get_update_notice`), and check failures
+  are logged instead of lost.
+- **"Auto-check updates" toggle.** New `update.autoCheck` setting
+  (default on, exposed in a dedicated Settings section) makes the
+  background loop skip network requests entirely while disabled
+  (PRD #66).
+- **Terminal addons.** `unicode11` (wide/CJK character width),
+  `clipboard` (OSC 52), `web-links` (clickable URLs opened via the
+  opener plugin) and `serialize` (loaded for upcoming session-restore
+  features) are wired up in a unified `base-addons.ts` loader.
+
+### Fixed
+
+- **Manual reconnect always failed.** `reconnect_session` validated the
+  `Disconnected → Connecting` transition but never wrote the new state
+  back to the session entry, so the session still looked disconnected
+  when the fresh connection arrived and the multi-tab teardown guard
+  discarded it — every reconnect after a manual close returned
+  `SessionClosed`. The transition result is now persisted; the existing
+  close-then-reconnect unit tests cover the regression.
+
 ## [0.2.16] - 2026-09-20
 
 ### Added
