@@ -1,6 +1,6 @@
 /**
  * xterm.js 封装(F7,PRD §6.3):挂载/写入/fit→pty resize、
- * Ctrl+滚轮缩放(持久化)、选中即复制/右键粘贴、断线横幅与重连重开。
+ * Ctrl+滚轮缩放(持久化)、选中即复制/右键粘贴、断线浮层与重连重开。
  *
  * 生命周期:会话回到 online(epoch 变化)即重开 pty 通道;
  * 组件卸载(tab 关闭/切换)即关闭通道(PRD:卸载即断)。
@@ -16,11 +16,14 @@ import { tryLoadWebglAddon } from "./webgl-addon";
 import {
   closeTerminal,
   openTerminal,
+  reconnectSession,
   resizeTerminal,
   writeTerminal,
 } from "@/app/api";
 import { encodeInput, initGbkEncoder, StreamDecoder } from "@/lib/codec";
+import { RotateCwIcon, UnplugIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
 
@@ -239,33 +242,33 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
         aria-label="终端"
       />
       {status !== "online" && (
-        <div className="absolute inset-x-0 top-0 z-10 flex items-center gap-2 bg-red-500/15 px-3 py-1 text-xs text-red-500">
-          {status === "connecting" ? "连接中…" : "连接已断开,内容保留可复制"}
-          {status === "disconnected" && (
-            <Button
-              variant="outline"
-              size="xs"
-              className="border-red-500/50 text-red-500 hover:bg-red-500/20 hover:text-red-500"
-              onClick={() => {
-                void import("@/app/api").then(async ({ reconnectSession }) => {
-                  try {
-                    const session = await reconnectSession(sessionId);
-                    useSessionsStore.getState().upsert(session);
-                  } catch (err) {
-                    const { useUiStore } = await import("@/stores/ui");
-                    useUiStore
-                      .getState()
-                      .toast(
-                        err instanceof Error ? err.message : "重连失败",
-                        "error",
-                      );
-                  }
-                });
-              }}
-            >
-              重新连接
-            </Button>
-          )}
+        <div className="pointer-events-none absolute inset-x-0 top-2 z-10 flex justify-center">
+          <div className="pointer-events-auto flex animate-in fade-in slide-in-from-top-2 items-center gap-2 rounded-full border bg-background/85 py-1 pl-3 pr-1 shadow-lg backdrop-blur-md">
+            {status === "connecting" ? (
+              <>
+                <Spinner className="size-3.5 text-muted-foreground" />
+                <span className="pr-2 text-xs text-muted-foreground">
+                  连接中…
+                </span>
+              </>
+            ) : (
+              <>
+                <UnplugIcon className="size-3.5 shrink-0 text-destructive" />
+                <span className="whitespace-nowrap text-xs">
+                  连接已断开
+                  <span className="text-muted-foreground">·内容保留可复制</span>
+                </span>
+                <Button
+                  size="xs"
+                  className="ml-0.5"
+                  onClick={() => void reconnectAndSync(sessionId)}
+                >
+                  <RotateCwIcon data-icon="inline-start" />
+                  重新连接
+                </Button>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -281,4 +284,16 @@ function scheduleFontSizePersist(fontSize: number): void {
   fontSizePersistTimer = setTimeout(() => {
     void useSettingsStore.getState().patch({ terminal: { fontSize } });
   }, 500);
+}
+
+/** 重连会话并把最新状态同步回 store;失败时 toast 告知,不影响已保留的终端内容。 */
+async function reconnectAndSync(sessionId: string): Promise<void> {
+  try {
+    useSessionsStore.getState().upsert(await reconnectSession(sessionId));
+  } catch (err) {
+    const { useUiStore } = await import("@/stores/ui");
+    useUiStore
+      .getState()
+      .toast(err instanceof Error ? err.message : "重连失败", "error");
+  }
 }
