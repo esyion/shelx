@@ -7,6 +7,33 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > Versions prior to `0.2.0` were internal iterations before the project
 > was open-sourced; their changes are summarized under "Unreleased / 0.2.0".
 
+## [0.2.16] - 2026-09-20
+
+### Added
+
+- **Multiple terminal tabs per connection.** Opening a connection that
+  already has a tab now creates an additional tab instead of focusing
+  the existing one. All tabs of the same connection share one
+  authenticated SSH session — authentication runs once — and each tab
+  owns an independent pty channel (PRD §6.3 multi-terminal).
+- **Smart session teardown on tab close.** Closing a tab keeps the
+  shared session alive while other tabs still reference it; the SSH
+  session is disconnected only when the last referencing tab closes
+  (tab-bar × button and `Ctrl+W` share the same code path).
+- **Regression tests for session lifecycle races.** New unit tests
+  cover online-session reuse and the case where a session is closed
+  while authentication is still in progress: the freshly established
+  connection is explicitly discarded instead of leaking an orphan
+  online session.
+
+### Changed
+
+- **Redesigned disconnect banner.** The in-terminal disconnect notice
+  is now a compact floating pill centered at the top — frosted-glass
+  background, theme-aware semantic colors, a spinner while connecting
+  and a prominent reconnect button when disconnected — replacing the
+  full-width red strip.
+
 ## [0.2.15] - 2026-09-17
 
 ### Changed
