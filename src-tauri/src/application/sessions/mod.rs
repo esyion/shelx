@@ -359,6 +359,10 @@ impl SessionService {
     }
 
     /// 重连:复用会话 ID 与留存参数(含连接期可用的凭据)。
+    ///
+    /// 注意:重连成功与否依赖 [`Self::drive_session`] 读取的 status;
+    /// `transition_to` 只做合法校验,新状态必须写回,否则下方的
+    /// "认证期被关闭"检查会把正常重连误判为已取消。
     pub async fn reconnect_session(
         self: &Arc<Self>,
         session_id: &str,
@@ -368,7 +372,10 @@ impl SessionService {
             let entry = registry
                 .get_mut(session_id)
                 .ok_or(SessionError::SessionNotFound)?;
-            entry
+            // transition_to 只做合法校验,新状态必须显式写回;
+            // 否则 entry 仍停留在 Disconnected,drive_session 会把
+            // 重连误判为"认证期已关闭"而丢弃新连接(return SessionClosed)。
+            entry.status = entry
                 .status
                 .transition_to(SessionStatus::Connecting)
                 .map_err(|_| {
