@@ -311,11 +311,12 @@ shelx 以 Tauri 2 构建单窗口桌面应用,单条 SSH 连接复用承载终�
 
 分组表单页(Ctrl+, 打开),即时保存:
 
-- **通用**:语言、主题(跟随系统/深/浅)、启动行为、自动更新开关
+- **通用**:语言、主题(跟随系统/深/浅)、启动行为
 - **终端**:默认字体/字号/行距(下拉候选)、配色方案(内置多套,default 跟随应用亮暗,已开终端即时生效)、光标样式、编码默认值、滚动缓冲行数、复制粘贴行为、关闭标签确认开关
 - **连接**:keepalive 间隔、默认认证方式、host key 策略提示、钥匙串状态与"清理孤儿凭据"
 - **传输**:并发任务数、分块大小(高级)、冲突默认策略、完成通知开关
 - **监控**:默认采样间隔
+- **更新**:自动检查更新开关(实现见 §7.7-10:检查在 Rust 后台循环执行,关闭即停发网络请求)
 - **关于**:版本、更新检查、开源许可、配置/日志目录入口
 
 设置项变更作用范围:终端类设置对新开终端生效(已开终端提示可一键应用);其余即时生效。
@@ -408,6 +409,7 @@ shelx 以 Tauri 2 构建单窗口桌面应用,单条 SSH 连接复用承载终�
 - `session.status_changed`:连接状态机变化(前端更新标签圆点、横幅、监控置灰)
 - `auth.prompt`:需要键盘交互输入(前端弹模态框应答)
 - `hostkey.confirm`:首次指纹确认请求
+- `update.available`:后台自动检查发现新版本,载荷 `{current_version, version, notes, checked_at_ms}`(前端点亮侧栏更新图标;手动检查/安装不经事件)
 
 ### 7.6 核心数据结构(契约级形状)
 
@@ -437,6 +439,7 @@ SQLite 主要表:`connections`、`groups`、`transfer_history`(P1)。凭据不�
 7. **错误结构化**:所有 command 错误返回 `{code, message, source?}`,code 枚举(如 `AUTH_FAILED`、`HOSTKEY_CHANGED`、`PERMISSION_DENIED`、`NET_TIMEOUT`)供前端精确分支。
 8. **Next.js 仅以静态导出形态使用**:构建产物为纯静态资源(`output: 'export'`),由 Tauri 直接加载;**禁用** SSR、Server Actions、API Routes、中间件等一切 Node 服务端能力,所有数据一律经 Tauri command/Channel 获取。开发期用 `next dev` 起开发服务器,配置为 Tauri 的 devUrl 实现热更新联调。
 9. **russh 加密后端选 ring**:russh 0.63 默认的 aws-lc-rs 后端在 Windows 构建依赖 NASM 与 CMake,对贡献者工具链要求过高;统一使用 ring 后端(标准 Rust 工具链可构建),并保留 `rsa`(老服务器 ssh-rsa)与 `flate2`(zlib 压缩)feature。GBK 等显示编码解码使用 WebView 原生 TextDecoder(WHATWG 编码标准),不引入额外编码库。
+10. **自动检查更新在 Rust 后台循环执行**(#66):启动延时 10s 首查(避开启动期网络/代理未就绪)、成功后每 4h 复查、失败 5min 重试,均不阻塞 UI;发现新版本经 `update.available` 事件通知前端点亮侧栏图标(不弹窗打扰),`get_update_notice` 供 webview 刷新后恢复状态;手动检查/安装仍走前端 updater 插件链路。设置开关 `update.autoCheck` 默认开启,关闭后循环跳过网络请求。
 
 ---
 

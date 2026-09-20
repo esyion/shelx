@@ -27,6 +27,7 @@ export type {
   TerminalSettings,
   ThemeMode,
   TransferSettings,
+  UpdateSettings,
 } from "./settings";
 export type {
   AuthPromptEvent,
@@ -54,4 +55,4 @@ export type {
   TransferTask,
 } from "./transfer";
 export type { DiskInfo, MetricsSample } from "./monitor";
-export type { AppVersion, UpdateInfo } from "./release";
+export type { AppVersion, UpdateNotice } from "./release";

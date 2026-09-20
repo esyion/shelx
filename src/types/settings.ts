@@ -74,6 +74,11 @@ export interface MonitorSettings {
   defaultIntervalSecs: number;
 }
 
+/** 更新设置。 */
+export interface UpdateSettings {
+  autoCheck: boolean;
+}
+
 /** 应用设置全集。 */
 export interface AppSettings {
   appearance: AppearanceSettings;
@@ -81,6 +86,7 @@ export interface AppSettings {
   connection: ConnectionSettings;
   transfer: TransferSettings;
   monitor: MonitorSettings;
+  update: UpdateSettings;
 }
 
 /**

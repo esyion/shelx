@@ -1,9 +1,10 @@
 /**
  * 应用内更新相关类型。
  *
- * 注意:本次重构不再走前端 GitHub fetch,release notes 由
- * `@tauri-apps/plugin-updater` 在 Rust 端拉取后随 Update 对象返回。
- * 这里只保留与前端 UI 强耦合的展示/状态类型。
+ * 自动检查由 Rust 后台完成:发现新版本时经 `app-update-available` 事件
+ * 推送本结构,`get_update_notice` command 也返回同形数据
+ * (与 Rust 端 `application::update::UpdateNotice` 对应,契约单一来源)。
+ * 手动检查/安装仍走 `@tauri-apps/plugin-updater` 前端链路。
  */
 
 /** 当前应用版本号(由 Rust 编译期注入)。 */
@@ -12,16 +13,14 @@ export interface AppVersion {
   version: string;
 }
 
-/**
- * 启动信息(读取版本号后保留旧字段名以最小化 store 兼容)。
- * 实际数据流是 `Update.currentVersion` / `Update.version` / `Update.body`,
- * 来自 `@tauri-apps/plugin-updater` 的 `Update` 对象。
- */
-export interface UpdateInfo {
-  /** 远端版本号(去前缀);无更新时为空字符串。 */
+/** 可用更新通知(Rust 后台自动检查结果)。 */
+export interface UpdateNotice {
+  /** 当前应用版本。 */
+  currentVersion: string;
+  /** 可用的新版本号(无 `v` 前缀)。 */
   version: string;
-  /** release notes(Markdown 源);无更新时为 null。 */
+  /** Release notes(Markdown 源);插件未返回或为空白时为 null。 */
   notes: string | null;
-  /** 是否有可用更新。 */
-  available: boolean;
+  /** 检查时刻(unix 毫秒)。 */
+  checkedAtMs: number;
 }

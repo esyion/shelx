@@ -13,7 +13,8 @@ import { getVersion } from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 
-import { isTauri } from "./tauri";
+import { invokeUnwrapped, isTauri } from "./tauri";
+import type { UpdateNotice } from "@/types";
 
 /** 单次检查请求超时(毫秒),网络受限时能保证 UI 一定脱离 "checking" 状态。 */
 export const CHECK_TIMEOUT_MS = 30_000;
@@ -26,6 +27,16 @@ export const CHECK_TIMEOUT_MS = 30_000;
 export async function getCurrentVersion(): Promise<string> {
   if (!isTauri()) return "";
   return getVersion();
+}
+
+/**
+ * 读取 Rust 后台自动检查最近发现的更新通知;尚未发现过返回 `null`。
+ *
+ * 仅读取后台存档,不发起网络请求;用于 webview 刷新后恢复侧栏图标状态。
+ */
+export async function getUpdateNotice(): Promise<UpdateNotice | null> {
+  if (!isTauri()) return null;
+  return invokeUnwrapped<UpdateNotice | null>("get_update_notice");
 }
 
 /**

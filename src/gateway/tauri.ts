@@ -12,6 +12,12 @@ export const SESSION_EVENTS = {
   hostkeyConfirm: "hostkey-confirm",
 } as const;
 
+/** 应用更新事件(由 Rust 后台自动检查发出)。 */
+export const APP_UPDATE_EVENTS = {
+  /** 后台检查发现新版本,载荷为 UpdateNotice。 */
+  available: "app-update-available",
+} as const;
+
 /**
  * 订阅后端全局事件的唯一出口(AGENTS.md §4.1)。
  *

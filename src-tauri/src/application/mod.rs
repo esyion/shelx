@@ -15,6 +15,7 @@ pub mod settings;
 pub mod sftp;
 pub mod terminals;
 pub mod transfers;
+pub mod update;
 
 #[cfg(test)]
 pub mod test_support;

@@ -195,6 +195,14 @@ pub struct MonitorSettings {
     pub default_interval_secs: u32,
 }
 
+/// 更新设置(PRD #66:自动检查更新可关闭)。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct UpdateSettings {
+    /// 自动检查更新;关闭后后台循环跳过网络请求。
+    pub auto_check: bool,
+}
+
 /// 应用设置全集(PRD §6.7 分组);默认值 = 各分组默认值的组合。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -209,6 +217,8 @@ pub struct AppSettings {
     pub transfer: TransferSettings,
     /// 监控。
     pub monitor: MonitorSettings,
+    /// 更新。
+    pub update: UpdateSettings,
 }
 
 impl Default for TerminalSettings {
@@ -257,6 +267,13 @@ impl Default for MonitorSettings {
         Self {
             default_interval_secs: 5,
         }
+    }
+}
+
+impl Default for UpdateSettings {
+    /// 更新分组默认值:开启自动检查(PRD #66)。
+    fn default() -> Self {
+        Self { auto_check: true }
     }
 }
 

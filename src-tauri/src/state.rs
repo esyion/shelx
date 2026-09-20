@@ -15,12 +15,14 @@ use crate::application::settings::SettingsService;
 use crate::application::sftp::SftpService;
 use crate::application::terminals::TerminalService;
 use crate::application::transfers::TransferService;
-use crate::infrastructure::events::TauriSessionEvents;
+use crate::application::update::{UpdateAutoCheckService, UpdateChecker, UpdateEventSink};
+use crate::infrastructure::events::{TauriSessionEvents, TauriUpdateEvents};
 use crate::infrastructure::secrets;
 use crate::infrastructure::settings::JsonFileSettingsStore;
 use crate::infrastructure::sqlite::connection_repo::SqliteConnectionStore;
 use crate::infrastructure::sqlite::host_key_repo::SqliteHostKeyStore;
 use crate::infrastructure::ssh::transport::RusshTransport;
+use crate::infrastructure::updater::TauriUpdateChecker;
 use crate::shared::paths;
 
 /// 应用级共享状态。
@@ -39,6 +41,8 @@ pub struct AppState {
     pub transfers: Arc<TransferService>,
     /// 监控采集服务(调度/环形缓冲/断线联动)。
     pub monitor: Arc<MonitorService>,
+    /// 应用更新自动检查服务(后台循环调度 + 最近通知存档)。
+    pub updates: Arc<UpdateAutoCheckService>,
     /// 键盘交互/指纹确认桥(respond_* 命令直达)。
     pub broker: Arc<PromptBroker>,
     /// 凭据存储可用性(供设置页展示"系统钥匙串 / 降级加密")。
@@ -91,6 +95,16 @@ impl AppState {
         ));
         let monitor = Arc::new(MonitorService::new(sessions.clone(), monitor_events));
 
+        // 更新自动检查:检查器与事件出口均为 Tauri 适配器,后台循环随进程存活。
+        let checker: Arc<dyn UpdateChecker> = Arc::new(TauriUpdateChecker::new(app.clone()));
+        let update_events: Arc<dyn UpdateEventSink> = Arc::new(TauriUpdateEvents::new(app.clone()));
+        let updates = Arc::new(UpdateAutoCheckService::new(
+            checker,
+            update_events,
+            settings.clone(),
+        ));
+        updates.spawn();
+
         Self {
             connections,
             settings,
@@ -99,6 +113,7 @@ impl AppState {
             sftp,
             transfers,
             monitor,
+            updates,
             broker,
             secret_availability,
         }

@@ -5,7 +5,7 @@
  *   - 常驻外壳 <AppShell>:跨导航不重挂,功能页(设置等)以全屏浮层覆盖其上,
  *     终端 pty 通道与 SFTP 会话不因路由切换中断
  *   - 主题:ThemeProvider(next-themes) + FOUC 防闪烁脚本内置
- *   - 一次性初始化:布局恢复 / GBK 编码器 / 更新检查 / settings 加载与主题同步 /
+ *   - 一次性初始化:布局恢复 / GBK 编码器 / 更新事件订阅 / settings 加载与主题同步 /
  *     会话状态快照 / SESSION_EVENTS 订阅 / 窗口级拖放监听
  *   - 全局快捷键(主页生效分支,设置页只响应 Ctrl+,)
  *   - 事件驱动弹窗宿主:HostKey / AuthPrompt / TransferConflict /
@@ -35,7 +35,7 @@ import { ToastHost } from "@/components/layout/toast-host";
 import { AppShell } from "@/components/layout/app-shell";
 import { listSessionStatus } from "@/app/api";
 import { initGbkEncoder } from "@/lib/codec";
-import { listenEvent, SESSION_EVENTS } from "@/gateway";
+import { listenEvent, APP_UPDATE_EVENTS, SESSION_EVENTS } from "@/gateway";
 import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
 import { useFilePathsStore } from "@/stores/file-paths";
@@ -43,7 +43,7 @@ import { closeTabWithSession, useTabsStore } from "@/stores/tabs";
 import { useUiStore } from "@/stores/ui";
 import { useUpdateStore } from "@/stores/update";
 import { enqueueUploadAndShow } from "@/components/files/transfer-enqueue";
-import type { SessionStatusEvent } from "@/types";
+import type { SessionStatusEvent, UpdateNotice } from "@/types";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -70,13 +70,16 @@ export default function RootLayout({
 
     void initGbkEncoder();
     void useUpdateStore.getState().init();
-    // 启动静默检查更新(PRD #66 的最小落地):延时常驻初始化完成后执行,
-    // 避开启动期网络/IPC 竞争;返回值不 toast——查到新版本侧栏图标会变蓝,
-    // 失败或已是最新保持灰色,不打扰用户。用户手动检查仍走弹窗内带提示的路径。
-    const updateCheckTimer = setTimeout(() => {
-      const update = useUpdateStore.getState();
-      if (update.status === "idle") void update.checkNow();
-    }, 5_000);
+    // 自动检查更新已迁至 Rust 后台循环(application::update):启动延时、
+    // 周期复查、失败重试与设置开关都在 Rust 侧,发现新版本经
+    // `app-update-available` 事件推送,applyNotice 驱动侧栏图标变蓝;
+    // 失败仅记后端日志,不打扰用户。用户手动检查仍走弹窗内带提示的路径。
+    let unlistenUpdate: (() => void) | undefined;
+    void listenEvent<UpdateNotice>(APP_UPDATE_EVENTS.available, (notice) => {
+      useUpdateStore.getState().applyNotice(notice);
+    }).then((unlisten) => {
+      unlistenUpdate = unlisten;
+    });
     void useSettingsStore
       .getState()
       .load()
@@ -151,7 +154,7 @@ export default function RootLayout({
       });
 
     return () => {
-      clearTimeout(updateCheckTimer);
+      unlistenUpdate?.();
       unlistenStatus?.();
       unlistenDrop?.();
     };

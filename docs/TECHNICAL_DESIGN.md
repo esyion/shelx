@@ -337,6 +337,7 @@ type IpcResult<T> =
 | ------ | ------------- |
 | `get_settings` / `update_settings` | `() → AppSettings` / `Partial<AppSettings> → AppSettings`(即时生效) |
 | `get_layout` / `save_layout` | `() → LayoutState` / `LayoutState → void` |
+| `get_update_notice` | `() → UpdateNotice \| null`(后台自动检查最近一次发现的通知;不发起网络请求,webview 刷新后恢复图标) |
 | `open_app_dir` | `{target:'config'\|'logs'} → void`(opener 白名单) |
 | `local_home_path` | `() → string` |
 | `list_local_entries` | `{path} → FileEntryDto[]` |
@@ -358,6 +359,7 @@ type IpcResult<T> =
 | `session-status-changed` | `{sessionId, connId?, status:'connecting'\|'online'\|'disconnected', reason?}`(驱动标签圆点、横幅、监控置灰) |
 | `auth-prompt` | `{requestId, sessionId?, title?, instructions?, prompts:[{text, echo}]}`(前端模态框,密码型 echo=false) |
 | `hostkey-confirm` | `{requestId, host, port, algorithm, fingerprintSha256, firstSeen:true}`(指纹变化不经事件,直接 `HOSTKEY_MISMATCH` 错误+红色警告) |
+| `app-update-available` | `{currentVersion, version, notes?, checkedAtMs}`(Rust 后台自动检查发现新版本;前端 store.applyNotice 点亮侧栏图标,手动检查/安装仍走前端 updater 插件链路) |
 
 ### 6.5 错误码(稳定枚举)
 
@@ -399,7 +401,9 @@ AppSettings   { appearance:{theme:'system'|'dark'|'light', language:'zh'|'en'},
                           scrollback, copyOnSelect, rightClickPaste, confirmCloseTab},
                 connection:{keepaliveIntervalSecs, defaultAuthMethod},
                 transfer:{maxConcurrentTasks, chunkSizeKiB, defaultConflictPolicy, notifyOnComplete},
-                monitor:{defaultIntervalSecs} }
+                monitor:{defaultIntervalSecs},
+                update:{autoCheck} }
+UpdateNotice  { currentVersion, version, notes?, checkedAtMs }   // app-update-available 载荷与 get_update_notice 返回共用
 LayoutState   { sidebarCollapsed, sidebarWidth, bottomPanel:'sftp'|'transfers'|'hidden',
                 bottomPanelHeight, tabView: Record<string, 'terminal'|'files'|'monitor'> }
 ProcessInfo   { pid, user, cpuPercent, memPercent, rssKb, command }   // P1
@@ -719,5 +723,6 @@ cargo test --manifest-path src-tauri/Cargo.toml
 | 4 | 5.2-28 关闭"运行任务"终端确认 | 不做远端前台进程检测(pty 无信号可查),以"传输进行中 + 全局确认开关"近似 | 避免不可靠启发式误报/漏报 |
 | 5 | 5.5-68 崩溃后恢复标签布局 | 列入 M4(P1 级) | 优先级表未入 P0 |
 | 6 | 6.4 目录递归传输的"子树失败入队报告" | 失败项随 `delete/transfer` 结果结构返回 + 传输中心标红 | 交互一致,不额外发明报告页 |
+| 7 | 6.7 "通用"分组含自动更新开关 | 开关落在独立"更新"分组(`update.autoCheck`);自动检查由 Rust 后台循环执行(10s 首查/4h 周期/5min 失败重试,事件 `app-update-available` 通知) | 检查与 UI 生命周期解耦,失败可观测可重试;分组独立便于后续扩展(如检查频率) |
 
 > 契约变更流程:修改本文档 §6/§7 时同步更新 `docs/`(AGENTS.md §5),并补充 IPC 契约快照测试。

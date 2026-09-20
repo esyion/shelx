@@ -6,6 +6,7 @@ export {
   isGatewayError,
   isTauri,
   listenEvent,
+  APP_UPDATE_EVENTS,
   SESSION_EVENTS,
 } from "./tauri";
 export * as connectionsApi from "./connections";
@@ -18,11 +19,13 @@ export * as localFsApi from "./local_fs";
 export * as monitorApi from "./monitor";
 export * as systemInfoApi from "./system-info";
 export * as appMetaApi from "./app-meta";
+export * as openerApi from "./opener";
 export {
   CHECK_TIMEOUT_MS,
   checkForUpdate,
   discardUpdate,
   downloadAndInstallUpdate,
   getCurrentVersion,
+  getUpdateNotice,
   relaunchApp,
 } from "./update";

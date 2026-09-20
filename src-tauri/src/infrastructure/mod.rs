@@ -15,3 +15,4 @@ pub mod settings;
 pub mod sqlite;
 pub mod ssh;
 pub mod terminal_channel;
+pub mod updater;

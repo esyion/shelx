@@ -2,8 +2,9 @@
  * 应用内版本检测 store(AGENTS.md §4.1 表示层职责)。
  *
  * 与 transpop 的 `use-app-updater` 等价:
- *   - 启动时静默读取当前版本号;随后由根 layout 延时发起一次静默检查
- *     (status 仍为 idle 时才执行),失败不提示,查到新版本仅驱动图标变蓝;
+ *   - 启动时静默读取当前版本号,并拉取 Rust 后台已发现的更新通知
+ *     (自动检查的调度/重试/设置开关都在 Rust 侧,发现新版本经
+ *     `app-update-available` 事件推送 applyNotice,仅驱动图标变蓝);
  *   - 用户主动检查走弹窗(打开即查/「重新检查」按钮),结果由 UI toast;
  *   - 检查超时由 `@tauri-apps/plugin-updater` 的 `check({ timeout })` 接管,
  *     不在前端再发任何 GitHub fetch,从根本上规避 CSP / 状态机缺口。
@@ -24,8 +25,10 @@ import {
   discardUpdate,
   downloadAndInstallUpdate,
   getCurrentVersion,
+  getUpdateNotice,
   relaunchApp,
 } from "@/gateway";
+import type { UpdateNotice } from "@/types";
 
 /** 检测状态机。 */
 export type UpdateStatus =
@@ -51,6 +54,11 @@ export interface UpdateStore {
 
   /** 启动时静默读取当前版本号;不做任何网络请求。 */
   init(): Promise<void>;
+  /**
+   * 写入 Rust 后台自动检查发现的通知(事件推送与 init 拉取共用)。
+   * 手动检查进行中时忽略,以手动检查的结果为准。
+   */
+  applyNotice(notice: UpdateNotice): void;
   /**
    * 用户主动检查。非 Tauri 环境直接返回 `"idle"`,由 UI 自行提示。
    * 成功/失败/超时都会返回对应的 `UpdateStatus`,UI 据此 toast。
@@ -86,6 +94,27 @@ export const useUpdateStore = create<UpdateStore>((set, get) => {
       } catch {
         /* 静默:启动期读不到版本不影响后续检查 */
       }
+      // 拉取后台已发现的通知(webview 刷新后恢复侧栏图标状态);
+      // 尚未检查过或读取失败都静默降级为灰色图标。
+      try {
+        const notice = await getUpdateNotice();
+        if (notice) get().applyNotice(notice);
+      } catch {
+        /* 静默 */
+      }
+    },
+
+    applyNotice(notice) {
+      // 手动检查进行中时不覆盖,避免事件晚到与手动结果互相抖动。
+      if (checking) return;
+      set({
+        currentVersion: notice.currentVersion,
+        updateVersion: notice.version,
+        notes: notice.notes,
+        status: "available",
+        errorMessage: null,
+        lastCheckedAt: notice.checkedAtMs,
+      });
     },
 
     async checkNow() {

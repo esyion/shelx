@@ -195,6 +195,15 @@ export default function SettingsPage() {
         </Row>
       </Section>
 
+      <Section title="更新">
+        <SwitchRow
+          label="自动检查更新"
+          hint="后台定期检查新版本并点亮侧栏图标;关闭后仍可手动检查"
+          checked={settings.update.autoCheck}
+          onChange={(v) => save({ update: { autoCheck: v } })}
+        />
+      </Section>
+
       <footer className="pb-6 text-center text-xs text-muted-foreground">
         shelx{currentVersion ? ` v${currentVersion}` : ""}
       </footer>

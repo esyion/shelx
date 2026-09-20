@@ -14,6 +14,7 @@ import {
   systemInfoApi,
   terminalsApi,
   transferApi,
+  openerApi,
 } from "@/gateway";
 
 /** 列出连接树。 */
@@ -156,3 +157,6 @@ export const recentMonitorSamples = monitorApi.recentMonitorSamples;
 
 /** 读取会话的服务器系统信息(连接后一次性采集)。 */
 export const fetchSystemInfo = systemInfoApi.fetchSystemInfo;
+
+/** 用系统默认应用打开外部链接(http/https)。 */
+export const openExternalUrl = openerApi.openExternalUrl;

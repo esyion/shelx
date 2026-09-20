@@ -10,7 +10,7 @@
 import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { FitAddon } from "@xterm/addon-fit";
+import { loadBaseAddons } from "./base-addons";
 import { resolveTerminalTheme } from "@/lib/terminal-schemes";
 import { tryLoadWebglAddon } from "./webgl-addon";
 import {
@@ -69,8 +69,7 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
       allowProposedApi: true,
     });
     terminalRef.current = terminal;
-    const fit = new FitAddon();
-    terminal.loadAddon(fit);
+    const { fit } = loadBaseAddons(terminal);
     terminal.open(host);
 
     // WebGL addon 持有引用以便 cleanup 时显式 dispose,避免
