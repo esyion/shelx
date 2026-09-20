@@ -3,11 +3,11 @@
 use std::sync::{Arc, Mutex};
 
 use crate::application::ports::{
-    AuthPromptRequest, HostKeyConfirmRequest, SessionEventSink, SessionStatusEvent,
-    SshConnectParams, SshConnection, SshTransport, TransportError,
+    AuthPromptRequest, HostKeyConfirmRequest, SessionEventSink, SessionStatusEvent, SshTransport,
+    TransportError,
 };
 use crate::application::test_support::{
-    connection_service as build_connection_service, draft, FakeConnection, FakeTransport,
+    connection_service as build_connection_service, draft, FakeTransport,
 };
 use crate::domain::connection::ConnId;
 use crate::domain::session::SessionStatus;
@@ -43,6 +43,27 @@ fn service_with(transport: FakeTransport) -> Arc<SessionService> {
 /// 构建默认成功传输的被测服务。
 fn service() -> Arc<SessionService> {
     service_with(FakeTransport::always_ok())
+}
+
+/// 构建挂接指定传输的被测服务与已保存连接 ID(密码已存入 fake 钥匙串)。
+fn conn_service_with(transport: Arc<dyn SshTransport>) -> (Arc<SessionService>, ConnId) {
+    let connections = Arc::new(build_connection_service());
+    let config = connections
+        .create_connection(crate::application::connections::ConnectionDraft {
+            password: Some(crate::application::connections::CredentialInput {
+                value: "s3cret".into(),
+                save: crate::application::ports::SecretSaveMode::Keyring,
+            }),
+            ..draft("web-01")
+        })
+        .unwrap();
+    let svc = Arc::new(SessionService::new(
+        transport,
+        connections,
+        Arc::new(RecordingSink::default()),
+    ));
+    let conn_id = ConnId::new(config.id.as_str().to_owned()).unwrap();
+    (svc, conn_id)
 }
 
 /// 建连成功:状态机 Connecting → Online,事件顺序正确,serverInfo 异步补齐。
@@ -129,29 +150,70 @@ async fn unknown_session_is_not_found() {
 /// 按已保存连接建连:密码从钥匙串端口解析(fake 服务内存中有值)。
 #[tokio::test]
 async fn connect_by_conn_resolves_stored_secret() {
-    let connections = Arc::new(build_connection_service());
-    let config = connections
-        .create_connection(crate::application::connections::ConnectionDraft {
-            password: Some(crate::application::connections::CredentialInput {
-                value: "s3cret".into(),
-                save: crate::application::ports::SecretSaveMode::Keyring,
-            }),
-            ..draft("web-01")
-        })
-        .unwrap();
-    let transport = Arc::new(FakeTransport::always_ok()) as Arc<dyn SshTransport>;
-    let svc = Arc::new(SessionService::new(
-        transport,
-        connections,
-        Arc::new(RecordingSink::default()),
-    ));
+    let (svc, conn_id) = conn_service_with(Arc::new(FakeTransport::always_ok()));
 
     let info = svc
-        .connect_by_conn(&ConnId::new(config.id.as_str().to_owned()).unwrap())
+        .connect_by_conn(&conn_id)
         .await
         .expect("按连接建连应成功");
     assert_eq!(info.status, SessionStatus::Online);
-    assert_eq!(info.conn_id.as_deref(), Some(config.id.as_str()));
+    assert_eq!(info.conn_id.as_deref(), Some(conn_id.as_str()));
+}
+
+/// 同连接重复建连复用在线会话:两次返回同一会话,传输只连一次(PRD §6.3 多终端)。
+#[tokio::test]
+async fn connect_by_conn_reuses_online_session() {
+    let transport = Arc::new(FakeTransport::always_ok());
+    let (svc, conn_id) = conn_service_with(transport.clone());
+
+    let first = svc.connect_by_conn(&conn_id).await.expect("首次建连应成功");
+    let second = svc.connect_by_conn(&conn_id).await.expect("复用建连应成功");
+
+    assert_eq!(second.session_id, first.session_id, "应复用同一会话");
+    assert_eq!(second.status, SessionStatus::Online);
+    assert_eq!(
+        transport.handed_out.lock().expect("交出记录锁").len(),
+        1,
+        "复用路径不得再次发起传输连接"
+    );
+    assert_eq!(svc.list().len(), 1, "复用路径不得新建会话记录");
+}
+
+/// 认证期间会话被关闭:丢弃刚建立的连接并返回 SessionClosed,不留在线孤儿会话。
+#[tokio::test]
+async fn connect_abandoned_while_connecting_discards_connection() {
+    let transport = Arc::new(FakeTransport::gated());
+    let (svc, conn_id) = conn_service_with(transport.clone());
+
+    let driver = {
+        let svc = Arc::clone(&svc);
+        tokio::spawn(async move { svc.connect_by_conn(&conn_id).await })
+    };
+    // 等 connect 进入传输端口:此时会话已注册且处于 Connecting。
+    while transport.connect_started() == 0 {
+        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    }
+    let sessions = svc.list();
+    assert_eq!(sessions.len(), 1);
+    let session_id = sessions[0].session_id.clone();
+    assert_eq!(sessions[0].status, SessionStatus::Connecting);
+
+    svc.close_session(&session_id)
+        .await
+        .expect("Connecting 会话应可关闭");
+    transport.gate.as_ref().expect("竞态门闸").notify_one();
+
+    let err = driver.await.expect("建连任务不应 panic").unwrap_err();
+    assert!(matches!(err, SessionError::SessionClosed));
+    assert!(
+        transport.handed_out.lock().expect("交出记录锁")[0].disconnect_called(),
+        "被丢弃的新建连接应被显式断开"
+    );
+    assert_eq!(
+        svc.info_of(&session_id).unwrap().status,
+        SessionStatus::Disconnected,
+        "会话应保持关闭态,不得翻回 Online"
+    );
 }
 
 /// 最小快速连接规格(密码认证)。

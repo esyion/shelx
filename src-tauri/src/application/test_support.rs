@@ -139,6 +139,10 @@ pub struct FakeTransport {
     pub results: Mutex<Vec<Result<FakeConnection, crate::application::ports::TransportError>>>,
     /// 已交出的连接(共享状态)。
     pub handed_out: Mutex<Vec<FakeConnection>>,
+    /// 非空时 connect 在返回前等待一次放行(认证期关闭竞态测试用)。
+    pub gate: Option<Arc<tokio::sync::Notify>>,
+    /// connect 已进入次数(等待放行是否生效的同步依据)。
+    connect_started: AtomicUsize,
 }
 
 impl FakeTransport {
@@ -147,6 +151,8 @@ impl FakeTransport {
         Self {
             results: Mutex::new(Vec::new()),
             handed_out: Mutex::new(Vec::new()),
+            gate: None,
+            connect_started: AtomicUsize::new(0),
         }
     }
 
@@ -155,7 +161,25 @@ impl FakeTransport {
         Self {
             results: Mutex::new(vec![Err(err)]),
             handed_out: Mutex::new(Vec::new()),
+            gate: None,
+            connect_started: AtomicUsize::new(0),
         }
+    }
+
+    /// 构造挂起等待放行的传输:connect 进入即计数并阻塞,
+    /// 直到 `gate.notify_one()` 放行才返回(默认成功)。
+    pub fn gated() -> Self {
+        Self {
+            results: Mutex::new(Vec::new()),
+            handed_out: Mutex::new(Vec::new()),
+            gate: Some(Arc::new(tokio::sync::Notify::new())),
+            connect_started: AtomicUsize::new(0),
+        }
+    }
+
+    /// connect 已进入次数。
+    pub fn connect_started(&self) -> usize {
+        self.connect_started.load(Ordering::SeqCst)
     }
 }
 
@@ -168,6 +192,10 @@ impl crate::application::ports::SshTransport for FakeTransport {
         Box<dyn crate::application::ports::SshConnection>,
         crate::application::ports::TransportError,
     > {
+        self.connect_started.fetch_add(1, Ordering::SeqCst);
+        if let Some(gate) = &self.gate {
+            gate.notified().await;
+        }
         let connection = {
             let mut queue = self.results.lock().expect("传输结果锁");
             match queue.pop() {
