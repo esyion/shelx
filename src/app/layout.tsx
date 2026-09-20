@@ -39,7 +39,7 @@ import { listenEvent, SESSION_EVENTS } from "@/gateway";
 import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
 import { useFilePathsStore } from "@/stores/file-paths";
-import { requestCloseTab, useTabsStore } from "@/stores/tabs";
+import { closeTabWithSession, useTabsStore } from "@/stores/tabs";
 import { useUiStore } from "@/stores/ui";
 import { useUpdateStore } from "@/stores/update";
 import { enqueueUploadAndShow } from "@/components/files/transfer-enqueue";
@@ -202,9 +202,7 @@ export default function RootLayout({
         case "w": {
           const active = tabs.tabs.find((t) => t.id === tabs.activeTabId);
           if (active) {
-            void requestCloseTab(active).then((ok) => {
-              if (ok) useTabsStore.getState().closeTab(active.id);
-            });
+            void closeTabWithSession(active);
             event.preventDefault();
           }
           break;

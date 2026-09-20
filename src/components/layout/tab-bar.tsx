@@ -6,7 +6,7 @@
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { requestCloseTab, statusDotClass, useTabsStore } from "@/stores/tabs";
+import { closeTabWithSession, statusDotClass, useTabsStore } from "@/stores/tabs";
 import { useSessionsStore } from "@/stores/sessions";
 
 /** 标签栏。 */
@@ -14,7 +14,6 @@ export function TabBar() {
   const tabs = useTabsStore((s) => s.tabs);
   const activeTabId = useTabsStore((s) => s.activeTabId);
   const setActive = useTabsStore((s) => s.setActive);
-  const closeTab = useTabsStore((s) => s.closeTab);
   const sessionsById = useSessionsStore((s) => s.byId);
 
   return (
@@ -62,9 +61,7 @@ export function TabBar() {
               aria-label="关闭标签"
               className="absolute top-1/2 right-0.5 z-10 size-5 -translate-y-1/2 rounded p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
               onClick={() => {
-                void requestCloseTab(tab).then((ok) => {
-                  if (ok) closeTab(tab.id);
-                });
+                void closeTabWithSession(tab);
               }}
             >
               <X className="size-3" />

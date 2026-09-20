@@ -148,11 +148,19 @@ impl SessionService {
 
     /// 按已保存的连接记录建连:取配置 → 解析凭据 → 编排认证。
     ///
+    /// 同连接已有在线会话时直接复用返回、不再重复认证(PRD §6.3:
+    /// 多终端 = 同一 SSH 连接上的多个 channel);新终端由前端在返回的
+    /// 会话上另开 pty 通道。仅复用 `Online` 会话:`Connecting` 会话尚无
+    /// 连接可承载通道。
+    ///
     /// 接收者为 `&Arc<Self>`:断线观察等后台任务需要持有服务自身。
     pub async fn connect_by_conn(
         self: &Arc<Self>,
         conn_id: &ConnId,
     ) -> Result<SessionInfo, SessionError> {
+        if let Some(session_id) = self.online_session_id_of_conn(conn_id) {
+            return Ok(self.info_of(&session_id).expect("刚查到的在线会话必然存在"));
+        }
         let config = self
             .connections
             .connection(conn_id)?
@@ -176,6 +184,20 @@ impl SessionService {
         )?;
         self.start_session(Some(conn_id.clone()), false, params)
             .await
+    }
+
+    /// 查找该连接下任一在线会话 ID(多终端复用同一 SSH 连接)。
+    ///
+    /// 多个在线会话并存时(历史遗留或并发建连)任取其一,均可用。
+    fn online_session_id_of_conn(&self, conn_id: &ConnId) -> Option<String> {
+        self.registry
+            .read()
+            .expect("会话注册表锁")
+            .iter()
+            .find(|(_, entry)| {
+                entry.conn_id.as_ref() == Some(conn_id) && entry.status == SessionStatus::Online
+            })
+            .map(|(id, _)| id.clone())
     }
 
     /// 快速连接:临时会话不落库;`save` 时先创建连接记录再按记录建连。
@@ -258,13 +280,27 @@ impl SessionService {
         match self.transport.connect(&params).await {
             Ok(connection) => {
                 let connection: Arc<dyn SshConnection> = Arc::from(connection);
-                {
+                // 认证期间会话可能已被 close_session 关闭(状态置 Disconnected):
+                // 此时丢弃刚建立的连接并保持 Disconnected,避免留下无引用的
+                // 在线孤儿会话。
+                let closed_while_connecting = {
                     let mut registry = self.registry.write().expect("会话注册表锁");
                     let Some(entry) = registry.get_mut(session_id) else {
                         return Err(SessionError::SessionNotFound);
                     };
-                    entry.status = SessionStatus::Online;
-                    entry.connection = Some(connection.clone());
+                    if entry.status == SessionStatus::Disconnected {
+                        true
+                    } else {
+                        entry.status = SessionStatus::Online;
+                        entry.connection = Some(connection.clone());
+                        false
+                    }
+                };
+                if closed_while_connecting {
+                    if let Err(err) = connection.disconnect().await {
+                        tracing::warn!(%session_id, "关闭已取消会话的新建连接失败: {err}");
+                    }
+                    return Err(SessionError::SessionClosed);
                 }
                 self.emit_status(session_id, SessionStatus::Online, None);
                 Self::spawn_disconnect_watcher(
@@ -276,18 +312,26 @@ impl SessionService {
                 Ok(self.info_of(session_id).expect("刚插入的会话必然存在"))
             }
             Err(err) => {
-                {
+                // 会话在连接期间已被关闭时不再改写状态、不重复广播断连事件。
+                let closed_while_connecting = {
                     let mut registry = self.registry.write().expect("会话注册表锁");
-                    if let Some(entry) = registry.get_mut(session_id) {
-                        entry.status = SessionStatus::Disconnected;
-                        entry.connection = None;
+                    match registry.get_mut(session_id) {
+                        Some(entry) if entry.status == SessionStatus::Disconnected => true,
+                        Some(entry) => {
+                            entry.status = SessionStatus::Disconnected;
+                            entry.connection = None;
+                            false
+                        }
+                        None => false,
                     }
+                };
+                if !closed_while_connecting {
+                    self.emit_status(
+                        session_id,
+                        SessionStatus::Disconnected,
+                        Some(err.to_string()),
+                    );
                 }
-                self.emit_status(
-                    session_id,
-                    SessionStatus::Disconnected,
-                    Some(err.to_string()),
-                );
                 Err(SessionError::Connect(err))
             }
         }

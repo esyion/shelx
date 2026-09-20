@@ -206,6 +206,10 @@ pub struct FakeConnection {
 }
 
 impl FakeConnection {
+    /// 断开调用标记。
+    pub fn disconnect_called(&self) -> bool {
+        *self.state.disconnect_called.lock().expect("断开标记锁")
+    }
     /// 已创建的 pty 通道快照。
     pub fn opened_ptys(&self) -> Vec<FakePty> {
         self.state.opened_ptys.lock().expect("pty 列表锁").clone()

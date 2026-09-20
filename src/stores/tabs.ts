@@ -1,6 +1,6 @@
 /**
- * 标签栏状态(PRD §6.1):一个标签对应一条连接的工作区,
- * 内含终端/监控/文件三个视图切换。
+ * 标签栏状态(PRD §6.1/§6.3):一个标签对应一个终端工作区;
+ * 同一连接可多开标签,多标签共享在线会话、各自持有独立 pty 通道。
  */
 import { create } from "zustand";
 import type { SessionStatus } from "@/types";
@@ -32,7 +32,7 @@ export interface TabsStore {
   tabs: Tab[];
   /** 激活标签 ID;无标签为 null。 */
   activeTabId: string | null;
-  /** 打开(或激活)连接标签:同连接已有标签则激活。 */
+  /** 新开一个连接标签:同连接多开时各自持新标签,共享返回的会话。 */
   openConnectionTab(input: {
     sessionId: string | null;
     connId: string | null;
@@ -62,18 +62,9 @@ export const useTabsStore = create<TabsStore>((set, get) => ({
   activeTabId: null,
 
   openConnectionTab({ sessionId, connId, title, temporary = false, encoding = "utf-8" }) {
-    const existing = get().tabs.find((t) => t.connId === connId && connId !== null);
-    if (existing) {
-      set({
-        activeTabId: existing.id,
-        tabs: get().tabs.map((t) =>
-          t.id === existing.id
-            ? { ...t, sessionId: sessionId ?? t.sessionId }
-            : t,
-        ),
-      });
-      return existing.id;
-    }
+    // 每次调用都新开标签(PRD §6.3 同连接多终端);会话复用由后端
+    // connect_by_conn 保证(同连接在线会话直接返回),各标签在此会话上
+    // 各开各的 pty 通道,互不影响。
     const tab: Tab = {
       id: newTabId(),
       sessionId,
@@ -123,8 +114,8 @@ export function statusDotClass(status: SessionStatus | undefined): string {
   return "bg-muted-foreground/50";
 }
 
-/** 请求关闭标签(F10):确认开关开启且会话在线时弹确认。 */
-export async function requestCloseTab(tab: Tab): Promise<boolean> {
+/** 关闭标签前的确认:确认开关开启且会话在线时弹确认。 */
+async function requestCloseTab(tab: Tab): Promise<boolean> {
   const { useSettingsStore } = await import("@/stores/settings");
   const { useSessionsStore } = await import("@/stores/sessions");
   const confirmClose =
@@ -141,4 +132,29 @@ export async function requestCloseTab(tab: Tab): Promise<boolean> {
     });
   }
   return true;
+}
+
+/**
+ * 关闭标签并按需断开会话(标签栏 × 按钮与 Ctrl+W 的统一入口)。
+ *
+ * 会话可能被同连接多开的多个标签共享(PRD §6.3):关闭时若仍有其他
+ * 标签引用同一会话,仅随组件卸载断开本标签的终端通道;否则优雅关闭
+ * 该 SSH 会话,避免留下无人引用的在线会话。
+ */
+export async function closeTabWithSession(tab: Tab): Promise<void> {
+  if (!(await requestCloseTab(tab))) return;
+  const remaining = useTabsStore
+    .getState()
+    .tabs.filter((t) => t.id !== tab.id && t.sessionId === tab.sessionId)
+    .length;
+  useTabsStore.getState().closeTab(tab.id);
+  if (!tab.sessionId || remaining > 0) return;
+  const { closeSession } = await import("@/app/api");
+  try {
+    await closeSession(tab.sessionId);
+  } catch (err) {
+    // 后端在断开 TCP 前已把会话置为 Disconnected,失败只影响收尾;
+    // 不阻塞也不打断标签关闭,记录日志便于排查。
+    console.warn("[tabs] 关闭会话失败", tab.sessionId, err);
+  }
 }

@@ -3,11 +3,11 @@
 use std::sync::{Arc, Mutex};
 
 use crate::application::ports::{
-    AuthPromptRequest, HostKeyConfirmRequest, SessionEventSink, SessionStatusEvent, SshTransport,
-    TransportError,
+    AuthPromptRequest, HostKeyConfirmRequest, SessionEventSink, SessionStatusEvent,
+    SshConnectParams, SshConnection, SshTransport, TransportError,
 };
 use crate::application::test_support::{
-    connection_service as build_connection_service, draft, FakeTransport,
+    connection_service as build_connection_service, draft, FakeConnection, FakeTransport,
 };
 use crate::domain::connection::ConnId;
 use crate::domain::session::SessionStatus;

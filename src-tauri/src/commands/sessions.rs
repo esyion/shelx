@@ -72,6 +72,9 @@ fn to_ipc_error(err: SessionError) -> IpcError {
 
 /// 按已保存的连接记录建连(取配置 → 解析凭据 → 认证 → 会话注册)。
 ///
+/// 同连接已有在线会话时复用返回同一会话(PRD §6.3 多终端:前端在
+/// 同一会话上另开 pty 通道开新标签,不重复认证)。
+///
 /// 外层 `Result` 仅为 Tauri 对借用参数 async command 的签名要求,恒为 Ok;
 /// 业务信封仍是内层 IpcResult(前端契约不变)。
 #[tauri::command]
