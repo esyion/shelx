@@ -1,6 +1,6 @@
 [package]
 name = "shelx"
-version = "0.2.16"
+version = "0.2.17"
 description = "shelx - lightweight SSH / SFTP / server-monitor desktop tool"
 authors = ["esyion"]
 edition = "2021"
