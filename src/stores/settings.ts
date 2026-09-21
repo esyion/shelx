@@ -1,6 +1,6 @@
 /**
  * 应用设置 store:启动加载一次,变更乐观更新 + 后端持久化
- * (PRD §6.7:即时保存;终端类设置对新开终端生效)。
+ * (PRD §6.7:即时保存;终端设置由消费方订阅热更新,已开终端即时生效)。
  */
 import { create } from "zustand";
 import { getSettings, updateSettings } from "@/app/api";

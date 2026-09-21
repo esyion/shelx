@@ -1,6 +1,7 @@
 /**
  * xterm.js 封装(F7,PRD §6.3):挂载/写入/fit→pty resize、
  * Ctrl+滚轮缩放(持久化)、选中即复制/右键粘贴、断线浮层与重连重开。
+ * 字体/字号/行距/光标/配色/行为开关均对已开终端即时热更新(PRD §6.7)。
  *
  * 生命周期:会话回到 online(epoch 变化)即重开 pty 通道;
  * 组件卸载(tab 关闭/切换)即关闭通道(PRD:卸载即断)。
@@ -9,8 +10,10 @@
 
 import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
+import type { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { loadBaseAddons } from "./base-addons";
+import { useTerminalSettingsHotApply } from "./use-terminal-settings";
 import { resolveTerminalTheme } from "@/lib/terminal-schemes";
 import { tryLoadWebglAddon } from "./webgl-addon";
 import {
@@ -39,11 +42,11 @@ export interface TerminalViewProps {
 export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
+  const fitRef = useRef<FitAddon | null>(null);
+  const terminalIdRef = useRef<string | null>(null);
   const onlineEpoch = useSessionsStore((s) => s.onlineEpoch[sessionId] ?? 0);
   const status = useSessionsStore((s) => s.byId[sessionId]?.status);
-  const colorScheme = useSettingsStore(
-    (s) => s.settings?.terminal.colorScheme ?? "github_light",
-  );
+  useTerminalSettingsHotApply({ terminalRef, fitRef, terminalIdRef });
 
   // xterm 实例与通道生命周期:随 online epoch 重建。
   useEffect(() => {
@@ -55,21 +58,21 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
   useEffect(() => {
     const host = hostRef.current;
     if (!host || status !== "online") return;
-    const settings = useSettingsStore.getState().settings;
-    const terminalPrefs = settings?.terminal;
+    // 创建时刻的设置快照(初始值);后续变更由下方热更新 effect 接管。
+    const prefs = useSettingsStore.getState().settings?.terminal;
 
     const terminal = new Terminal({
-      fontFamily:
-        terminalPrefs?.fontFamily ?? "Cascadia Mono, Consolas, monospace",
-      fontSize: terminalPrefs?.fontSize ?? 13,
-      lineHeight: terminalPrefs?.lineHeight ?? 1.2,
-      cursorStyle: terminalPrefs?.cursorStyle ?? "bar",
-      scrollback: terminalPrefs?.scrollback ?? 5000,
-      theme: resolveTerminalTheme(terminalPrefs?.colorScheme),
+      fontFamily: prefs?.fontFamily ?? "Cascadia Mono, Consolas, monospace",
+      fontSize: prefs?.fontSize ?? 13,
+      lineHeight: prefs?.lineHeight ?? 1.2,
+      cursorStyle: prefs?.cursorStyle ?? "bar",
+      scrollback: prefs?.scrollback ?? 5000,
+      theme: resolveTerminalTheme(prefs?.colorScheme),
       allowProposedApi: true,
     });
     terminalRef.current = terminal;
     const { fit } = loadBaseAddons(terminal);
+    fitRef.current = fit;
     terminal.open(host);
 
     // WebGL addon 持有引用以便 cleanup 时显式 dispose,避免
@@ -102,10 +105,10 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
       }
     });
 
-    // 选中即复制(PRD §6.3)。
-    const copyOnSelect = terminalPrefs?.copyOnSelect ?? true;
+    // 选中即复制(PRD §6.3);开关在回调内现读设置,变更即时生效。
     const selectionDisposable = terminal.onSelectionChange(() => {
-      if (!copyOnSelect) return;
+      if (!(useSettingsStore.getState().settings?.terminal.copyOnSelect ?? true))
+        return;
       const selection = terminal.getSelection();
       if (selection) void navigator.clipboard.writeText(selection);
     });
@@ -157,9 +160,12 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
       capture: true,
     });
 
-    // 右键粘贴(PRD §6.3:行为可配,默认粘贴)。
+    // 右键粘贴(PRD §6.3:行为可配,默认粘贴);开关现读设置,变更即时生效。
     const contextMenuHandler = (event: MouseEvent) => {
-      if (!(terminalPrefs?.rightClickPaste ?? true)) return;
+      if (
+        !(useSettingsStore.getState().settings?.terminal.rightClickPaste ?? true)
+      )
+        return;
       event.preventDefault();
       void navigator.clipboard
         .readText()
@@ -189,6 +195,7 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
           return;
         }
         terminalId = handle.terminalId;
+        terminalIdRef.current = terminalId;
         terminal.focus();
       })
       .catch((err) => {
@@ -208,6 +215,8 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
       dataDisposable.dispose();
       selectionDisposable.dispose();
       if (terminalId) void closeTerminal(terminalId);
+      terminalIdRef.current = null;
+      fitRef.current = null;
       // 显式释放 addon,再 dispose terminal;避免 AddonManager 二次 dispose
       // 触发 addon 内部 _isDisposed 访问 undefined 的运行时错误。
       try {
@@ -225,13 +234,6 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
       terminal.dispose();
     };
   }, [sessionId, onlineEpoch, status, encoding]);
-
-  // 配色方案变化:仅热更新主题,不重建 pty 通道(WebGL 下同样生效)。
-  useEffect(() => {
-    const terminal = terminalRef.current;
-    if (!terminal) return;
-    terminal.options.theme = resolveTerminalTheme(colorScheme);
-  }, [colorScheme]);
 
   return (
     <div className="relative h-full w-full bg-background">

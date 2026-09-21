@@ -24,7 +24,6 @@ export type {
   MigrationSettings,
   MonitorSettings,
   TerminalColorScheme,
-  TerminalEncoding,
   TerminalSettings,
   ThemeMode,
   TransferSettings,

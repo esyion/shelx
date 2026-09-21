@@ -63,18 +63,6 @@ pub enum CursorStyle {
     Underline,
 }
 
-/// 终端编码(与连接配置的编码枚举取值一致:'utf-8' / 'gbk')。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum TerminalEncoding {
-    /// UTF-8(默认)。
-    #[serde(rename = "utf-8")]
-    #[default]
-    Utf8,
-    /// GBK。
-    #[serde(rename = "gbk")]
-    Gbk,
-}
-
 /// 终端配色方案(PRD 用户故事 19;GitHub Light 为默认)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -151,8 +139,6 @@ pub struct TerminalSettings {
     pub color_scheme: TerminalColorScheme,
     /// 光标样式。
     pub cursor_style: CursorStyle,
-    /// 默认编码。
-    pub encoding: TerminalEncoding,
     /// 回滚缓冲行数。
     pub scrollback: u32,
     /// 选中即复制。
@@ -242,7 +228,6 @@ impl Default for TerminalSettings {
             line_height: 1.2,
             color_scheme: TerminalColorScheme::GithubLight,
             cursor_style: CursorStyle::Bar,
-            encoding: TerminalEncoding::Utf8,
             scrollback: 5000,
             copy_on_select: true,
             right_click_paste: true,

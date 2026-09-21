@@ -1,10 +1,9 @@
 /**
  * 设置页「终端」分组:配色方案、字体/字号/行距下拉、光标/编码、行为开关;
- * 终端类设置对新开终端生效,配色方案对已开终端即时生效(PRD §6.7)。
+ * 终端设置修改即时生效(含已开终端热更新,PRD §6.7)。
  */
 "use client";
 
-import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { TERMINAL_COLOR_SCHEME_OPTIONS } from "@/lib/terminal-schemes";
 import {
@@ -27,7 +26,7 @@ export interface TerminalSectionProps {
 /** 设置页「终端」分组。 */
 export function TerminalSection({ settings, save }: TerminalSectionProps) {
   return (
-    <Section title="终端" hint="配色方案即时生效;其余对新开的终端生效">
+    <Section title="终端" hint="修改即时生效">
       <Row label="配色方案">
         <NativeSelect
           value={settings.colorScheme}
@@ -64,7 +63,7 @@ export function TerminalSection({ settings, save }: TerminalSectionProps) {
           ))}
         </NativeSelect>
       </Row>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Row label="字号 (px)">
           <NativeSelect
             value={String(settings.fontSize)}
@@ -103,53 +102,24 @@ export function TerminalSection({ settings, save }: TerminalSectionProps) {
             ))}
           </NativeSelect>
         </Row>
-        <Row label="回滚缓冲 (行)">
-          <Input
-            inputMode="numeric"
-            value={settings.scrollback}
-            onChange={(e) =>
-              save({
-                terminal: { scrollback: Number(e.target.value) || 5000 },
-              })
-            }
-          />
-        </Row>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <Row label="光标样式">
-          <NativeSelect
-            value={settings.cursorStyle}
-            onChange={(e) =>
-              save({
-                terminal: {
-                  cursorStyle: e.target
-                    .value as AppSettings["terminal"]["cursorStyle"],
-                },
-              })
-            }
-          >
-            <option value="bar">竖线</option>
-            <option value="block">块</option>
-            <option value="underline">下划线</option>
-          </NativeSelect>
-        </Row>
-        <Row label="默认编码">
-          <NativeSelect
-            value={settings.encoding}
-            onChange={(e) =>
-              save({
-                terminal: {
-                  encoding: e.target
-                    .value as AppSettings["terminal"]["encoding"],
-                },
-              })
-            }
-          >
-            <option value="utf-8">UTF-8</option>
-            <option value="gbk">GBK</option>
-          </NativeSelect>
-        </Row>
-      </div>
+      <Row label="光标样式">
+        <NativeSelect
+          value={settings.cursorStyle}
+          onChange={(e) =>
+            save({
+              terminal: {
+                cursorStyle: e.target
+                  .value as AppSettings["terminal"]["cursorStyle"],
+              },
+            })
+          }
+        >
+          <option value="bar">竖线</option>
+          <option value="block">块</option>
+          <option value="underline">下划线</option>
+        </NativeSelect>
+      </Row>
       <SwitchRow
         label="选中即复制"
         checked={settings.copyOnSelect}

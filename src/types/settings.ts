@@ -12,9 +12,6 @@ export type Language = "zh" | "en";
 /** 光标样式。 */
 export type CursorStyle = "bar" | "block" | "underline";
 
-/** 终端编码。 */
-export type TerminalEncoding = "utf-8" | "gbk";
-
 /** 终端配色方案(与 Rust `TerminalColorScheme` 枚举取值一致;github_light 为默认)。 */
 export type TerminalColorScheme =
   | "dracula"
@@ -48,7 +45,6 @@ export interface TerminalSettings {
   lineHeight: number;
   colorScheme: TerminalColorScheme;
   cursorStyle: CursorStyle;
-  encoding: TerminalEncoding;
   scrollback: number;
   copyOnSelect: boolean;
   rightClickPaste: boolean;
