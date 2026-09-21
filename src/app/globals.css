@@ -2,6 +2,17 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* streamdown(更新弹窗 release notes 渲染):
+   @source 让 Tailwind 扫描 dist 里的工具类(路径相对本文件,src/app 需上两级),
+   styles.css 补动画与列表标记,katex 供 math 插件渲染公式 */
+@source "../../node_modules/streamdown/dist/*.js";
+@source "../../node_modules/@streamdown/code/dist/*.js";
+@source "../../node_modules/@streamdown/mermaid/dist/*.js";
+@source "../../node_modules/@streamdown/math/dist/*.js";
+@source "../../node_modules/@streamdown/cjk/dist/*.js";
+@import "streamdown/styles.css";
+@import "katex/dist/katex.min.css";
+
 @custom-variant dark (&:is(.dark *));
 
 /* shadcn/ui 语义令牌(neutral 基调);shelx 以深色为主设计,浅色为辅助主题 */

@@ -7,9 +7,14 @@
  */
 "use client";
 
-import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode, ComponentProps } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { cjk } from "@streamdown/cjk";
+import { code } from "@streamdown/code";
+import { math } from "@streamdown/math";
+import { mermaid } from "@streamdown/mermaid";
+import { Streamdown } from "streamdown";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -31,6 +36,7 @@ import { cn } from "@/lib/utils";
 import { SidebarMonitor } from "@/components/monitor/sidebar-monitor";
 import { useTabsStore } from "@/stores/tabs";
 import { useUiStore } from "@/stores/ui";
+import { openExternalUrl } from "@/app/api";
 
 import { useUpdateStore } from "@/stores/update";
 
@@ -132,19 +138,22 @@ function SidebarHeader() {
  * 侧栏上的更新按钮:
  *   - 默认灰色(opacity-40),无操作提示;
  *   - 检测到新版本时变蓝(opacity-100 + text-blue-500),触发途径:
- *     启动静默检查(layout 延时调用,失败不提示)或用户打开弹窗检查;
- *   - 点击打开更新对话框(详见 UpdateDialog)。
+ *     Rust 后台自动检查事件或用户打开弹窗检查;
+ *   - 点击打开更新对话框(详见 UpdateButton)。
  */
-/** 弹窗正文行数上限,超过折叠并加省略号。 */
-const NOTES_PREVIEW_LINES = 12;
 
-/** release body 折叠到前若干行。 */
-function previewNotes(body: string | null | undefined): string {
-  if (!body) return "无发布说明。";
-  const lines = body.split(/\r?\n/);
-  if (lines.length <= NOTES_PREVIEW_LINES) return body;
-  return `${lines.slice(0, NOTES_PREVIEW_LINES).join("\n")}…`;
-}
+/** release notes 内的链接经系统浏览器打开,避免 WebView 内导航冲掉应用。 */
+const markdownComponents = {
+  a: ({ href, children }: ComponentProps<"a">) => (
+    <button
+      type="button"
+      className="text-blue-500 underline underline-offset-2 hover:text-blue-400"
+      onClick={() => href && void openExternalUrl(href).catch(() => undefined)}
+    >
+      {children}
+    </button>
+  ),
+};
 
 /** "X 分钟前 / X 小时前"。 */
 function formatRelative(timestamp: number | null): string {
@@ -182,7 +191,7 @@ function UpdateButton({ collapsed = false }: { collapsed?: boolean }) {
     ? `发现新版本 v${updateVersion}(当前 v${current ?? "?"})`
     : "检查更新";
 
-  const body = useMemo(() => previewNotes(notes), [notes]);
+  const body = notes ?? "无发布说明。";
 
   /** 触发安装流程;失败由 store 抛错,此处统一 toast。 */
   const startInstall = () => {
@@ -237,11 +246,22 @@ function UpdateButton({ collapsed = false }: { collapsed?: boolean }) {
                     : "正在准备版本信息…"}
             </DialogDescription>
           </DialogHeader>
-          <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-3 text-xs leading-relaxed [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {hasError
-              ? "无法连接到更新服务,稍后重试或访问项目页面查看。"
-              : body}
-          </pre>
+          {hasError ? (
+            <p className="rounded-md border bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground">
+              无法连接到更新服务,稍后重试或访问项目页面查看。
+            </p>
+          ) : (
+            <div className="max-h-72 overflow-y-auto rounded-md border bg-muted/30 p-3 text-xs leading-relaxed">
+              <Streamdown
+                mode="static"
+                plugins={{ code, mermaid, math, cjk }}
+                linkSafety={{ enabled: false }}
+                components={markdownComponents}
+              >
+                {body}
+              </Streamdown>
+            </div>
+          )}
           <DialogFooter>
             <span className="mr-auto text-xs text-muted-foreground">
               上次检查:{formatRelative(lastCheckedAt)}
