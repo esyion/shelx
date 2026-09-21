@@ -119,9 +119,94 @@ impl LocalFile for StdLocalFile {
     }
 }
 
+/// std::fs 版旧数据目录盘点(迁移弹窗文案的数据来源)。
+#[derive(Debug, Default)]
+pub struct StdDataInventory;
+
+impl StdDataInventory {
+    /// 构造。
+    pub fn new() -> Self {
+        Self
+    }
+
+    /// 统计单个文件的字节数;不存在或不可读按 0 计(盘点是尽力而为的展示)。
+    fn file_bytes(path: &std::path::Path) -> Option<u64> {
+        std::fs::metadata(path)
+            .ok()
+            .filter(|m| m.is_file())
+            .map(|m| m.len())
+    }
+
+    /// 统计目录下一层的文件总数与字节和;目录不存在返回 None。
+    fn dir_stats(path: &std::path::Path) -> Option<(u64, u64)> {
+        let entries = std::fs::read_dir(path).ok()?;
+        let mut files = 0u64;
+        let mut bytes = 0u64;
+        for entry in entries.flatten() {
+            if let Ok(meta) = entry.metadata() {
+                if meta.is_file() {
+                    files += 1;
+                    bytes += meta.len();
+                }
+            }
+        }
+        Some((files, bytes))
+    }
+}
+
+impl crate::application::ports::DataInventory for StdDataInventory {
+    fn inventory(
+        &self,
+        dir: &std::path::Path,
+    ) -> Vec<crate::application::ports::DataInventoryEntry> {
+        use crate::application::ports::{DataInventoryEntry, DataKind};
+
+        let mut items = Vec::new();
+
+        // 数据库三件套:shelx.db + -wal + -shm。
+        let mut db_bytes = Self::file_bytes(&dir.join("shelx.db")).unwrap_or(0);
+        let mut has_db = db_bytes > 0;
+        for suffix in ["-wal", "-shm"] {
+            if let Some(size) = Self::file_bytes(&dir.join(format!("shelx.db{suffix}"))) {
+                has_db = true;
+                db_bytes += size;
+            }
+        }
+        if has_db {
+            items.push(DataInventoryEntry {
+                kind: DataKind::Database,
+                total_bytes: db_bytes,
+                file_count: 1,
+            });
+        }
+
+        if let Some((files, bytes)) = Self::dir_stats(&dir.join("logs")) {
+            if files > 0 {
+                items.push(DataInventoryEntry {
+                    kind: DataKind::Logs,
+                    total_bytes: bytes,
+                    file_count: files,
+                });
+            }
+        }
+
+        if let Some(size) = Self::file_bytes(&dir.join("secrets.enc")) {
+            items.push(DataInventoryEntry {
+                kind: DataKind::DegradedSecrets,
+                total_bytes: size,
+                file_count: 1,
+            });
+        }
+
+        items
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::application::ports::DataInventory as _;
+    use crate::application::ports::DataKind;
     use crate::application::ports::LocalFs as _;
 
     /// round-trip:写 → 读 → 大小 → 重命名 → 删除。
@@ -150,5 +235,38 @@ mod tests {
 
         let listed = fs.list_dir(&format!("{base}/nested/deep")).unwrap();
         assert!(listed.is_empty());
+    }
+
+    /// 盘点:数据库(WAL 伴生)与日志、降级凭据按类别聚合;空目录返回空表。
+    #[test]
+    fn inventory_reports_known_data_kinds() {
+        let dir = tempfile::tempdir().unwrap();
+        let inventory = StdDataInventory::new();
+        assert!(inventory.inventory(dir.path()).is_empty(), "空目录应为空表");
+
+        std::fs::write(dir.path().join("shelx.db"), [0u8; 100]).unwrap();
+        std::fs::write(dir.path().join("shelx.db-wal"), [0u8; 28]).unwrap();
+        std::fs::create_dir(dir.path().join("logs")).unwrap();
+        std::fs::write(
+            dir.path().join("logs").join("shelx.log.2026-09-20"),
+            [0u8; 50],
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("logs").join("shelx.log.2026-09-21"),
+            [0u8; 30],
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("secrets.enc"), [0u8; 64]).unwrap();
+
+        let items = inventory.inventory(dir.path());
+        assert_eq!(items.len(), 3);
+        assert_eq!(items[0].kind, DataKind::Database);
+        assert_eq!(items[0].total_bytes, 128, "db + wal 应合并统计");
+        assert_eq!(items[1].kind, DataKind::Logs);
+        assert_eq!(items[1].file_count, 2);
+        assert_eq!(items[1].total_bytes, 80);
+        assert_eq!(items[2].kind, DataKind::DegradedSecrets);
+        assert_eq!(items[2].total_bytes, 64);
     }
 }

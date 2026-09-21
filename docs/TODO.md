@@ -13,7 +13,7 @@
 
 ## M0 工程脚手架(约 0.5 周)— ✅ 已完成(2026-09-10)
 
-实况备注:Next 16 + React 19 + shadcn v4(@base-ui 体系),devUrl 为 `localhost:56789`(非 56789);Rust 侧已含 greet 冒烟链路(薄 command + IpcResult 信封 + 测试)与 domain(connection/session/transfer)骨架;russh 锁定 0.63(ring 后端,规避 Windows NASM 依赖)、keyring 4.x。
+实况备注:Next 16 + React 19 + shadcn v4(@base-ui 体系),devUrl 为 `localhost:12345`(非 56789,该端口落入 Windows 保留段触发 EACCES);Rust 侧已含 greet 冒烟链路(薄 command + IpcResult 信封 + 测试)与 domain(connection/session/transfer)骨架;russh 锁定 0.63(ring 后端,规避 Windows NASM 依赖)、keyring 4.x。
 
 - [x] M0-1 初始化仓库:git、`.gitignore`、README、editorconfig
 - [x] M0-2 前端脚手架:bun + Next.js(TS / App Router / Tailwind / 静态导出 `output: 'export'`)
@@ -21,7 +21,7 @@
 - [x] M0-4 验证 dev/build 双形态(HMR 正常、静态导出产物可被 Tauri 加载)— 覆盖风险 R8
 - [x] M0-5 shadcn/ui 初始化 + 组件全量入库(含 dialog/form/context-menu/tabs 等)
 - [x] M0-6 前端依赖:zustand / recharts / @xterm/* / @tanstack/react-virtual / @tauri-apps/api + opener/dialog 插件 / lucide-react;测试链 vitest + RTL + jsdom
-- [x] M0-7 Rust 骨架:分层目录 + greet 冒烟模板;tracing 双输出日志(stdout + `~/.agents-plus/shelx/logs` 按日滚动);数据目录解析(app config dir 随 settings 模块落地)
+- [x] M0-7 Rust 骨架:分层目录 + greet 冒烟模板;tracing 双输出日志(stdout + `~/.shelx/logs` 按日滚动);数据目录解析(app config dir 随 settings 模块落地)
 - [x] M0-8 `gateway/tauri.ts` 唯一 invoke 出口 + `IpcResult`/`IpcError` 类型;`types/` IPC 镜像;`app/api.ts` 调用模式已立
 - [x] M0-9 capabilities 最小集(core/opener/dialog)+ CSP/devCsp(script-src 暂含 'unsafe-inline' 因 Next 内联引导脚本,M4 安全加固时收紧)
 - [x] M0-10 CI workflow:frontend(bun build + vitest)/ rust(fmt/clippy/test)/ audit(初期不阻断;docker sshd 集成测试就绪后补 service)
@@ -150,6 +150,7 @@
 ### 发布工程
 
 - [x] M4-R1 部分完成 ✅ 2026-09-14:启动 5s 后静默检查更新(PRD #66 最小落地,失败不提示,查到新版本图标变蓝);剩余:设置里"自动更新开关"。另修复 latest.json `notes` 恒空(发布说明改由 CHANGELOG.md `## [X.Y.Z]` 段落驱动,publish 时注入并校验缺失即失败)
+- [x] M4-R6 数据目录 v2 迁移 ✅ 2026-09-21:数据位置 `~/.agents-plus/shelx` → `~/.shelx`(TECHNICAL_DESIGN §7.1.1);"询问 → 批准 → 重启 → 启动早期原子 rename"两段式,单写不变式、不做数据合并;进入应用 2s 后弹窗(内容清单由 DataInventory 实盘)+ 设置页「数据存储」手动入口;「暂不」永久关闭自动弹窗(按迁移 id 持久化);rename 失败回退旧目录下次启动重试;`application::migration::REGISTRY` 注册表可扩展未来迁移
 - [ ] M4-R2 剩余 tauri-plugin-updater 设置开关(自动更新,可关闭)
 - [ ] M4-R3 三平台安装包干净安装/升级验证
 - [ ] M4-R4 开源定案:License(MIT)、数据格式审计文档(凭据与连接存储说明)

@@ -7,6 +7,7 @@ pub mod app_meta;
 pub mod common;
 pub mod connection;
 pub mod greet;
+pub mod migration;
 pub mod monitor;
 pub mod session;
 pub mod settings;

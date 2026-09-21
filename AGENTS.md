@@ -219,7 +219,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - 前端依赖使用项目既定包管理器；Tauri 的 beforeDevCommand 和 beforeBuildCommand 必须和团队实际命令一致。
 - 环境配置通过 .env.example 记录非敏感变量说明，敏感值只在本地或 CI 注入。
 - 数据库 schema 变更必须提供可重复执行、可回滚或可恢复的 migration，并保留版本号。
-- 用户数据目录遵循项目既定约定：本机数据存放于 `~/.agents-plus`（主目录约定，与 cc-switch 生态对齐），设置文件使用 Tauri 平台配置目录；禁止硬编码绝对路径或依赖系统特定路径假设。
+- 用户数据目录遵循项目既定约定：本机数据存放于 `~/.shelx`，设置文件使用 Tauri 平台配置目录；禁止硬编码绝对路径或依赖系统特定路径假设。
 
 ## 11. Git、提交与变更说明
 

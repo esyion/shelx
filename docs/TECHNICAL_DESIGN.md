@@ -337,6 +337,9 @@ type IpcResult<T> =
 | ------ | ------------- |
 | `get_settings` / `update_settings` | `() → AppSettings` / `Partial<AppSettings> → AppSettings`(即时生效) |
 | `get_layout` / `save_layout` | `() → LayoutState` / `LayoutState → void` |
+| `get_data_migration_status` | `() → DataMigrationStatus`(§7.1.1;`pending` 非空且 `autoPromptSuppressed` 为 false 时自动弹窗) |
+| `approve_data_migration` | `{id} → void`(写待执行标记,重启后启动早期原子 rename) |
+| `dismiss_data_migration` | `{id} → void`(「暂不」:关闭自动弹窗,设置页入口不受影响;幂等) |
 | `get_update_notice` | `() → UpdateNotice \| null`(后台自动检查最近一次发现的通知;不发起网络请求,webview 刷新后恢复图标) |
 | `open_app_dir` | `{target:'config'\|'logs'} → void`(opener 白名单) |
 | `local_home_path` | `() → string` |
@@ -417,14 +420,41 @@ ProcessInfo   { pid, user, cpuPercent, memPercent, rssKb, command }   // P1
 
 | 内容 | 路径 |
 | ------ | ------ |
-| SQLite | `~/.agents-plus/shelx/shelx.db` |
-| 日志 | `~/.agents-plus/shelx/logs/shelx.log`(tracing-appender 滚动 5MB×3) |
-| 降级加密凭据 | `~/.agents-plus/shelx/secrets.enc`(仅钥匙串不可用时) |
+| SQLite | `~/.shelx/shelx.db` |
+| 日志 | `~/.shelx/logs/shelx.log`(tracing-appender 滚动 5MB×3) |
+| 降级加密凭据 | `~/.shelx/secrets.enc`(仅钥匙串不可用时) |
 | 设置 | Tauri `app_config_dir()/shelx/settings.json` |
 | 布局 | Tauri `app_config_dir()/shelx/layout.json` |
 | 传输临时分片 | 目标同目录 `<name>.shelx-partial` |
 
 路径一律经 Tauri path resolver / `dirs` 解析,禁止硬编码(AGENTS.md §10)。
+
+#### 7.1.1 历史数据目录迁移(数据目录 v2)
+
+历史版本(v0.2.18 及更早)数据存于 `~/.agents-plus/shelx`;调整到 `~/.shelx` 采用
+**"询问 → 批准 → 重启 → 启动早期原子 rename"** 两段式,不做数据合并:
+
+- **单写不变式**:任意时刻应用只写一个目录。旧数据未迁走时,本进程继续用旧目录跑
+  (`DataDirSource::Legacy`),新目录在 rename 前永远不会被写入,因此不存在
+  "两边都有数据"的合并问题;若异常出现两边非空(用户手工拷贝等),策略为
+  新目录优先、旧目录冻结为只读备份,不自动合并。
+- **目录选择**(`shared::paths::resolve_data_dir`,启动期唯一决定点):
+  新目录非空 → 用新目录;否则旧目录非空 → 用旧目录(用户「暂不」后长期处于此态);
+  否则 → 新目录(全新安装)。
+- **为何必须重启生效**:rename 要求 SQLite/日志等任何句柄尚未打开
+  (Windows 上打开中的文件无法 rename),故切换固定在下次启动早期、状态装配前执行;
+  `secrets.enc` 密钥按 machine_id 派生、与路径无关,搬移后解密不受影响。
+- **流程**:前端进入应用 2 秒后 `get_data_migration_status` 检查 → 有旧数据且未
+  「暂不」时弹窗(实际存在的内容清单由 `DataInventory` 端口盘点)→
+  「迁移」= `approve_data_migration` 写 `settings.migration.pendingMigrationId` +
+  relaunch;「暂不」= `dismiss_data_migration` 永久关闭自动弹窗,设置页
+  「数据存储」手动入口不受影响。
+- **失败处理**:rename 失败(权限/占用)→ 本次回退旧目录并记日志,标记保留,
+  下次启动自动重试;成功后清除标记并尝试清理空的 `~/.agents-plus`
+  父目录(仅空时成功,绝不递归删,cc-switch 等可能共用)。
+- **扩展**:未来新增数据迁移在 `application::migration::REGISTRY` 追加
+  `MigrationSpec`(稳定 id + 文案 + is_pending),并在启动流程为该 id 增加
+  启动早期执行分支;前端弹窗与设置页入口零改动。
 
 ### 7.2 SQLite DDL(migrations/0001_init.sql)
 

@@ -79,6 +79,14 @@ export interface UpdateSettings {
   autoCheck: boolean;
 }
 
+/** 数据迁移状态(由后端迁移用例维护,设置页只读展示)。 */
+export interface MigrationSettings {
+  /** 已批准、待下次启动执行的迁移 id。 */
+  pendingMigrationId: string | null;
+  /** 已点「暂不」、不再自动弹窗的迁移 id 列表。 */
+  dismissedAutoMigrations: string[];
+}
+
 /** 应用设置全集。 */
 export interface AppSettings {
   appearance: AppearanceSettings;
@@ -87,6 +95,7 @@ export interface AppSettings {
   transfer: TransferSettings;
   monitor: MonitorSettings;
   update: UpdateSettings;
+  migration: MigrationSettings;
 }
 
 /**

@@ -33,6 +33,7 @@ import { AppDialogs } from "@/components/app-dialogs";
 import { TransferConflictDialog } from "@/components/transfers/transfer-dialogs";
 import { ToastHost } from "@/components/layout/toast-host";
 import { AppShell } from "@/components/layout/app-shell";
+import { useDataMigrationPrompt } from "@/app/hooks/use-data-migration-prompt";
 import { listSessionStatus } from "@/app/api";
 import { initGbkEncoder } from "@/lib/codec";
 import { listenEvent, APP_UPDATE_EVENTS, SESSION_EVENTS } from "@/gateway";
@@ -62,6 +63,9 @@ export default function RootLayout({
   const router = useRouter();
   const pathname = usePathname();
   const { setTheme } = useTheme();
+
+  // 数据迁移提示:进入应用 2 秒后检查旧位置数据,命中且未「暂不」时弹窗询问。
+  useDataMigrationPrompt();
 
   // 初始化:布局恢复、设置加载、会话快照与事件订阅。
   // 主题由 <ThemeProvider> 自动接管(系统深浅变化 + 后端值同步)。

@@ -12,6 +12,7 @@ pub mod connections;
 pub mod greet;
 pub mod groups;
 pub mod local_fs;
+pub mod migration;
 pub mod monitor;
 pub mod sessions;
 pub mod settings;

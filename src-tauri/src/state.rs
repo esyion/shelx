@@ -2,11 +2,11 @@
 //!
 //! 依赖图在启动期一次性构建;command 不得使用不可控全局变量。
 
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
 use crate::application::connections::ConnectionService;
+use crate::application::migration::MigrationService;
 use crate::application::monitoring::MonitorService;
 use crate::application::ports::{SecretAvailability, SessionEventSink, SshTransport};
 use crate::application::prompt::PromptBroker;
@@ -17,13 +17,13 @@ use crate::application::terminals::TerminalService;
 use crate::application::transfers::TransferService;
 use crate::application::update::{UpdateAutoCheckService, UpdateChecker, UpdateEventSink};
 use crate::infrastructure::events::{TauriSessionEvents, TauriUpdateEvents};
+use crate::infrastructure::local_fs::StdDataInventory;
 use crate::infrastructure::secrets;
-use crate::infrastructure::settings::JsonFileSettingsStore;
 use crate::infrastructure::sqlite::connection_repo::SqliteConnectionStore;
 use crate::infrastructure::sqlite::host_key_repo::SqliteHostKeyStore;
 use crate::infrastructure::ssh::transport::RusshTransport;
 use crate::infrastructure::updater::TauriUpdateChecker;
-use crate::shared::paths;
+use crate::shared::paths::DataDirResolution;
 
 /// 应用级共享状态。
 pub struct AppState {
@@ -45,6 +45,8 @@ pub struct AppState {
     pub updates: Arc<UpdateAutoCheckService>,
     /// 键盘交互/指纹确认桥(respond_* 命令直达)。
     pub broker: Arc<PromptBroker>,
+    /// 数据迁移服务(状态查询/批准/暂不)。
+    pub migrations: Arc<MigrationService>,
     /// 凭据存储可用性(供设置页展示"系统钥匙串 / 降级加密")。
     pub secret_availability: SecretAvailability,
 }
@@ -53,26 +55,26 @@ impl AppState {
     /// 启动期构建依赖图;数据库不可用属不可恢复错误,带上下文直接终止。
     ///
     /// @param app Tauri 应用句柄(事件发射)
-    /// @param config_dir 平台配置目录(设置/布局 JSON 落点,AGENTS.md §10)
-    pub fn initialize(app: &tauri::AppHandle, config_dir: &Path) -> Self {
-        let dir = paths::data_dir().unwrap_or_else(|err| {
-            panic!("shelx 数据目录初始化失败,无法启动: {err}");
-        });
+    /// @param settings 设置服务(setup 期已构建,迁移标记读取先于目录选择)
+    /// @param resolution 数据目录解析结果(含可能的启动期迁移结果)
+    pub fn initialize(
+        app: &tauri::AppHandle,
+        settings: Arc<SettingsService>,
+        resolution: &DataDirResolution,
+    ) -> Self {
+        let dir = &resolution.dir;
         let db_path = dir.join("shelx.db");
         let store = SqliteConnectionStore::open(&db_path).unwrap_or_else(|err| {
             panic!("shelx 数据库打开失败({}): {err}", db_path.display());
         });
         tracing::info!(database = %db_path.display(), "连接数据库就绪");
 
-        let settings = Arc::new(SettingsService::new(Box::new(JsonFileSettingsStore::open(
-            config_dir,
-        ))));
         let keepalive_secs = settings
             .get()
             .map(|s| s.connection.keepalive_interval_secs)
             .unwrap_or(30);
 
-        let (secret_store, secret_availability) = secrets::open(&dir);
+        let (secret_store, secret_availability) = secrets::open(dir);
         let connections = Arc::new(ConnectionService::new(Box::new(store), secret_store));
 
         let events: Arc<dyn SessionEventSink> = Arc::new(TauriSessionEvents::new(app.clone()));
@@ -105,6 +107,12 @@ impl AppState {
         ));
         updates.spawn();
 
+        let migrations = Arc::new(MigrationService::new(
+            settings.clone(),
+            Box::new(StdDataInventory::new()),
+            resolution,
+        ));
+
         Self {
             connections,
             settings,
@@ -115,6 +123,7 @@ impl AppState {
             monitor,
             updates,
             broker,
+            migrations,
             secret_availability,
         }
     }

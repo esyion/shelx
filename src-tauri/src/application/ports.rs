@@ -85,6 +85,35 @@ pub trait SettingsStore: Send + Sync {
     fn save_layout(&self, raw: &str) -> Result<(), StoreError>;
 }
 
+/// 已知数据类别(迁移弹窗按类别生成文案)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DataKind {
+    /// 连接与分组数据库(`shelx.db` 及其 WAL/SHM 伴生文件)。
+    Database,
+    /// 应用日志目录(`logs/`)。
+    Logs,
+    /// 降级加密凭据(`secrets.enc`,仅钥匙串不可用时存在)。
+    DegradedSecrets,
+}
+
+/// 单个数据类别的盘点结果。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DataInventoryEntry {
+    /// 数据类别。
+    pub kind: DataKind,
+    /// 该类别文件总字节数(目录为其下所有文件之和)。
+    pub total_bytes: u64,
+    /// 文件数。
+    pub file_count: u64,
+}
+
+/// 旧数据目录内容盘点端口:识别目录内 shelx 已知数据类别与体量,
+/// 供迁移弹窗与设置页生成"将迁移哪些内容"的文案。
+pub trait DataInventory: Send + Sync {
+    /// 盘点目录中的已知数据项;目录不存在或不含已知数据时返回空表。
+    fn inventory(&self, dir: &std::path::Path) -> Vec<DataInventoryEntry>;
+}
+
 /// 主机指纹存取端口(TOFU,设计文档 §7.7-4)。
 pub trait HostKeyStore: Send + Sync {
     /// 读取已确认的主机指纹。

@@ -21,6 +21,7 @@ export type {
   DefaultAuthMethod,
   Language,
   LayoutState,
+  MigrationSettings,
   MonitorSettings,
   TerminalColorScheme,
   TerminalEncoding,
@@ -56,3 +57,9 @@ export type {
 } from "./transfer";
 export type { DiskInfo, MetricsSample } from "./monitor";
 export type { AppVersion, UpdateNotice } from "./release";
+export type {
+  DataDirSource,
+  DataMigration,
+  DataMigrationItem,
+  DataMigrationStatus,
+} from "./migration";

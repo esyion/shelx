@@ -7,6 +7,7 @@
 import {
   connectionsApi,
   localFsApi,
+  migrationApi,
   monitorApi,
   sessionsApi,
   settingsApi,
@@ -160,3 +161,12 @@ export const fetchSystemInfo = systemInfoApi.fetchSystemInfo;
 
 /** 用系统默认应用打开外部链接(http/https)。 */
 export const openExternalUrl = openerApi.openExternalUrl;
+
+/** 查询数据迁移状态(TECHNICAL_DESIGN §7.1.1)。 */
+export const getDataMigrationStatus = migrationApi.getDataMigrationStatus;
+
+/** 批准数据迁移(重启后自动完成)。 */
+export const approveDataMigration = migrationApi.approveDataMigration;
+
+/** 「暂不」:关闭数据迁移自动弹窗(幂等)。 */
+export const dismissDataMigration = migrationApi.dismissDataMigration;

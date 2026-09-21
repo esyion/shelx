@@ -77,7 +77,7 @@ CPU（总占用 + 每核）、内存、Swap、网速、磁盘、负载、运行�
 
 左边那棵树就是地址簿。分组、搜索、拖着用。右键连接、编辑、克隆、删除。克隆只拷主机配置，不拷凭据。
 
-密码不进 SQLite。进系统钥匙串（Keychain / Credential Manager / Secret Service）。钥匙串不可用时，退到 `~/.agents-plus/shelx` 下一份 AES-GCM 加密文件。也可以只在本次会话里记住，或者干脆不存。
+密码不进 SQLite。进系统钥匙串（Keychain / Credential Manager / Secret Service）。钥匙串不可用时，退到 `~/.shelx` 下一份 AES-GCM 加密文件。也可以只在本次会话里记住，或者干脆不存。
 
 没有跳板机，没有端口转发，没有插件。是故意的。
 
@@ -107,7 +107,7 @@ bun tauri dev      # 开发
 bun tauri build    # 打安装包
 ```
 
-数据在 `~/.agents-plus/shelx`（库、日志、降级凭据）。设置和窗口布局在系统的应用配置目录（`com.krmeow.shelx`）。
+数据在 `~/.shelx`（库、日志、降级凭据）。设置和窗口布局在系统的应用配置目录（`com.krmeow.shelx`）。
 
 技术栈：Tauri 2、russh、russh-sftp、SQLite。前端是 Next.js 静态导出 + xterm.js + React。
 

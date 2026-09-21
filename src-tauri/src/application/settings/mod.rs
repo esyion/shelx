@@ -203,6 +203,16 @@ pub struct UpdateSettings {
     pub auto_check: bool,
 }
 
+/// 数据迁移状态(设计文档 §7.1);由迁移用例与启动流程维护,设置页只读展示。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MigrationSettings {
+    /// 已批准、待下次启动早期执行的迁移 id;执行成功后由启动流程清除。
+    pub pending_migration_id: Option<String>,
+    /// 用户点「暂不」后不再自动弹窗的迁移 id;设置页手动入口不受此影响。
+    pub dismissed_auto_migrations: Vec<String>,
+}
+
 /// 应用设置全集(PRD §6.7 分组);默认值 = 各分组默认值的组合。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -219,6 +229,8 @@ pub struct AppSettings {
     pub monitor: MonitorSettings,
     /// 更新。
     pub update: UpdateSettings,
+    /// 数据迁移。
+    pub migration: MigrationSettings,
 }
 
 impl Default for TerminalSettings {

@@ -14,6 +14,7 @@ import { useSettingsStore } from "@/stores/settings";
 import { useUiStore } from "@/stores/ui";
 import { useUpdateStore } from "@/stores/update";
 import type { AppSettings } from "@/types";
+import { DataSection } from "./data-section";
 import { Row, Section, SwitchRow } from "./form-controls";
 import { TerminalSection } from "./terminal-section";
 
@@ -203,6 +204,8 @@ export default function SettingsPage() {
           onChange={(v) => save({ update: { autoCheck: v } })}
         />
       </Section>
+
+      <DataSection />
 
       <footer className="pb-6 text-center text-xs text-muted-foreground">
         shelx{currentVersion ? ` v${currentVersion}` : ""}

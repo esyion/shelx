@@ -77,7 +77,7 @@ Connect also grabs hostname, kernel, distro, CPU model, and memory once, for the
 
 The left tree is the address book. Groups, search, drag to rearrange. Right-click to connect, edit, clone, or delete. Clone copies the host, not the secrets.
 
-Passwords never go into SQLite. They go to the OS keyring (Keychain / Credential Manager / Secret Service). If the keyring isn't there, they land in an AES-GCM file under `~/.agents-plus/shelx`. You can also keep a password for this session only, or not save it at all.
+Passwords never go into SQLite. They go to the OS keyring (Keychain / Credential Manager / Secret Service). If the keyring isn't there, they land in an AES-GCM file under `~/.shelx`. You can also keep a password for this session only, or not save it at all.
 
 No jump host. No port forwarding. No plugin system. On purpose.
 
@@ -107,7 +107,7 @@ bun tauri dev      # run
 bun tauri build    # installer
 ```
 
-Data lives in `~/.agents-plus/shelx` (SQLite, logs, fallback secrets). Settings and layout go in the OS app-config directory (`com.krmeow.shelx`).
+Data lives in `~/.shelx` (SQLite, logs, fallback secrets). Settings and layout go in the OS app-config directory (`com.krmeow.shelx`).
 
 Stack: Tauri 2, russh, russh-sftp, SQLite. Frontend is a Next.js static export with xterm.js and React.
 

@@ -13,6 +13,8 @@ export * as connectionsApi from "./connections";
 export * as sessionsApi from "./sessions";
 export * as sftpApi from "./sftp";
 export * as settingsApi from "./settings";
+export * as migrationApi from "./migration";
+export { relaunchForMigration } from "./migration";
 export * as terminalsApi from "./terminals";
 export * as transferApi from "./transfer";
 export * as localFsApi from "./local_fs";
