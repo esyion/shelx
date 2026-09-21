@@ -7,6 +7,34 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > Versions prior to `0.2.0` were internal iterations before the project
 > was open-sourced; their changes are summarized under "Unreleased / 0.2.0".
 
+## [0.2.20] - 2026-09-21
+
+### Added
+
+- **Update dialog shows live download progress** — after starting an
+  install, the dialog switches in place to a determinate progress bar
+  when the server reports the update size, or an indeterminate state
+  otherwise, then to an "installing" state while the updater takes over
+  for install and relaunch. Re-checking for updates is blocked during
+  installation; the dialog can be closed and reopened while the
+  download continues in the background.
+
+### Changed
+
+- **Terminal settings now apply to already-open terminals instantly** —
+  font family, font size, line height and cursor style hot-update live
+  terminals (with a refit and pty resize when font metrics change)
+  instead of only taking effect for newly opened terminals;
+  copy-on-select and right-click paste toggles are read live as well.
+  The settings page hint now reads "changes take effect immediately".
+
+### Removed
+
+- **Scrollback buffer setting** (Settings → Terminal) — the terminal
+  keeps using a previously saved value or the default 5,000 lines.
+- **Default encoding setting** — it had no effect; terminal encoding
+  comes from each connection's own configuration.
+
 ## [0.2.19] - 2026-09-21
 
 ### Added
