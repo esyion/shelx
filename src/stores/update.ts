@@ -11,6 +11,9 @@
  *
  * 状态机: idle → checking → up-to-date | available | error。
  * `finally` 块通过 try/catch/finally 保证状态一定离开 "checking"。
+ * 安装流程另有独立状态机 `installPhase`:
+ * idle → downloading(百分比经 `installProgress` 暴露)→ installing,
+ * 由 `installUpdate` 驱动,失败复位回 idle。
  *
  * 设计取舍:本 store 不持有 toast 能力,失败结果通过返回值交给 UI 层
  * 统一 toast(与 `useUiStore.toast` 风格一致),避免在领域 store 里
@@ -38,6 +41,12 @@ export type UpdateStatus =
   | "available"
   | "error";
 
+/**
+ * 安装流程状态机:idle 未在安装 → downloading 下载中 →
+ * installing 下载完成等待插件接管安装重启(桌面端进程随即退出)。
+ */
+export type InstallPhase = "idle" | "downloading" | "installing";
+
 export interface UpdateStore {
   /** 当前应用版本号;启动加载前为 null。 */
   currentVersion: string | null;
@@ -51,6 +60,14 @@ export interface UpdateStore {
   errorMessage: string | null;
   /** 上次成功检测时间戳(用于显示"X 分钟前检查过")。 */
   lastCheckedAt: number | null;
+  /** 安装流程状态;非 idle 时更新弹窗原位展示进度并禁用操作。 */
+  installPhase: InstallPhase;
+  /**
+   * 下载进度百分比(0–100)。
+   * `downloading` 且服务器未返回总大小时为 `null`(不确定进度,UI 显示不定态);
+   * `installing` 时恒为 100。
+   */
+  installProgress: number | null;
 
   /** 启动时静默读取当前版本号;不做任何网络请求。 */
   init(): Promise<void>;
@@ -66,7 +83,8 @@ export interface UpdateStore {
   checkNow(): Promise<UpdateStatus>;
   /**
    * 下载并安装更新;成功后调用 `relaunchApp` 重启。
-   * 失败抛 Error 由 UI 捕获 toast;无更新对象时返回 `false`。
+   * 下载进度经 `installPhase` / `installProgress` 暴露给 UI。
+   * 失败抛 Error 由 UI 捕获 toast,并复位安装状态;无更新对象时返回 `false`。
    */
   installUpdate(): Promise<boolean>;
 }
@@ -76,6 +94,8 @@ export const useUpdateStore = create<UpdateStore>((set, get) => {
   let updateRef: Update | null = null;
   /** 防止并发点击导致多次检查。 */
   let checking = false;
+  /** 防止安装进行中触发新的检查(会 close 正在下载的 Update 对象)。 */
+  let installing = false;
 
   return {
     currentVersion: null,
@@ -84,6 +104,8 @@ export const useUpdateStore = create<UpdateStore>((set, get) => {
     status: "idle",
     errorMessage: null,
     lastCheckedAt: null,
+    installPhase: "idle",
+    installProgress: null,
 
     async init() {
       if (!isTauri()) return;
@@ -120,6 +142,8 @@ export const useUpdateStore = create<UpdateStore>((set, get) => {
     async checkNow() {
       if (!isTauri()) return "idle" as UpdateStatus;
       if (checking) return get().status;
+      // 安装进行中不允许再检查:checkNow 会 discard 正在下载的 Update 对象。
+      if (installing) return get().status;
       checking = true;
       set({ status: "checking", errorMessage: null });
 
@@ -166,15 +190,31 @@ export const useUpdateStore = create<UpdateStore>((set, get) => {
     async installUpdate() {
       const update = updateRef;
       if (!update) return false;
+      installing = true;
+      set({ installPhase: "downloading", installProgress: null });
       try {
-        await downloadAndInstallUpdate(update, () => {
-          /* 进度事件:本次重构不展示进度条,后续如需展示可在此处 patch state */
+        await downloadAndInstallUpdate(update, (percent) => {
+          // gateway 约定:NaN 表示服务器未返回总大小,无法计算百分比。
+          if (Number.isNaN(percent)) {
+            set({ installPhase: "downloading", installProgress: null });
+            return;
+          }
+          // 百分比到 100 即下载完成,之后插件接管安装与应用重启。
+          if (percent >= 100) {
+            set({ installPhase: "installing", installProgress: 100 });
+            return;
+          }
+          set({ installPhase: "downloading", installProgress: percent });
         });
         await relaunchApp();
         return true;
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : String(cause);
+        // 失败复位安装状态,允许用户重试;桌面端成功路径不会走到这里(进程已重启)。
+        set({ installPhase: "idle", installProgress: null });
         throw new Error(`更新安装失败,请稍后重试(${message})`);
+      } finally {
+        installing = false;
       }
     },
   };

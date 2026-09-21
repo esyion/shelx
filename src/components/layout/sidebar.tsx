@@ -7,26 +7,12 @@
  */
 "use client";
 
-import type { ReactNode, ComponentProps } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { cjk } from "@streamdown/cjk";
-import { code } from "@streamdown/code";
-import { math } from "@streamdown/math";
-import { mermaid } from "@streamdown/mermaid";
-import { Streamdown } from "streamdown";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   BarChart3,
-  CircleArrowUp,
   GripHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
@@ -34,11 +20,9 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SidebarMonitor } from "@/components/monitor/sidebar-monitor";
+import { UpdateButton } from "@/components/layout/update-button";
 import { useTabsStore } from "@/stores/tabs";
 import { useUiStore } from "@/stores/ui";
-import { openExternalUrl } from "@/app/api";
-
-import { useUpdateStore } from "@/stores/update";
 
 /** 侧栏默认上半比例(连接树)。 */
 const DEFAULT_TREE_RATIO = 60;
@@ -131,158 +115,6 @@ function SidebarHeader() {
         </Button>
       </div>
     </div>
-  );
-}
-
-/**
- * 侧栏上的更新按钮:
- *   - 默认灰色(opacity-40),无操作提示;
- *   - 检测到新版本时变蓝(opacity-100 + text-blue-500),触发途径:
- *     Rust 后台自动检查事件或用户打开弹窗检查;
- *   - 点击打开更新对话框(详见 UpdateButton)。
- */
-
-/** release notes 内的链接经系统浏览器打开,避免 WebView 内导航冲掉应用。 */
-const markdownComponents = {
-  a: ({ href, children }: ComponentProps<"a">) => (
-    <button
-      type="button"
-      className="text-blue-500 underline underline-offset-2 hover:text-blue-400"
-      onClick={() => href && void openExternalUrl(href).catch(() => undefined)}
-    >
-      {children}
-    </button>
-  ),
-};
-
-/** "X 分钟前 / X 小时前"。 */
-function formatRelative(timestamp: number | null): string {
-  if (!timestamp) return "尚未检查";
-  const delta = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
-  if (delta < 60) return "刚刚";
-  if (delta < 3600) return `${Math.floor(delta / 60)} 分钟前`;
-  if (delta < 86400) return `${Math.floor(delta / 3600)} 小时前`;
-  return `${Math.floor(delta / 86400)} 天前`;
-}
-
-/** 侧栏上的更新按钮:点击弹窗展示版本/发布说明/立即更新。 */
-function UpdateButton({ collapsed = false }: { collapsed?: boolean }) {
-  const status = useUpdateStore((s) => s.status);
-  const current = useUpdateStore((s) => s.currentVersion);
-  const updateVersion = useUpdateStore((s) => s.updateVersion);
-  const notes = useUpdateStore((s) => s.notes);
-  const errorMessage = useUpdateStore((s) => s.errorMessage);
-  const lastCheckedAt = useUpdateStore((s) => s.lastCheckedAt);
-  const checkNow = useUpdateStore((s) => s.checkNow);
-  const installUpdate = useUpdateStore((s) => s.installUpdate);
-  const toast = useUiStore((s) => s.toast);
-
-  const [open, setOpen] = useState(false);
-
-  // 打开时强制刷一次,确保看到的是最新数据。
-  useEffect(() => {
-    if (open && status !== "checking") runCheck();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  const isAvailable = status === "available";
-  const hasError = status === "error";
-  const title = isAvailable && updateVersion
-    ? `发现新版本 v${updateVersion}(当前 v${current ?? "?"})`
-    : "检查更新";
-
-  const body = notes ?? "无发布说明。";
-
-  /** 触发安装流程;失败由 store 抛错,此处统一 toast。 */
-  const startInstall = () => {
-    setOpen(false);
-    toast("正在下载更新…");
-    installUpdate().catch((err: unknown) => {
-      const msg = err instanceof Error ? err.message : String(err);
-      toast(`更新失败: ${msg}`, "error");
-    });
-  };
-
-  /** 启动检查:store 内部捕获异常并落到 "error" 状态,UI 据此 toast。 */
-  const runCheck = () => {
-    void checkNow().then((next) => {
-      if (next === "error") toast("检查更新失败", "error");
-      if (next === "idle") toast("仅桌面安装版支持检查更新");
-    });
-  };
-
-  return (
-    <>
-      <Button
-        variant="ghost"
-        size="icon"
-        className={collapsed ? "size-8" : "size-7"}
-        title={title}
-        onClick={() => setOpen(true)}
-        data-testid="update-button"
-        data-update-available={isAvailable ? "true" : "false"}
-      >
-        <CircleArrowUp
-          className={cn(
-            "size-4 transition-opacity",
-            isAvailable ? "opacity-100 text-blue-500" : "opacity-40",
-          )}
-        />
-      </Button>
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {isAvailable ? "发现新版本" : hasError ? "检查更新失败" : "已是最新版本"}
-            </DialogTitle>
-            <DialogDescription>
-              {isAvailable && updateVersion
-                ? `v${current ?? "?"} → v${updateVersion}`
-                : hasError
-                  ? errorMessage ?? "请稍后重试"
-                  : current
-                    ? `当前版本 v${current}`
-                    : "正在准备版本信息…"}
-            </DialogDescription>
-          </DialogHeader>
-          {hasError ? (
-            <p className="rounded-md border bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground">
-              无法连接到更新服务,稍后重试或访问项目页面查看。
-            </p>
-          ) : (
-            <div className="max-h-72 overflow-y-auto rounded-md border bg-muted/30 p-3 text-xs leading-relaxed">
-              <Streamdown
-                mode="static"
-                plugins={{ code, mermaid, math, cjk }}
-                linkSafety={{ enabled: false }}
-                components={markdownComponents}
-              >
-                {body}
-              </Streamdown>
-            </div>
-          )}
-          <DialogFooter>
-            <span className="mr-auto text-xs text-muted-foreground">
-              上次检查:{formatRelative(lastCheckedAt)}
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={status === "checking"}
-              onClick={runCheck}
-            >
-              {status === "checking" ? "检查中…" : "重新检查"}
-            </Button>
-            {isAvailable && (
-              <Button size="sm" onClick={startInstall}>
-                立即更新
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
   );
 }
 
