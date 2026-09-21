@@ -4,7 +4,7 @@
   "version": "0.2.18",
   "type": "module",
   "scripts": {
-    "dev": "next dev -p 56789",
+    "dev": "next dev -p 12345",
     "build": "next build",
     "test": "vitest run",
     "tauri": "tauri",
