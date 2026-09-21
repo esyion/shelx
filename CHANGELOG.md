@@ -7,6 +7,39 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > Versions prior to `0.2.0` were internal iterations before the project
 > was open-sourced; their changes are summarized under "Unreleased / 0.2.0".
 
+## [0.2.19] - 2026-09-21
+
+### Added
+
+- **Local data now lives in `~/.shelx`** (previously
+  `~/.agents-plus/shelx`). Existing data is offered a guided one-shot
+  migration: about two seconds after startup a dialog lists exactly what
+  will be moved (SQLite database, logs, fallback credentials with sizes);
+  choosing **Migrate** writes an approval marker and relaunches the app,
+  and the switch itself is an atomic rename performed early in the next
+  startup — before any file handle is open — so it is instant and safe.
+- **Settings → Data Storage section** always shows the current data
+  directory and, if legacy data is still waiting, a manual "Migrate now"
+  entry — dismissing the automatic dialog never hides it.
+- **Extensible migration registry** (`MigrationSpec`): future data
+  migrations register a stable id plus copy, reusing the same dialog and
+  settings entry with no frontend changes.
+
+### Changed
+
+- Choosing **Not now** on the migration dialog permanently silences the
+  automatic prompt for that migration (persisted per migration id);
+  migration stays available from Settings.
+- While legacy data is unmigrated the app keeps running entirely on the
+  old directory (single-writer invariant), so deferring never splits or
+  merges data.
+
+### Fixed
+
+- In `tauri dev`, approving a migration no longer attempts an automatic
+  relaunch (the dev runner reaps the relaunched child, which looked like
+  a crash); it now asks for a manual dev-process restart instead.
+
 ## [0.2.18] - 2026-09-21
 
 ### Added
