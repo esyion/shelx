@@ -7,6 +7,24 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > Versions prior to `0.2.0` were internal iterations before the project
 > was open-sourced; their changes are summarized under "Unreleased / 0.2.0".
 
+## [0.2.18] - 2026-09-21
+
+### Added
+
+- **Release notes are now rendered as rich markdown** in the update
+  dialog — headings, lists, bold/italic, tables, syntax-highlighted
+  code blocks (Shiki), mermaid diagrams, LaTeX math (KaTeX) and
+  CJK-aware typography — replacing the raw monospace text dump.
+- **Links inside release notes open in the system browser** via the
+  opener plugin instead of navigating the embedded web view, which
+  would otherwise replace the running app UI.
+
+### Changed
+
+- **Full release notes are shown** with the body scrolling inside the
+  dialog, replacing the previous 12-line truncation that could cut
+  markdown syntax mid-way.
+
 ## [0.2.17] - 2026-09-20
 
 ### Added
