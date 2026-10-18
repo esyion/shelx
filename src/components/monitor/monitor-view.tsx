@@ -8,16 +8,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Area,
-  AreaChart,
   CartesianGrid,
+  Cell,
   Line,
   LineChart,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+import { Cpu, HardDrive, type LucideIcon } from "lucide-react";
 import { NativeSelect } from "@/components/ui/native-select";
 import { recentMonitorSamples, startMonitor, stopMonitor } from "@/app/api";
 import { formatBytes, formatDuration } from "@/lib/format";
@@ -38,7 +40,7 @@ export interface MonitorViewProps {
 export function MonitorView({ sessionId }: MonitorViewProps) {
   const samplesRef = useRef<MetricsSample[]>([]);
   const [, forceRender] = useState(0);
-  const [intervalSecs, setIntervalSecs] = useState(5);
+  const [intervalSecs, setIntervalSecs] = useState(2);
   const [error, setError] = useState<string | null>(null);
   const status = useSessionsStore((s) => s.byId[sessionId]?.status);
   const serverInfo = useSessionsStore((s) => s.byId[sessionId]?.serverInfo);
@@ -148,12 +150,12 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
       {/* 图表网格:2 列 */}
       <div className="mt-3 grid min-h-0 flex-1 grid-cols-2 gap-3">
         <ChartCard title={`CPU ${latest.cpuPercent?.toFixed(1) ?? "--"}%`}>
-          <CpuChart samples={samples} />
+          <CpuPie latest={latest} />
         </ChartCard>
         <ChartCard
           title={`内存 ${formatBytes(latest.memUsedKb * 1024)} / ${formatBytes(latest.memTotalKb * 1024)}`}
         >
-          <MemoryChart samples={samples} />
+          <MemoryPie latest={latest} />
         </ChartCard>
         <ChartCard
           title={`网络 ↓${formatBytes(latest.netRxBps)}/s ↑${formatBytes(latest.netTxBps)}/s`}
@@ -161,61 +163,104 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
           <NetworkChart samples={samples} />
         </ChartCard>
         <ChartCard
-          title={`负载 ${latest.load1.toFixed(2)} / ${latest.load5.toFixed(2)} / ${latest.load15.toFixed(2)}`}
+          title={
+            <>
+              负载
+              <span
+                className={loadState(latest).className}
+                title="按最近 1 分钟平均负载 ÷ CPU 核心数划分"
+              >
+                {loadState(latest).label}
+              </span>
+            </>
+          }
+          extra={`1m ${latest.load1.toFixed(2)} · 5m ${latest.load5.toFixed(2)} · 15m ${latest.load15.toFixed(2)}`}
         >
           <LoadChart samples={samples} />
         </ChartCard>
       </div>
 
-      {/* 磁盘进度条行 */}
-      <div className="mt-2 grid grid-cols-2 gap-2">
-        {latest.disks.map((disk) => (
-          <DiskBar key={disk.mount} disk={disk} />
-        ))}
-      </div>
-
-      {/* 每核迷你条形 */}
-      {latest.cpuCoresPercent.length > 1 && (
-        <div className="mt-2 flex flex-wrap gap-1">
-          {latest.cpuCoresPercent.map((percent, i) => (
-            <div key={i} className="flex w-16 flex-col items-center">
-              <div className="h-1 w-full rounded bg-muted">
-                <div
-                  className="h-full rounded bg-primary"
-                  style={{ width: `${Math.min(100, percent ?? 0)}%` }}
-                />
-              </div>
-              <span className="text-[9px] text-muted-foreground">
-                c{i} {(percent ?? 0).toFixed(0)}%
-              </span>
-            </div>
+      {/* 磁盘占用 */}
+      <section className="mt-3" aria-label="磁盘占用">
+        <SectionHeader
+          icon={HardDrive}
+          label="磁盘"
+          hint={`${latest.disks.length} 个挂载点`}
+        />
+        <div className="mt-1.5 grid grid-cols-1 gap-x-6 gap-y-1.5 xl:grid-cols-2">
+          {latest.disks.map((disk) => (
+            <DiskBar key={disk.mount} disk={disk} />
           ))}
         </div>
+      </section>
+
+      {/* 每核占用 */}
+      {latest.cpuCoresPercent.length > 1 && (
+        <section className="mt-3" aria-label="CPU 每核占用">
+          <SectionHeader
+            icon={Cpu}
+            label="CPU 核心"
+            hint={`${latest.cpuCoresPercent.length} 核`}
+          />
+          <div className="mt-1.5 grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-4 xl:grid-cols-8">
+            {latest.cpuCoresPercent.map((percent, i) => (
+              <CoreBar key={i} index={i} percent={percent ?? 0} />
+            ))}
+          </div>
+        </section>
       )}
     </div>
   );
 }
 
-/** 图表卡片容器。 */
+/** 图表卡片容器:title 允许内嵌状态词,extra 显示右侧补充说明。 */
 function ChartCard({
   title,
+  extra,
   children,
 }: {
-  title: string;
+  title: React.ReactNode;
+  extra?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="flex min-h-36 flex-col rounded-md border p-2">
-      <span className="mb-1 text-xs font-medium">{title}</span>
+      <div className="mb-1 flex items-center gap-1 text-xs font-medium">
+        {title}
+        {extra && (
+          <span
+            className="ml-auto text-[10px] font-normal text-muted-foreground"
+            title="过去 1 / 5 / 15 分钟的平均负载"
+          >
+            {extra}
+          </span>
+        )}
+      </div>
       <div className="min-h-0 flex-1">{children}</div>
     </div>
   );
 }
 
-/** 通用时间轴(样本 → 图表数据)。 */
+/**
+ * 负载档位:平均负载除以核心数得到"每核排队压力"。
+ * ≤0.3 空闲,≤0.7 正常,≤1 繁忙,>1 过载(任务在排队等 CPU)。
+ */
+function loadState(latest: MetricsSample): {
+  label: string;
+  className: string;
+} {
+  const cores = Math.max(1, latest.cpuCoresPercent.length);
+  const ratio = latest.load1 / cores;
+  if (ratio <= 0.3) return { label: "空闲", className: "text-emerald-500" };
+  if (ratio <= 0.7) return { label: "正常", className: "text-emerald-500" };
+  if (ratio <= 1.0) return { label: "繁忙", className: "text-orange-500" };
+  return { label: "过载", className: "text-red-500" };
+}
+
+/** 通用时间轴(样本 → 折线图数据;CPU/内存用饼图,只看最新样本)。 */
 function toTimeline(
   samples: MetricsSample[],
-): { time: string; [key: string]: number | string | null }[] {
+): { time: string; [key: string]: number | string }[] {
   return samples.slice(-120).map((s) => ({
     time: new Date(s.ts).toLocaleTimeString("zh-CN", {
       hour12: false,
@@ -223,10 +268,6 @@ function toTimeline(
       minute: "2-digit",
       second: "2-digit",
     }),
-    cpu: s.cpuPercent,
-    /** 数据轴是字节(KiB × 1024);与 YAxis unit="GiB" / tooltip 配套。 */
-    memUsed: s.memUsedKb * 1024,
-    memTotal: s.memTotalKb * 1024,
     /** 数据轴是字节/秒;tooltip 用 formatBytes 动态换算单位。 */
     netRx: s.netRxBps,
     netTx: s.netTxBps,
@@ -235,83 +276,99 @@ function toTimeline(
   }));
 }
 
-/** CPU 面积图。 */
-function CpuChart({ samples }: { samples: MetricsSample[] }) {
-  const data = toTimeline(samples);
+/** 占用环形饼图属性。 */
+interface UsagePieProps {
+  /** 扇区数据,依次为占用/剩余。 */
+  segments: { name: string; value: number }[];
+  /** 扇区主题色(CSS 变量,值本身是完整 oklch 颜色,禁止再包 hsl())。 */
+  colors: string[];
+  /** 环心百分比文案。 */
+  centerLabel: string;
+  /** tooltip 数值格式化。 */
+  formatValue: (value: number) => string;
+}
+
+/**
+ * 占用环形饼图:首扇区为主题色实色,剩余扇区同色低透明度,
+ * 环心显示百分比。颜色直接用 CSS 变量,自动跟随明暗主题。
+ */
+function UsagePie({
+  segments,
+  colors,
+  centerLabel,
+  formatValue,
+}: UsagePieProps) {
   return (
-    <ResponsiveContainer width="100%" height="100%">
-      <AreaChart
-        data={data}
-        margin={{ top: 2, right: 4, bottom: 0, left: -20 }}
-      >
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-        <XAxis dataKey="time" hide />
-        <YAxis domain={[0, 100]} tick={{ fontSize: 9 }} />
-        <Tooltip
-          contentStyle={{ fontSize: 10 }}
-          cursor={{ stroke: "oklch(var(--border))" }}
-          formatter={(v) =>
-            [`${Number(v).toFixed(1)}%`, "CPU"] as [string, string]
-          }
-        />
-        <Area
-          type="monotone"
-          dataKey="cpu"
-          stroke="hsl(var(--primary))"
-          fill="hsl(var(--primary)/0.15)"
-          strokeWidth={1.5}
-          isAnimationActive={false}
-        />
-      </AreaChart>
-    </ResponsiveContainer>
+    <div className="relative size-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Tooltip
+            contentStyle={{ fontSize: 10 }}
+            formatter={(value, name) =>
+              [formatValue(Number(value)), String(name)] as [string, string]
+            }
+          />
+          <Pie
+            data={segments}
+            dataKey="value"
+            nameKey="name"
+            innerRadius="68%"
+            outerRadius="96%"
+            startAngle={90}
+            endAngle={-270}
+            strokeWidth={0}
+            isAnimationActive={false}
+          >
+            {segments.map((segment, i) => (
+              <Cell
+                key={segment.name}
+                fill={colors[i]}
+                fillOpacity={i === 0 ? 1 : 0.18}
+              />
+            ))}
+          </Pie>
+        </PieChart>
+      </ResponsiveContainer>
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <span className="text-sm font-semibold tabular-nums">
+          {centerLabel}
+        </span>
+      </div>
+    </div>
   );
 }
 
-/** 内存堆叠图。 */
-function MemoryChart({ samples }: { samples: MetricsSample[] }) {
-  const data = toTimeline(samples);
+/** CPU 占用饼图(已用/空闲)。 */
+function CpuPie({ latest }: { latest: MetricsSample }) {
+  const percent = latest.cpuPercent ?? 0;
   return (
-    <ResponsiveContainer width="100%" height="100%">
-      <AreaChart data={data} margin={{ top: 2, right: 4, bottom: 0, left: -8 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-        <XAxis dataKey="time" hide />
-        <YAxis
-          tick={{ fontSize: 9 }}
-          unit="GiB"
-          tickFormatter={(v) => (Number(v) / 1024 / 1024 / 1024).toFixed(1)}
-        />
-        <Tooltip
-          contentStyle={{ fontSize: 10 }}
-          cursor={{ stroke: "oklch(var(--border))" }}
-          formatter={(v, name) =>
-            [
-              `${(Number(v) / 1024 / 1024 / 1024).toFixed(2)} GiB`,
-              String(name),
-            ] as [string, string]
-          }
-        />
-        <Area
-          type="monotone"
-          dataKey="memUsed"
-          stackId="mem"
-          stroke="hsl(var(--primary))"
-          fill="hsl(var(--primary)/0.2)"
-          strokeWidth={1.5}
-          name="已用"
-          isAnimationActive={false}
-        />
-        <Area
-          type="monotone"
-          dataKey="memTotal"
-          stroke="hsl(var(--muted-foreground))"
-          fill="none"
-          strokeWidth={1}
-          strokeDasharray="4 4"
-          name="总量"
-          isAnimationActive={false}
-        />
-      </AreaChart>
-    </ResponsiveContainer>
+    <UsagePie
+      segments={[
+        { name: "已用", value: percent },
+        { name: "空闲", value: Math.max(0, 100 - percent) },
+      ]}
+      colors={["var(--chart-1)", "var(--chart-1)"]}
+      centerLabel={`${percent.toFixed(1)}%`}
+      formatValue={(v) => `${v.toFixed(1)}%`}
+    />
+  );
+}
+
+/** 内存占用饼图(已用/可用)。 */
+function MemoryPie({ latest }: { latest: MetricsSample }) {
+  const usedKb = Math.min(latest.memUsedKb, latest.memTotalKb);
+  const percent =
+    latest.memTotalKb > 0 ? (usedKb / latest.memTotalKb) * 100 : 0;
+  return (
+    <UsagePie
+      segments={[
+        { name: "已用", value: usedKb },
+        { name: "可用", value: Math.max(0, latest.memTotalKb - usedKb) },
+      ]}
+      colors={["var(--chart-2)", "var(--chart-2)"]}
+      centerLabel={`${percent.toFixed(0)}%`}
+      formatValue={(v) => formatBytes(v * 1024)}
+    />
   );
 }
 
@@ -321,7 +378,7 @@ function NetworkChart({ samples }: { samples: MetricsSample[] }) {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <LineChart data={data} margin={{ top: 2, right: 4, bottom: 0, left: -8 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
         <XAxis dataKey="time" hide />
         <YAxis
           tick={{ fontSize: 9 }}
@@ -330,7 +387,7 @@ function NetworkChart({ samples }: { samples: MetricsSample[] }) {
         />
         <Tooltip
           contentStyle={{ fontSize: 10 }}
-          cursor={{ stroke: "oklch(var(--border))" }}
+          cursor={{ stroke: "var(--border)" }}
           formatter={(v, name) =>
             [`${formatBytes(Number(v))}/s`, String(name)] as [string, string]
           }
@@ -375,12 +432,12 @@ function LoadChart({ samples }: { samples: MetricsSample[] }) {
         data={data}
         margin={{ top: 2, right: 4, bottom: 0, left: -20 }}
       >
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
         <XAxis dataKey="time" hide />
         <YAxis tick={{ fontSize: 9 }} />
         <Tooltip
           contentStyle={{ fontSize: 10 }}
-          cursor={{ stroke: "oklch(var(--border))" }}
+          cursor={{ stroke: "var(--border)" }}
         />
         <Line
           type="monotone"
@@ -405,7 +462,30 @@ function LoadChart({ samples }: { samples: MetricsSample[] }) {
   );
 }
 
-/** 磁盘进度条(PRD: >85% 橙,>95% 红)。 */
+/** 底部小节标题:图标 + 名称,右侧放补充说明。 */
+function SectionHeader({
+  icon: Icon,
+  label,
+  hint,
+}: {
+  icon: LucideIcon;
+  label: string;
+  hint?: string;
+}) {
+  return (
+    <header className="flex items-center gap-1.5 text-xs font-medium">
+      <Icon className="size-3 text-muted-foreground" aria-hidden />
+      {label}
+      {hint && (
+        <span className="ml-auto text-[10px] font-normal text-muted-foreground">
+          {hint}
+        </span>
+      )}
+    </header>
+  );
+}
+
+/** 磁盘单行:挂载点 · 占用百分比 · 进度条 · 已用/总量(>85% 橙,>95% 红)。 */
 function DiskBar({
   disk,
 }: {
@@ -415,19 +495,47 @@ function DiskBar({
   const color =
     percent > 95 ? "bg-red-500" : percent > 85 ? "bg-orange-500" : "bg-primary";
   return (
-    <div className="flex items-center gap-2 text-xs">
-      <span className="w-24 truncate text-muted-foreground" title={disk.mount}>
+    <div
+      className="flex items-center gap-2 text-xs"
+      title={`${disk.mount} · 已用 ${formatBytes(disk.usedKb * 1024)} / 共 ${formatBytes(disk.totalKb * 1024)}`}
+    >
+      <span
+        className="w-28 shrink-0 truncate font-mono text-muted-foreground"
+        title={disk.mount}
+      >
         {disk.mount}
       </span>
-      <div className="h-1.5 flex-1 rounded bg-muted">
+      <span className="w-9 shrink-0 text-right tabular-nums">
+        {percent.toFixed(0)}%
+      </span>
+      <div className="h-1.5 min-w-0 flex-1 rounded bg-muted">
         <div
           className={`h-full rounded ${color}`}
           style={{ width: `${Math.min(100, percent)}%` }}
         />
       </div>
-      <span className="w-24 text-right tabular-nums text-muted-foreground">
-        {percent.toFixed(0)}% {formatBytes(disk.usedKb * 1024)}/
-        {formatBytes(disk.totalKb * 1024)}
+      <span className="w-44 shrink-0 truncate text-right tabular-nums text-muted-foreground">
+        {formatBytes(disk.usedKb * 1024)} / {formatBytes(disk.totalKb * 1024)}
+      </span>
+    </div>
+  );
+}
+
+/** 单核占用行:核号 + 迷你进度条 + 百分比。 */
+function CoreBar({ index, percent }: { index: number; percent: number }) {
+  return (
+    <div className="flex items-center gap-1.5 text-[10px]">
+      <span className="w-8 shrink-0 tabular-nums text-muted-foreground">
+        核{index}
+      </span>
+      <div className="h-1 min-w-0 flex-1 rounded bg-muted">
+        <div
+          className="h-full rounded bg-primary"
+          style={{ width: `${Math.min(100, percent)}%` }}
+        />
+      </div>
+      <span className="w-7 shrink-0 text-right tabular-nums text-muted-foreground">
+        {percent.toFixed(0)}%
       </span>
     </div>
   );
