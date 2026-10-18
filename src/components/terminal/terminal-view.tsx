@@ -13,14 +13,17 @@ import { Terminal } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { loadBaseAddons } from "./base-addons";
+import { attachImeGuard } from "./ime-guard";
 import { useTerminalSettingsHotApply } from "./use-terminal-settings";
 import { resolveTerminalTheme } from "@/lib/terminal-schemes";
 import { tryLoadWebglAddon } from "./webgl-addon";
 import {
   closeTerminal,
   openTerminal,
+  readClipboardText,
   reconnectSession,
   resizeTerminal,
+  writeClipboardText,
   writeTerminal,
 } from "@/app/api";
 import { encodeInput, initGbkEncoder, StreamDecoder } from "@/lib/codec";
@@ -75,11 +78,18 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
     fitRef.current = fit;
     terminal.open(host);
 
+    // IME 输入守卫:修复 WKWebView 下中文输入法击键碎片化(见模块注释)。
+    const imeGuard = attachImeGuard(terminal);
+
     // WebGL addon 持有引用以便 cleanup 时显式 dispose,避免
     // terminal.dispose() → AddonManager → 二次 dispose 触发 addon 内部
     // 私有字段 _isDisposed undefined 错误。
     let webglAddon: { dispose: () => void } | null = null;
-    void tryLoadWebglAddon(terminal).then((addon) => {
+    void tryLoadWebglAddon(terminal, () => {
+      // 渲染上下文丢失(GPU 进程回收等):清引用降级内置渲染器,
+      // cleanup 时不再对已 dispose 的 addon 二次释放。
+      webglAddon = null;
+    }).then((addon) => {
       if (!disposed && addon) webglAddon = addon;
     });
 
@@ -106,11 +116,17 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
     });
 
     // 选中即复制(PRD §6.3);开关在回调内现读设置,变更即时生效。
+    // 剪贴板走原生 gateway(WKWebView 拒绝 Web Clipboard API);
+    // 失败仅告警,不打断终端操作,也不产生 unhandledRejection。
     const selectionDisposable = terminal.onSelectionChange(() => {
       if (!(useSettingsStore.getState().settings?.terminal.copyOnSelect ?? true))
         return;
       const selection = terminal.getSelection();
-      if (selection) void navigator.clipboard.writeText(selection);
+      if (selection) {
+        void writeClipboardText(selection).catch((err) => {
+          console.warn("[shelx] 选中复制写入剪贴板失败:", err);
+        });
+      }
     });
 
     // 尺寸变化:防抖 fit → pty window_change。
@@ -167,15 +183,15 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
       )
         return;
       event.preventDefault();
-      void navigator.clipboard
-        .readText()
+      void readClipboardText()
         .then((text) => {
           if (text && terminalId) {
             void writeTerminal(terminalId, encodeInput(text, encoding));
           }
         })
-        .catch(() => {
-          // WebView 可能拒绝剪贴板读取;静默降级为系统默认菜单不可用。
+        .catch((err) => {
+          // WebView 可能拒绝剪贴板读取;降级为本次不粘贴,记录告警。
+          console.warn("[shelx] 右键粘贴读取剪贴板失败:", err);
         });
     };
     host.addEventListener("contextmenu", contextMenuHandler);
@@ -214,6 +230,7 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
       host.removeEventListener("contextmenu", contextMenuHandler);
       dataDisposable.dispose();
       selectionDisposable.dispose();
+      imeGuard?.dispose();
       if (terminalId) void closeTerminal(terminalId);
       terminalIdRef.current = null;
       fitRef.current = null;
@@ -243,25 +260,32 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
         aria-label="终端"
       />
       {status !== "online" && (
-        <div className="pointer-events-none absolute inset-x-0 top-2 z-10 flex justify-center">
-          <div className="pointer-events-auto flex animate-in fade-in slide-in-from-top-2 items-center gap-2 rounded-full border bg-background/85 py-1 pl-3 pr-1 shadow-lg backdrop-blur-md">
+        <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center">
+          <div className="pointer-events-auto flex animate-in fade-in slide-in-from-top-2 items-center gap-2 rounded-full border border-border/60 bg-background/80 py-1 pl-1.5 pr-1.5 shadow-lg shadow-black/5 backdrop-blur-md">
             {status === "connecting" ? (
               <>
-                <Spinner className="size-3.5 text-muted-foreground" />
-                <span className="pr-2 text-xs text-muted-foreground">
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted">
+                  <Spinner className="size-3 text-muted-foreground" />
+                </span>
+                <span className="pr-1.5 text-xs text-muted-foreground">
                   连接中…
                 </span>
               </>
             ) : (
               <>
-                <UnplugIcon className="size-3.5 shrink-0 text-destructive" />
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-destructive/10">
+                  <UnplugIcon className="size-3 text-destructive" />
+                </span>
                 <span className="whitespace-nowrap text-xs">
-                  连接已断开
-                  <span className="text-muted-foreground">·内容保留可复制</span>
+                  <span className="font-medium">连接已断开</span>
+                  <span className="text-muted-foreground">
+                    {" "}
+                    · 内容保留可复制
+                  </span>
                 </span>
                 <Button
                   size="xs"
-                  className="ml-0.5"
+                  className="ml-0.5 rounded-full"
                   onClick={() => void reconnectAndSync(sessionId)}
                 >
                   <RotateCwIcon data-icon="inline-start" />
