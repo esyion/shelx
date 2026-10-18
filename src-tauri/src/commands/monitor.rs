@@ -10,7 +10,7 @@ use tauri::State;
 use crate::application::monitoring::{MetricsSink, MonitorError};
 use crate::domain::metrics::MetricsSample;
 use crate::dto::common::IpcResult;
-use crate::dto::monitor::MetricsSampleDto;
+use crate::dto::monitor::{MetricsSampleDto, ProcessInfoDto};
 use crate::shared::error::{IpcError, IpcErrorCode};
 use crate::state::AppState;
 
@@ -92,5 +92,19 @@ pub fn recent_monitor_samples(
             .into_iter()
             .map(Into::into)
             .collect(),
+    )
+}
+
+/// 拉取进程列表快照(任务管理器);相邻调用差分出当前 CPU%,首次全部为 null。
+#[tauri::command]
+pub async fn list_processes(
+    state: State<'_, AppState>,
+    request: crate::dto::sftp::SessionOnlyRequestDto,
+) -> Result<IpcResult<Vec<ProcessInfoDto>>, String> {
+    Ok(
+        match state.monitor.list_processes(&request.session_id).await {
+            Ok(list) => IpcResult::ok(list.into_iter().map(Into::into).collect()),
+            Err(err) => IpcResult::err(to_ipc_error(err)),
+        },
     )
 }

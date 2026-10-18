@@ -3,6 +3,50 @@
 use serde::Serialize;
 
 use crate::domain::metrics::MetricsSample;
+use crate::domain::processes::ProcessInfo;
+
+/// 进程列表条目(任务管理器)。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessInfoDto {
+    /// 进程 ID(IPC 契约统一字符串)。
+    pub pid: String,
+    /// 父进程 ID。
+    pub ppid: String,
+    /// 属主用户名。
+    pub user: String,
+    /// 进程状态码(ps STAT,如 R/S/D/Z/T)。
+    pub state: String,
+    /// 当前 CPU 占用百分比(100% = 一个核心,多线程可超 100);该周期无前值时 null。
+    pub cpu_percent: Option<f64>,
+    /// 常驻内存 KiB(RSS)。
+    pub rss_kb: u64,
+    /// 虚拟内存 KiB(VSZ)。
+    pub vsz_kb: u64,
+    /// 累计 CPU 时间(秒)。
+    pub cpu_time_secs: u64,
+    /// 可执行名。
+    pub comm: String,
+    /// 完整命令行(已截断)。
+    pub args: String,
+}
+
+impl From<ProcessInfo> for ProcessInfoDto {
+    fn from(value: ProcessInfo) -> Self {
+        Self {
+            pid: value.pid.to_string(),
+            ppid: value.ppid.to_string(),
+            user: value.user,
+            state: value.state,
+            cpu_percent: value.cpu_percent,
+            rss_kb: value.rss_kb,
+            vsz_kb: value.vsz_kb,
+            cpu_time_secs: value.cpu_time_secs,
+            comm: value.comm,
+            args: value.args,
+        }
+    }
+}
 
 /// 磁盘挂载点。
 #[derive(Debug, Clone, Serialize)]

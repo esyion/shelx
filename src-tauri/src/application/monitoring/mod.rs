@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use crate::application::ports::{SessionEventSink, TransportError};
 use crate::application::sessions::{SessionError, SessionService};
 use crate::domain::metrics::{compute_sample, MetricsSample, RawSample};
+use crate::domain::processes::{compute_processes, ProcessInfo, RawProcess};
 use crate::infrastructure::ssh::collector;
 
 /// 监控应用错误。
@@ -46,6 +47,15 @@ struct MonitorCore {
     capacity: usize,
 }
 
+/// 进程快照缓存(按会话):差分 CPU% 需要相邻两次 ps 读数。
+#[derive(Default)]
+struct ProcessCache {
+    /// 上次 ps 原始行。
+    prev: Vec<RawProcess>,
+    /// 上次采集时刻。
+    last_at: Option<Instant>,
+}
+
 /// 监控服务。
 pub struct MonitorService {
     sessions: Arc<SessionService>,
@@ -53,6 +63,8 @@ pub struct MonitorService {
     events: Arc<dyn SessionEventSink>,
     /// 活跃监控任务(sessionId → 核心状态)。
     monitors: RwLock<std::collections::HashMap<String, Arc<Mutex<MonitorCore>>>>,
+    /// 进程快照缓存(sessionId → 缓存)。
+    process_caches: Mutex<std::collections::HashMap<String, ProcessCache>>,
 }
 
 impl MonitorService {
@@ -62,6 +74,7 @@ impl MonitorService {
             sessions,
             events,
             monitors: RwLock::new(std::collections::HashMap::new()),
+            process_caches: Mutex::new(std::collections::HashMap::new()),
         }
     }
 
@@ -133,6 +146,39 @@ impl MonitorService {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    /// 拉取进程列表快照(任务管理器)。
+    ///
+    /// 每次执行一次 ps;相邻两次调用差分出当前 CPU%,
+    /// 首次调用(无前值)全部为 None,与监控样本约定一致。
+    pub async fn list_processes(&self, session_id: &str) -> Result<Vec<ProcessInfo>, MonitorError> {
+        let connection = self.sessions.connection_of(session_id)?;
+        let output = connection
+            .exec_once(collector::PROCESS_COMMAND, Duration::from_secs(5))
+            .await
+            .map_err(|e| MonitorError::Collect(e.to_string()))?;
+        let current = collector::parse_processes(&output);
+
+        let now = Instant::now();
+        let mut caches = self.process_caches.lock().expect("进程缓存锁");
+        let cache = caches.entry(session_id.to_owned()).or_default();
+        let elapsed = cache
+            .last_at
+            .map(|at| now.duration_since(at).as_secs_f64())
+            .unwrap_or(0.0);
+        let infos = compute_processes(Some(&cache.prev), &current, elapsed);
+        cache.prev = current;
+        cache.last_at = Some(now);
+        Ok(infos)
+    }
+
+    /// 会话关闭时清理进程缓存(与监控任务同生命周期)。
+    pub fn cleanup_session(&self, session_id: &str) {
+        self.process_caches
+            .lock()
+            .expect("进程缓存锁")
+            .remove(session_id);
     }
 
     /// 采集循环。

@@ -39,7 +39,10 @@ fn parses_process_snapshot() {
 fn truncates_long_args() {
     let processes = parse_processes(PROCESSES);
     let stress = processes.iter().find(|p| p.pid == 1234).unwrap();
-    assert!(stress.args.chars().count() <= 201, "args 应截断到 200 字符 + 省略号");
+    assert!(
+        stress.args.chars().count() <= 201,
+        "args 应截断到 200 字符 + 省略号"
+    );
     assert!(stress.args.ends_with('…'));
 }
 
