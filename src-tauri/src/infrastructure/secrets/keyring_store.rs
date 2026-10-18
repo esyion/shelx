@@ -35,7 +35,10 @@ impl SecretStore for KeyringSecretStore {
         match Self::entry(key)?.get_password() {
             Ok(value) => Ok(Some(value)),
             Err(keyring::Error::NoEntry) => Ok(None),
-            Err(e) => Err(SecretStoreError(e.to_string())),
+            Err(e) => Err(SecretStoreError(format!(
+                "{e}(钥匙串拒绝访问时,在该连接中重新保存密码即可重建条目;\
+                 macOS 开发期反复重编译会改变二进制签名,使旧条目的访问授权失效)"
+            ))),
         }
     }
 
