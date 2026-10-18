@@ -219,6 +219,7 @@ function toTimeline(
   return samples.slice(-120).map((s) => ({
     time: new Date(s.ts).toLocaleTimeString("zh-CN", {
       hour12: false,
+      hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
     }),
@@ -226,7 +227,7 @@ function toTimeline(
     /** 数据轴是字节(KiB × 1024);与 YAxis unit="GiB" / tooltip 配套。 */
     memUsed: s.memUsedKb * 1024,
     memTotal: s.memTotalKb * 1024,
-    /** 数据轴是字节/秒;tooltip 自行换算到 MB/s。 */
+    /** 数据轴是字节/秒;tooltip 用 formatBytes 动态换算单位。 */
     netRx: s.netRxBps,
     netTx: s.netTxBps,
     load1: s.load1,
@@ -331,10 +332,7 @@ function NetworkChart({ samples }: { samples: MetricsSample[] }) {
           contentStyle={{ fontSize: 10 }}
           cursor={{ stroke: "oklch(var(--border))" }}
           formatter={(v, name) =>
-            [`${(Number(v) / 1024 / 1024).toFixed(2)} MB/s`, String(name)] as [
-              string,
-              string,
-            ]
+            [`${formatBytes(Number(v))}/s`, String(name)] as [string, string]
           }
         />
         <Line

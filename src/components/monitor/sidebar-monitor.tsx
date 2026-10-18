@@ -1,5 +1,5 @@
 /**
- * 侧栏紧凑监控(PRD §6.5 衍生):常驻 CPU / 内存 / 交换内存 三行进度条。
+ * 侧栏紧凑监控(PRD §6.5 衍生):常驻 CPU / 内存 / 交换 / 磁盘 进度条。
  *
  * 采集策略:
  * - 后端 MonitorService 同 sessionId 多次 start 会替换 sink(后启动者接管)。
@@ -30,6 +30,9 @@ import { useUiStore } from "@/stores/ui";import type { MetricsSample, ServerInfo
 
 /** 侧栏常驻采样间隔(秒);同 workspace 默认一致,避免与 Alt+2 视图争间隔。 */
 const SIDEBAR_INTERVAL_SECS = 2;
+
+/** 侧栏最多展示的挂载点数;完整挂载列表在监控视图(Alt+2)查看。 */
+const MAX_SIDEBAR_DISKS = 3;
 
 /** 侧栏监控属性。 */
 export interface SidebarMonitorProps {
@@ -168,6 +171,20 @@ export function SidebarMonitor({ sessionId }: SidebarMonitorProps) {
         percent={latest.swapTotalKb > 0 ? swapUsed : null}
         text={`${formatBytes(latest.swapUsedKb * 1024)}/${formatBytes(latest.swapTotalKb * 1024)}`}
       />
+
+      {latest.disks.slice(0, MAX_SIDEBAR_DISKS).map((disk) => {
+        const percent =
+          disk.totalKb > 0 ? (disk.usedKb / disk.totalKb) * 100 : null;
+        return (
+          <MetricBar
+            key={disk.mount}
+            label={disk.mount === "/" ? "磁盘" : disk.mount}
+            percent={percent}
+            text={`${formatBytes(disk.usedKb * 1024)}/${formatBytes(disk.totalKb * 1024)}`}
+            barClassName={diskBarClass(percent)}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -177,14 +194,20 @@ function MetricBar({
   label,
   percent,
   text,
+  barClassName = "bg-primary",
 }: {
   label: string;
   percent: number | null;
   text: string;
+  /** 进度条填充色;默认主色,磁盘按占用率传告警色。 */
+  barClassName?: string;
 }) {
   return (
     <section className="grid grid-cols-[auto_1fr] items-center gap-x-2 gap-y-1">
-      <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+      <span
+        className="max-w-24 truncate text-[10px] uppercase tracking-wide text-muted-foreground"
+        title={label}
+      >
         {label}
       </span>
       <span className="truncate text-right text-[10px] tabular-nums text-muted-foreground">
@@ -193,7 +216,7 @@ function MetricBar({
       {percent !== null ? (
         <div className="col-span-2 h-1 rounded bg-muted">
           <div
-            className="h-full rounded bg-primary"
+            className={`h-full rounded ${barClassName}`}
             style={{ width: `${Math.min(100, percent)}%` }}
           />
         </div>
@@ -202,6 +225,14 @@ function MetricBar({
       )}
     </section>
   );
+}
+
+/** 磁盘占用条颜色(PRD §6.5:>85% 橙,>95% 红)。 */
+function diskBarClass(percent: number | null): string | undefined {
+  if (percent === null) return undefined;
+  if (percent > 95) return "bg-red-500";
+  if (percent > 85) return "bg-orange-500";
+  return undefined;
 }
 
 /** 空态占位。 */
