@@ -7,6 +7,35 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > Versions prior to `0.2.0` were internal iterations before the project
 > was open-sourced; their changes are summarized under "Unreleased / 0.2.0".
 
+## [0.2.23] - 2026-10-19
+
+### Added
+
+- **Process manager view** — a new「进程」workspace tab (Alt+3, alongside
+  终端/监控/文件) shows a task-manager-style process table for the
+  connected host: process name, owner, PID, state, current CPU%, memory
+  (RSS) and cumulative CPU time. Every column header sorts (click to
+  toggle direction with an arrow indicator, stable tie-break by PID) and
+  a filter box matches process name / command line / user / PID. The
+  list polls every 2s while the tab is open and covers all five UI
+  states (loading, error + retry, paused while offline, empty, ready).
+- **Kill process** — each row has an end-process action with a
+  confirmation dialog that shows the full command line and a
+  non-reversible warning. It sends SIGTERM via `kill -TERM <pid>`,
+  verifies the real exit status, and reports the outcome via toast
+  before refreshing the list; failures keep the dialog open. The PID is
+  validated at the command boundary (u64 only, pid 0 rejected to
+  protect the process group), so no user input ever reaches the shell
+  unescaped.
+- **Process snapshot collector and CPU% delta** — `ps` is parsed
+  instead of scraping `top` (stable columns, locale-independent). Since
+  ps `%CPU` is a lifetime average, the current usage is derived in the
+  domain layer by diffing each PID's cumulative CPU time between two
+  snapshots (the same algorithm top uses internally); the first
+  snapshot reports `null` like the other monitor metrics, and PID reuse
+  clamps to 0. Targets without procps (`busybox`) show an empty state
+  instead of failing.
+
 ## [0.2.22] - 2026-10-19
 
 ### Added
