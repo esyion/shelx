@@ -44,3 +44,13 @@ export function recentMonitorSamples(sessionId: string): Promise<MetricsSample[]
 export function listProcesses(sessionId: string): Promise<ProcessInfo[]> {
   return invokeUnwrapped("list_processes", { request: { sessionId } });
 }
+
+/**
+ * 结束进程(向目标机发送 SIGTERM)。
+ *
+ * @param sessionId 会话 ID
+ * @param pid 进程 ID(十进制数字字符串)
+ */
+export function killProcess(sessionId: string, pid: string): Promise<void> {
+  return invokeUnwrapped("kill_process", { request: { sessionId }, pid });
+}

@@ -160,6 +160,9 @@ export const recentMonitorSamples = monitorApi.recentMonitorSamples;
 /** 拉取进程列表快照(任务管理器)。 */
 export const listProcesses = monitorApi.listProcesses;
 
+/** 结束进程(SIGTERM)。 */
+export const killProcess = monitorApi.killProcess;
+
 /** 读取会话的服务器系统信息(连接后一次性采集)。 */
 export const fetchSystemInfo = systemInfoApi.fetchSystemInfo;
 

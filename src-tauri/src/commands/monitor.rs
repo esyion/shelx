@@ -108,3 +108,29 @@ pub async fn list_processes(
         },
     )
 }
+
+/// 结束进程(发送 SIGTERM)。pid 为十进制非负整数字符串,边界校验后拼入固定命令。
+#[tauri::command]
+pub async fn kill_process(
+    state: State<'_, AppState>,
+    request: crate::dto::sftp::SessionOnlyRequestDto,
+    pid: String,
+) -> Result<IpcResult<()>, String> {
+    // 边界校验:非数字直接拒绝,杜绝注入(后续按 u64 拼固定命令)。
+    let Ok(pid_num) = pid.parse::<u64>() else {
+        return Ok(IpcResult::err(IpcError::new(
+            IpcErrorCode::InvalidArgument,
+            format!("非法 pid:{pid}"),
+        )));
+    };
+    Ok(
+        match state
+            .monitor
+            .kill_process(&request.session_id, pid_num)
+            .await
+        {
+            Ok(()) => IpcResult::ok(()),
+            Err(err) => IpcResult::err(to_ipc_error(err)),
+        },
+    )
+}

@@ -136,6 +136,7 @@ pub fn run() {
             commands::monitor::stop_monitor,
             commands::monitor::recent_monitor_samples,
             commands::monitor::list_processes,
+            commands::monitor::kill_process,
             commands::update::get_update_notice,
         ])
         .run(tauri::generate_context!())

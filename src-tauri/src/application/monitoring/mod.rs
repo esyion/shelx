@@ -173,6 +173,32 @@ impl MonitorService {
         Ok(infos)
     }
 
+    /// 结束进程(发送 SIGTERM;目标机按惯例忽略或自行处理)。
+    ///
+    /// pid 已由 command 层校验为非负整数;`kill 0` 会命中整个进程组,拒绝执行。
+    /// 通过 `&& echo OK` 探测退出码——exec_once 不传播非零退出状态。
+    pub async fn kill_process(&self, session_id: &str, pid: u64) -> Result<(), MonitorError> {
+        if pid == 0 {
+            return Err(MonitorError::Collect(
+                "pid 0 不合法(kill 0 会命中进程组)".into(),
+            ));
+        }
+        let connection = self.sessions.connection_of(session_id)?;
+        let output = connection
+            .exec_once(
+                &format!("kill -TERM {pid} && echo OK"),
+                Duration::from_secs(5),
+            )
+            .await
+            .map_err(|e| MonitorError::Collect(e.to_string()))?;
+        if !output.contains("OK") {
+            return Err(MonitorError::Collect(format!(
+                "结束进程 {pid} 失败(进程可能已退出或权限不足)"
+            )));
+        }
+        Ok(())
+    }
+
     /// 会话关闭时清理进程缓存(与监控任务同生命周期)。
     pub fn cleanup_session(&self, session_id: &str) {
         self.process_caches

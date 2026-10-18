@@ -1,14 +1,25 @@
 /**
- * 进程视图(类 Windows 任务管理器):进程快照表格,支持排序与筛选。
+ * 进程视图(类 Windows 任务管理器):进程快照表格,支持排序、筛选与结束进程。
  *
  * 数据流:list_processes 按固定间隔轮询(仅本视图挂载时),Rust 端相邻
  * 快照差分出当前 CPU%(首次轮询为 null,显示 "--");排序/筛选纯前端。
+ * 结束进程发送 SIGTERM,弹确认框,结果经 toast 反馈后立即刷新。
  * 五态:加载中 / 错误+重试 / 会话离线暂停 / 空列表 / 正常。
  */
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, RefreshCw } from "lucide-react";
+import { ArrowDown, ArrowUp, RefreshCw, Square } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -19,18 +30,33 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { listProcesses } from "@/app/api";
+import { killProcess, listProcesses } from "@/app/api";
 import { formatBytes } from "@/lib/format";
 import { useSessionsStore } from "@/stores/sessions";
+import { useUiStore } from "@/stores/ui";
 import type { ProcessInfo } from "@/types";
 
 /** 轮询间隔(ms;与监控默认采样间隔一致)。 */
 const POLL_MS = 2000;
 
 /** 可排序列。 */
-type SortKey = "cpu" | "rss" | "pid" | "comm";
+type SortKey = "comm" | "user" | "pid" | "state" | "cpu" | "rss" | "time";
 /** 排序方向。 */
 type SortDir = "asc" | "desc";
+
+/** 各列比较器(同值时按 pid 保证稳定序)。 */
+const COMPARATORS: Record<
+  SortKey,
+  (a: ProcessInfo, b: ProcessInfo) => number
+> = {
+  comm: (a, b) => a.comm.localeCompare(b.comm),
+  user: (a, b) => a.user.localeCompare(b.user),
+  pid: (a, b) => a.pid.localeCompare(b.pid, undefined, { numeric: true }),
+  state: (a, b) => a.state.localeCompare(b.state),
+  cpu: (a, b) => (a.cpuPercent ?? 0) - (b.cpuPercent ?? 0),
+  rss: (a, b) => a.rssKb - b.rssKb,
+  time: (a, b) => a.cpuTimeSecs - b.cpuTimeSecs,
+};
 
 /** 进程视图属性。 */
 export interface ProcessViewProps {
@@ -45,8 +71,12 @@ export function ProcessView({ sessionId }: ProcessViewProps) {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("cpu");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  /** 待确认结束的进程;null 关闭确认框。 */
+  const [killTarget, setKillTarget] = useState<ProcessInfo | null>(null);
+  const [killing, setKilling] = useState(false);
   const inFlight = useRef(false);
   const status = useSessionsStore((s) => s.byId[sessionId]?.status);
+  const toast = useUiStore((s) => s.toast);
   const online = status === "online";
 
   /** 拉取一次快照(忽略并发期间的重入)。 */
@@ -83,18 +113,12 @@ export function ProcessView({ sessionId }: ProcessViewProps) {
             p.pid.includes(q),
         )
       : processes;
+    const compare = COMPARATORS[sortKey];
     const dir = sortDir === "asc" ? 1 : -1;
     return [...filtered].sort((a, b) => {
-      switch (sortKey) {
-        case "cpu":
-          return ((a.cpuPercent ?? 0) - (b.cpuPercent ?? 0)) * dir;
-        case "rss":
-          return (a.rssKb - b.rssKb) * dir;
-        case "pid":
-          return a.pid.localeCompare(b.pid, undefined, { numeric: true }) * dir;
-        case "comm":
-          return a.comm.localeCompare(b.comm) * dir;
-      }
+      const primary = compare(a, b);
+      if (primary !== 0) return primary * dir;
+      return a.pid.localeCompare(b.pid, undefined, { numeric: true }) * dir;
     });
   }, [processes, query, sortKey, sortDir]);
 
@@ -105,6 +129,22 @@ export function ProcessView({ sessionId }: ProcessViewProps) {
     } else {
       setSortKey(key);
       setSortDir("desc");
+    }
+  };
+
+  /** 确认结束进程。 */
+  const confirmKill = async () => {
+    if (!killTarget || killing) return;
+    setKilling(true);
+    try {
+      await killProcess(sessionId, killTarget.pid);
+      toast(`已结束进程 ${killTarget.comm}(${killTarget.pid})`);
+      setKillTarget(null);
+      await refresh();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : String(err), "error");
+    } finally {
+      setKilling(false);
     }
   };
 
@@ -160,52 +200,64 @@ export function ProcessView({ sessionId }: ProcessViewProps) {
           <Table>
             <TableHeader className="sticky top-0 z-10 bg-card">
               <TableRow>
-                <SortHead
-                  label="进程"
-                  active={sortKey === "comm"}
-                  dir={sortDir}
-                  onClick={() => toggleSort("comm")}
-                />
-                <TableHead className="w-24">用户</TableHead>
-                <SortHead
-                  label="PID"
-                  className="w-20 text-right"
-                  active={sortKey === "pid"}
-                  dir={sortDir}
-                  onClick={() => toggleSort("pid")}
-                />
-                <TableHead className="w-20">状态</TableHead>
-                <SortHead
-                  label="CPU"
-                  className="w-20 text-right"
-                  active={sortKey === "cpu"}
-                  dir={sortDir}
-                  onClick={() => toggleSort("cpu")}
-                />
-                <SortHead
-                  label="内存"
-                  className="w-24 text-right"
-                  active={sortKey === "rss"}
-                  dir={sortDir}
-                  onClick={() => toggleSort("rss")}
-                />
-                <TableHead className="w-24 text-right">累计 CPU 时间</TableHead>
+                <SortHead label="进程" column="comm" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+                <SortHead label="用户" column="user" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+                <SortHead label="PID" column="pid" activeKey={sortKey} dir={sortDir} onSort={toggleSort} className="w-20 text-right" />
+                <SortHead label="状态" column="state" activeKey={sortKey} dir={sortDir} onSort={toggleSort} className="w-24" />
+                <SortHead label="CPU" column="cpu" activeKey={sortKey} dir={sortDir} onSort={toggleSort} className="w-20 text-right" />
+                <SortHead label="内存" column="rss" activeKey={sortKey} dir={sortDir} onSort={toggleSort} className="w-24 text-right" />
+                <SortHead label="累计 CPU 时间" column="time" activeKey={sortKey} dir={sortDir} onSort={toggleSort} className="w-28 text-right" />
+                <TableHead className="w-14 text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.map((p) => (
-                <ProcessRow key={p.pid} process={p} />
+                <ProcessRow key={p.pid} process={p} onKill={() => setKillTarget(p)} />
               ))}
             </TableBody>
           </Table>
         </div>
       )}
+
+      {/* 结束进程确认框 */}
+      <AlertDialog
+        open={killTarget !== null}
+        onOpenChange={(open) => !open && setKillTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>结束进程 {killTarget?.comm}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              将向进程 {killTarget?.pid} 发送 SIGTERM 终止信号
+              {killTarget?.args ? `,命令行:${killTarget.args}` : ""}。该操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={killing}
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmKill();
+              }}
+            >
+              结束进程
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
 
 /** 单行进程。 */
-function ProcessRow({ process: p }: { process: ProcessInfo }) {
+function ProcessRow({
+  process: p,
+  onKill,
+}: {
+  process: ProcessInfo;
+  onKill: () => void;
+}) {
   return (
     <TableRow className="text-xs">
       <TableCell className="max-w-80 truncate p-1.5" title={p.args || p.comm}>
@@ -235,6 +287,18 @@ function ProcessRow({ process: p }: { process: ProcessInfo }) {
       >
         {formatCpuTime(p.cpuTimeSecs)}
       </TableCell>
+      <TableCell className="p-1.5 text-right">
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+          aria-label={`结束进程 ${p.comm}(${p.pid})`}
+          title="结束进程(SIGTERM)"
+          onClick={onKill}
+        >
+          <Square className="size-3" />
+        </Button>
+      </TableCell>
     </TableRow>
   );
 }
@@ -242,23 +306,31 @@ function ProcessRow({ process: p }: { process: ProcessInfo }) {
 /** 可排序列头。 */
 function SortHead({
   label,
-  active,
+  column,
+  activeKey,
   dir,
-  onClick,
+  onSort,
   className,
 }: {
   label: string;
-  active: boolean;
+  /** 本列对应的排序键。 */
+  column: SortKey;
+  /** 当前生效的排序键。 */
+  activeKey: SortKey;
   dir: SortDir;
-  onClick: () => void;
+  onSort: (key: SortKey) => void;
   className?: string;
 }) {
+  const active = activeKey === column;
   return (
-    <TableHead className={`p-1.5 ${className ?? ""}`} aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"}>
+    <TableHead
+      className={`p-1.5 ${className ?? ""}`}
+      aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"}
+    >
       <button
         type="button"
         className="inline-flex items-center gap-0.5 hover:text-foreground"
-        onClick={onClick}
+        onClick={() => onSort(column)}
       >
         {label}
         {active &&

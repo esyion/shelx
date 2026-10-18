@@ -2,18 +2,21 @@
  * ProcessView 用户可见行为测试(AGENTS.md §9:测行为不测实现)。
  * mock @/app/api,验证:进程行渲染、列头排序切换、筛选过滤、错误态重试。
  */
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useSessionsStore } from "@/stores/sessions";
+import { ToastHost } from "@/components/layout/toast-host";
 import type { ProcessInfo, SessionInfo } from "@/types";
 
 const mocks = vi.hoisted(() => ({
   listProcesses: vi.fn(),
+  killProcess: vi.fn(),
 }));
 
 vi.mock("@/app/api", () => ({
   listProcesses: mocks.listProcesses,
+  killProcess: mocks.killProcess,
 }));
 
 import { ProcessView } from "./process-view";
@@ -105,11 +108,77 @@ describe("ProcessView", () => {
     render(<ProcessView sessionId={SESSION_ID} />);
     await screen.findByText("b-proc");
 
-    // 点击 CPU 列头:由默认降序反转为升序。
-    fireEvent.click(screen.getByRole("button", { name: /CPU/ }));
+    // 点击 CPU 列头:由默认降序反转为升序(name 用全等避免匹配到「累计 CPU 时间」列)。
+    fireEvent.click(screen.getByRole("button", { name: "CPU" }));
     const rows = screen.getAllByRole("row");
     expect(rows[1]).toHaveTextContent("a-proc");
     expect(rows[2]).toHaveTextContent("b-proc");
+  });
+
+  it("每个数据列头都可排序(以用户列为例)", async () => {
+    mocks.listProcesses.mockResolvedValue([
+      proc({ pid: "1", comm: "a-proc", user: "zhang" }),
+      proc({ pid: "2", comm: "b-proc", user: "alist" }),
+    ]);
+    render(<ProcessView sessionId={SESSION_ID} />);
+    await screen.findByText("a-proc");
+
+    // 用户列默认降序(alist 在前为 desc? 默认 desc → zhang 在前)。
+    fireEvent.click(screen.getByRole("button", { name: /用户/ }));
+    let rows = screen.getAllByRole("row");
+    expect(rows[1]).toHaveTextContent("zhang");
+    // 再点一次反转升序。
+    fireEvent.click(screen.getByRole("button", { name: /用户/ }));
+    rows = screen.getAllByRole("row");
+    expect(rows[1]).toHaveTextContent("alist");
+  });
+
+  it("结束进程:确认弹窗 → 调用接口 → toast 并刷新", async () => {
+    mocks.listProcesses.mockResolvedValue([
+      proc({ pid: "42", comm: "nginx", args: "nginx: master" }),
+    ]);
+    mocks.killProcess.mockResolvedValue(undefined);
+    // 挂上 ToastHost 以断言用户可见的成功提示。
+    render(
+      <>
+        <ProcessView sessionId={SESSION_ID} />
+        <ToastHost />
+      </>,
+    );
+    await screen.findByText("nginx");
+
+    // 点击行内结束按钮 → 弹确认框。
+    fireEvent.click(screen.getByRole("button", { name: /结束进程 nginx/ }));
+    expect(
+      await screen.findByText(/发送 SIGTERM 终止信号/),
+    ).toBeInTheDocument();
+
+    // 确认 → 调用 killProcess(42) → 成功 toast,弹窗关闭。
+    fireEvent.click(screen.getByRole("button", { name: "结束进程" }));
+    await waitFor(() => {
+      expect(mocks.killProcess).toHaveBeenCalledWith(SESSION_ID, "42");
+    });
+    expect(
+      await screen.findByText(/已结束进程 nginx\(42\)/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/发送 SIGTERM/)).not.toBeInTheDocument();
+  });
+
+  it("结束进程失败展示错误 toast,弹窗保持打开", async () => {
+    mocks.listProcesses.mockResolvedValue([proc({ pid: "42", comm: "nginx" })]);
+    mocks.killProcess.mockRejectedValue(new Error("权限不足"));
+    render(
+      <>
+        <ProcessView sessionId={SESSION_ID} />
+        <ToastHost />
+      </>,
+    );
+    await screen.findByText("nginx");
+
+    fireEvent.click(screen.getByRole("button", { name: /结束进程 nginx/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "结束进程" }));
+    expect(await screen.findByText("权限不足")).toBeInTheDocument();
+    expect(screen.getByText(/发送 SIGTERM 终止信号/)).toBeInTheDocument();
   });
 
   it("筛选框按进程名/用户/PID 过滤", async () => {
