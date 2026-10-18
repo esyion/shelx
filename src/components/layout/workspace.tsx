@@ -4,18 +4,20 @@
  */
 "use client";
 
-import { Monitor, FolderCode, TerminalSquare } from "lucide-react";
+import { Monitor, FolderCode, TerminalSquare, List } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TerminalView } from "@/components/terminal/terminal-view";
 import { FileManager } from "@/components/files/file-manager";
 import { MonitorView } from "@/components/monitor/monitor-view";
+import { ProcessView } from "@/components/monitor/process-view";
 import { cn } from "@/lib/utils";
 import { useTabsStore, type WorkspaceView } from "@/stores/tabs";
 
-/** 视图清单(顺序对应 Alt+1/2/3)。 */
+/** 视图清单(顺序对应 Alt+1/2/3/4)。 */
 const VIEWS: { key: WorkspaceView; label: string; icon: typeof TerminalSquare }[] = [
   { key: "terminal", label: "终端", icon: TerminalSquare },
   { key: "monitor", label: "监控", icon: Monitor },
+  { key: "processes", label: "进程", icon: List },
   { key: "files", label: "文件", icon: FolderCode },
 ];
 
@@ -85,6 +87,13 @@ export function Workspace() {
               {tab.view === "monitor" && (
                 tab.sessionId ? (
                   <MonitorView sessionId={tab.sessionId} />
+                ) : (
+                  <Centered text="正在建立会话…" />
+                )
+              )}
+              {tab.view === "processes" && (
+                tab.sessionId ? (
+                  <ProcessView sessionId={tab.sessionId} />
                 ) : (
                   <Centered text="正在建立会话…" />
                 )

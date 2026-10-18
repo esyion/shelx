@@ -186,8 +186,8 @@ export default function RootLayout({
       const tabs = useTabsStore.getState();
       const ctrl = event.ctrlKey || event.metaKey;
 
-      if (event.altKey && ["1", "2", "3"].includes(event.key)) {
-        const view = (["terminal", "monitor", "files"] as const)[
+      if (event.altKey && ["1", "2", "3", "4"].includes(event.key)) {
+        const view = (["terminal", "monitor", "processes", "files"] as const)[
           Number(event.key) - 1
         ];
         if (tabs.activeTabId && view) {

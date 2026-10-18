@@ -54,7 +54,7 @@ export type {
   TransferStatus,
   TransferTask,
 } from "./transfer";
-export type { DiskInfo, MetricsSample } from "./monitor";
+export type { DiskInfo, MetricsSample, ProcessInfo } from "./monitor";
 export type { AppVersion, UpdateNotice } from "./release";
 export type {
   DataDirSource,

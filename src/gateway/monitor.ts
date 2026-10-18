@@ -2,7 +2,7 @@
  * 监控域的 gateway 封装(启停采集 + 样本 Channel)。
  */
 import { Channel } from "@tauri-apps/api/core";
-import type { MetricsSample } from "@/types";
+import type { MetricsSample, ProcessInfo } from "@/types";
 import { invokeUnwrapped } from "./tauri";
 
 /**
@@ -34,4 +34,13 @@ export function stopMonitor(sessionId: string): Promise<void> {
 /** 读取环形缓冲快照(会话内最近 1h)。 */
 export function recentMonitorSamples(sessionId: string): Promise<MetricsSample[]> {
   return invokeUnwrapped("recent_monitor_samples", { request: { sessionId } });
+}
+
+/**
+ * 拉取进程列表快照(任务管理器)。
+ *
+ * 相邻两次调用由 Rust 端差分出当前 CPU%,首次调用 cpuPercent 全为 null。
+ */
+export function listProcesses(sessionId: string): Promise<ProcessInfo[]> {
+  return invokeUnwrapped("list_processes", { request: { sessionId } });
 }

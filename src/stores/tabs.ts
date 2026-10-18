@@ -6,7 +6,7 @@ import { create } from "zustand";
 import type { SessionStatus } from "@/types";
 
 /** 工作区视图。 */
-export type WorkspaceView = "terminal" | "monitor" | "files";
+export type WorkspaceView = "terminal" | "monitor" | "processes" | "files";
 
 /** 标签实体。 */
 export interface Tab {
