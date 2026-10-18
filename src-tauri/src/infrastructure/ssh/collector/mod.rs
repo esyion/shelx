@@ -149,7 +149,20 @@ fn parse_loadavg_uptime(text: &str, sample: &mut RawSample) {
     }
 }
 
-/// df -P -k → (mount, total_kb, used_kb) 列表;排除 tmpfs/devtmpfs/overlay/proc/sysfs。
+/// 不占真实磁盘的伪文件系统,对用户只是噪音。
+const PSEUDO_FILESYSTEMS: &[&str] = &[
+    "tmpfs", "devtmpfs", "overlay", "proc", "sysfs", "devfs", "shm", "efivarfs",
+];
+
+/// 挂载点是否位于系统内部目录(/proc、/sys、/dev、/snap)。
+/// /snap 同时覆盖 snap 包的 loop 设备挂载。
+fn is_pseudo_mount(mount: &str) -> bool {
+    ["/proc", "/sys", "/dev", "/snap"]
+        .iter()
+        .any(|prefix| mount == *prefix || mount.starts_with(&format!("{prefix}/")))
+}
+
+/// df -P -k → (mount, total_kb, used_kb) 列表;排除伪文件系统与系统内部挂载点。
 fn parse_df(text: &str) -> Vec<(String, u64, u64)> {
     text.lines()
         .skip(1) // 跳过表头
@@ -158,21 +171,12 @@ fn parse_df(text: &str) -> Vec<(String, u64, u64)> {
             if parts.len() < 6 {
                 return None;
             }
-            let fs = parts[0];
-            if fs.starts_with("tmpfs")
-                || fs.starts_with("devtmpfs")
-                || fs == "overlay"
-                || fs == "proc"
-                || fs == "sysfs"
-                || fs == "devfs"
-                || fs == "shm"
-            {
+            if PSEUDO_FILESYSTEMS.contains(&parts[0]) || is_pseudo_mount(parts[5]) {
                 return None;
             }
             let total = parts[1].parse().ok()?;
             let used = parts[2].parse().ok()?;
-            let mount = parts[5].to_owned();
-            Some((mount, total, used))
+            Some((parts[5].to_owned(), total, used))
         })
         .collect()
 }

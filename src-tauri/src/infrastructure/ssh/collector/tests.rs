@@ -23,8 +23,23 @@ fn parses_linux_full() {
     assert_eq!(sample.net_bytes.len(), 2);
     assert_eq!(sample.load1, Some(0.42));
     assert_eq!(sample.uptime_secs, Some(2_783_542.31));
-    // / + /boot + /data(过滤 tmpfs;boot 是真实分区)。
+    // / + /boot + /data(过滤 tmpfs/efivarfs/cgroup2/snap loop;boot 是真实分区)。
     assert_eq!(sample.disks.len(), 3);
+}
+
+#[test]
+fn df_filters_pseudo_mounts() {
+    // 真实分区混着系统内部挂载:efivarfs、cgroup2、snap 的 loop 设备。
+    let df = "Filesystem 1024-blocks Used Available Capacity Mounted on\n\
+              efivarfs 256 96 160 38% /sys/firmware/efi/efivars\n\
+              cgroup2 0 0 0 0% /sys/fs/cgroup\n\
+              /dev/loop0 65536 65536 0 100% /snap/core22/1380\n\
+              tmpfs 65536 0 65536 0% /dev/shm\n\
+              /dev/nvme0n1p1 523244 131072 392172 26% /boot/efi\n";
+    let disks = parse_df(df);
+    // 只保留真实 EFI 分区 /boot/efi;/proc /sys /dev /snap 与伪文件系统全过滤。
+    assert_eq!(disks.len(), 1);
+    assert_eq!(disks[0].0, "/boot/efi");
 }
 
 #[test]

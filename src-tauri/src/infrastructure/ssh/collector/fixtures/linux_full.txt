@@ -46,5 +46,8 @@ Inter-|   Receive                                                |  Transmit
 Filesystem     1024-blocks      Used Available Capacity Mounted on
 /dev/nvme0n1p2  998576248 418293628 529260608      45% /
 tmpfs           10343956     131200  10212756       2% /run
+efivarfs              256         96        160      38% /sys/firmware/efi/efivars
+cgroup2                 0          0          0       0% /sys/fs/cgroup
+/dev/loop0        65536      65536          0     100% /snap/core22/1380
 /dev/nvme0n1p1    523244     131072    392172      26% /boot
 /dev/sda1       975682548 471672308 454253916      51% /data
