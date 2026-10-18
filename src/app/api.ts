@@ -16,6 +16,7 @@ import {
   terminalsApi,
   transferApi,
   openerApi,
+  clipboardApi,
 } from "@/gateway";
 
 /** 列出连接树。 */
@@ -161,6 +162,12 @@ export const fetchSystemInfo = systemInfoApi.fetchSystemInfo;
 
 /** 用系统默认应用打开外部链接(http/https)。 */
 export const openExternalUrl = openerApi.openExternalUrl;
+
+/** 写入系统剪贴板文本(选中即复制)。 */
+export const writeClipboardText = clipboardApi.writeClipboardText;
+
+/** 读取系统剪贴板文本(右键粘贴)。 */
+export const readClipboardText = clipboardApi.readClipboardText;
 
 /** 查询数据迁移状态(TECHNICAL_DESIGN §7.1.1)。 */
 export const getDataMigrationStatus = migrationApi.getDataMigrationStatus;

@@ -6,12 +6,17 @@
  * webgl-addon.ts。所有 addon 生命周期随 terminal.dispose() 统一释放。
  */
 import { ClipboardAddon } from "@xterm/addon-clipboard";
+import type { IClipboardProvider } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import type { Terminal } from "@xterm/xterm";
-import { openExternalUrl } from "@/app/api";
+import {
+  openExternalUrl,
+  readClipboardText,
+  writeClipboardText,
+} from "@/app/api";
 
 /** 装载结果:暴露调用方需要持有引用的 addon。 */
 export interface BaseAddons {
@@ -20,6 +25,29 @@ export interface BaseAddons {
   /** 缓冲区序列化 addon,可通过 serialize() 导出可回写的缓冲区内容。 */
   serialize: SerializeAddon;
 }
+
+/**
+ * OSC 52 剪贴板提供者:经原生 gateway 读写系统剪贴板。默认的
+ * BrowserClipboardProvider 依赖 navigator.clipboard,在 WKWebView 下
+ * 会被拒绝;且 addon 内部不捕获 provider 的 rejection,这里自行兜底。
+ * primary(p)选择维持默认语义:读取为空、写入忽略,避免远端主选择
+ * 内容意外覆盖系统剪贴板。
+ */
+const nativeClipboardProvider: IClipboardProvider = {
+  readText: (selection) => {
+    if (String(selection) !== "c") return Promise.resolve("");
+    return readClipboardText().catch((err) => {
+      console.warn("[shelx] OSC 52 读取剪贴板失败:", err);
+      return "";
+    });
+  },
+  writeText: (selection, text) => {
+    if (String(selection) !== "c") return;
+    void writeClipboardText(text).catch((err) => {
+      console.warn("[shelx] OSC 52 写入剪贴板失败:", err);
+    });
+  },
+};
 
 /** 装载失败告警只提示一次,避免多终端刷屏。 */
 let loadWarned = false;
@@ -40,7 +68,7 @@ export function loadBaseAddons(terminal: Terminal): BaseAddons {
   }
 
   try {
-    terminal.loadAddon(new ClipboardAddon());
+    terminal.loadAddon(new ClipboardAddon(undefined, nativeClipboardProvider));
   } catch (err) {
     warnOnce(err);
   }

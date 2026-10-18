@@ -22,6 +22,11 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tauri-plugin-process = "2"
+# 系统剪贴板:WKWebView 拒绝 Web Clipboard API(NotAllowedError),
+# 终端选中即复制/右键粘贴/OSC 52 统一经原生插件读写。
+# 精确钉版:crate 与 npm @tauri-apps/plugin-clipboard-manager 必须
+# 同版本,否则 tauri dev 报 Tauri packages 版本不匹配;升级时两侧同步。
+tauri-plugin-clipboard-manager = "=2.3.3"
 # 应用内更新:GitHub Releases endpoint + minisign 签名校验。
 # 公钥见 src-tauri/keys/minisign.pub(随仓库发布);私钥经 GitHub Secret 注入 CI。
 tauri-plugin-updater = "2"
