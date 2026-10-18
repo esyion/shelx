@@ -1,0 +1,5 @@
+  1543      1 www-data  S    102400   312000  3-04:15:33 nginx nginx: master process /usr/sbin/nginx
+   1544   1543 www-data  S     98304   298112  1-02:00:11 nginx nginx: worker process
+    992      1 root      Ssl   24576   512000  02:31:07 dockerd /usr/bin/dockerd -H fd://
+   1234    992 root      R      8192   131072 00:00:05 stress-ng stress-ng --cpu 4 --timeout 60s --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose --verbose
+      1      0 root      Ss       512     4096 00:12:40 systemd /sbin/init splash

@@ -11,6 +11,57 @@ const CONTAINER: &str = include_str!("fixtures/container.txt");
 /// 老内核(无 MemAvailable,用 MemFree+Buffers+Cached 近似)。
 const OLD_KERNEL: &str = include_str!("fixtures/old_kernel.txt");
 
+/// ps 进程快照(含 dd-hh 时间、超长 args)。
+const PROCESSES: &str = include_str!("fixtures/processes.txt");
+
+#[test]
+fn parses_process_snapshot() {
+    let processes = parse_processes(PROCESSES);
+    assert_eq!(processes.len(), 5);
+    let nginx = &processes[0];
+    assert_eq!(nginx.pid, 1543);
+    assert_eq!(nginx.ppid, 1);
+    assert_eq!(nginx.user, "www-data");
+    assert_eq!(nginx.state, "S");
+    assert_eq!(nginx.rss_kb, 102_400);
+    assert_eq!(nginx.vsz_kb, 312_000);
+    // 3-04:15:33 → 3 天 4 小时 15 分 33 秒。
+    assert_eq!(nginx.cpu_time_secs, 3 * 86400 + 4 * 3600 + 15 * 60 + 33);
+    assert_eq!(nginx.comm, "nginx");
+    assert_eq!(nginx.args, "nginx: master process /usr/sbin/nginx");
+    // systemd:comm 与 args 首段相同。
+    let init = processes.last().unwrap();
+    assert_eq!(init.pid, 1);
+    assert_eq!(init.cpu_time_secs, 12 * 60 + 40);
+}
+
+#[test]
+fn truncates_long_args() {
+    let processes = parse_processes(PROCESSES);
+    let stress = processes.iter().find(|p| p.pid == 1234).unwrap();
+    assert!(stress.args.chars().count() <= 201, "args 应截断到 200 字符 + 省略号");
+    assert!(stress.args.ends_with('…'));
+}
+
+#[test]
+fn tolerates_header_and_garbage_lines() {
+    let text = "  PID  PPID USER     STAT   RSS    VSZ     TIME COMMAND\n\
+                not a ps line at all\n\
+                 \n\
+                   42     1 root     S      1024   4096 00:00:01 init /sbin/init\n";
+    let processes = parse_processes(text);
+    assert_eq!(processes.len(), 1);
+    assert_eq!(processes[0].pid, 42);
+    assert_eq!(processes[0].comm, "init");
+}
+
+#[test]
+fn empty_ps_output_yields_empty_list() {
+    assert!(parse_processes("").is_empty());
+    // busybox 不支持参数时 2>/dev/null 输出为空。
+    assert!(parse_processes("Usage: ps [-o]...\n").is_empty());
+}
+
 #[test]
 fn parses_linux_full() {
     let sample = parse_output(LINUX_FULL).expect("完整输出应解析");

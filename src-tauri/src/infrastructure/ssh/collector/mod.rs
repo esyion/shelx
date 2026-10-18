@@ -9,6 +9,79 @@ pub const COLLECT_COMMAND: &str = "echo ===S; cat /proc/stat; echo ===M; cat /pr
      echo ===N; cat /proc/net/dev; echo ===L; cat /proc/loadavg; cat /proc/uptime; \
      echo ===D; df -P -k";
 
+/// 进程快照命令(任务管理器):按内存降序的 ps 快照。
+/// 依赖 procps-ng 的 `-eo`/`--sort`/`--no-headers`(busybox ps 不支持,输出为空 → 列表为空)。
+/// `time` 是累计 CPU 时间,供领域层做两次快照差分得当前 CPU%。
+pub const PROCESS_COMMAND: &str =
+    "ps -eo pid,ppid,user,stat,rss,vsz,time,comm,args --sort=-rss --no-headers 2>/dev/null";
+
+/// args 截断上限(字符);防止几十个 java 进程把 SSH 载荷撑爆。
+const MAX_ARGS_CHARS: usize = 200;
+
+/// 解析 ps 快照输出 → 进程原始行。
+///
+/// 行格式:`pid ppid user stat rss vsz time comm args…`。
+/// comm/args 含空格时边界不可靠:剩余字段第一段视为 comm、其余合并为 args;
+/// user 含空格等错位行会因 pid/time 解析失败被整行跳过(容错,与表头同路)。
+pub fn parse_processes(text: &str) -> Vec<crate::domain::processes::RawProcess> {
+    text.lines()
+        .filter_map(|line| {
+            let mut tokens = line.split_whitespace();
+            let pid = tokens.next()?.parse().ok()?;
+            let ppid = tokens.next()?.parse().ok()?;
+            let user = tokens.next()?.to_owned();
+            let state = tokens.next()?.to_owned();
+            let rss_kb = tokens.next()?.parse().ok()?;
+            let vsz_kb = tokens.next()?.parse().ok()?;
+            let cpu_time_secs = parse_ps_time(tokens.next()?)?;
+            let rest: Vec<&str> = tokens.collect();
+            if rest.is_empty() {
+                return None;
+            }
+            // ps 的 args 列以命令名开头,comm 列是其第一个词:
+            // comm 取剩余首段,args 取其余部分(内核线程 args 为 [comm] 形态,同样成立)。
+            let comm = rest[0].to_owned();
+            let mut args: String = if rest.len() > 1 {
+                rest[1..].join(" ")
+            } else {
+                comm.clone()
+            };
+            if args.chars().count() > MAX_ARGS_CHARS {
+                args = args.chars().take(MAX_ARGS_CHARS).collect::<String>() + "…";
+            }
+            Some(crate::domain::processes::RawProcess {
+                pid,
+                ppid,
+                user,
+                state,
+                rss_kb,
+                vsz_kb,
+                cpu_time_secs,
+                comm,
+                args,
+            })
+        })
+        .collect()
+}
+
+/// ps TIME(`[[dd-]hh:]mm:ss`)→ 秒。
+fn parse_ps_time(text: &str) -> Option<u64> {
+    let segments: Vec<&str> = text.split(':').collect();
+    let (days, hours, minutes, seconds): (u64, u64, u64, u64) = match segments.as_slice() {
+        [mm, ss] => (0, 0, mm.parse().ok()?, ss.parse().ok()?),
+        [head, mm, ss] => {
+            // head 为 `hh` 或 `dd-hh` 两种形态。
+            let (d, h) = match head.split_once('-') {
+                Some((d, h)) => (d.parse().ok()?, h.parse().ok()?),
+                None => (0, head.parse().ok()?),
+            };
+            (d, h, mm.parse().ok()?, ss.parse().ok()?)
+        }
+        _ => return None,
+    };
+    Some(days * 86400 + hours * 3600 + minutes * 60 + seconds)
+}
+
 /// 解析采集命令输出(全部段;单项失败 tolerated)。
 pub fn parse_output(output: &str) -> Result<RawSample, String> {
     let sections = split_sections(output);

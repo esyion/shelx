@@ -10,5 +10,6 @@ pub mod error;
 pub mod group;
 pub mod hostkey;
 pub mod metrics;
+pub mod processes;
 pub mod session;
 pub mod transfer;
