@@ -7,6 +7,35 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > Versions prior to `0.2.0` were internal iterations before the project
 > was open-sourced; their changes are summarized under "Unreleased / 0.2.0".
 
+## [0.2.22] - 2026-10-19
+
+### Added
+
+- **Load state badge in the monitor view** — the load card now shows a
+  state badge (idle / normal / busy / overloaded) derived from the
+  1-minute load average divided by the CPU core count; the raw
+  1/5/15-minute values move to a caption on the card's right.
+
+### Changed
+
+- **CPU and memory cards use donut charts** — the monitor view shows the
+  latest usage as a donut with the percentage in the center instead of
+  time-series area charts. Colors come from the `--chart-*` theme tokens,
+  so they follow light/dark mode. The default sampling interval drops
+  from 5s to 2s.
+- **Disk and per-core sections get icon headers** — both sections show a
+  header with a hint (mount count / core count) and reflow into more
+  columns on wider panels; disk rows now place the percentage before the
+  bar. Chart grid lines use `var(--border)` directly, fixing an
+  inconsistent `hsl()`/`oklch()` wrapper.
+
+### Fixed
+
+- **Disk list no longer shows pseudo filesystems** — `df` parsing now
+  also excludes `efivarfs` and `cgroup2` by type and filters mounts
+  under `/proc`, `/sys`, `/dev` and `/snap`, so snap loop devices
+  (`/dev/loopN` mounted at `/snap/...`) no longer appear as disks.
+
 ## [0.2.21] - 2026-10-18
 
 ### Added
