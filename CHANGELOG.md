@@ -7,6 +7,47 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > Versions prior to `0.2.0` were internal iterations before the project
 > was open-sourced; their changes are summarized under "Unreleased / 0.2.0".
 
+## [0.2.21] - 2026-10-18
+
+### Added
+
+- **Disk usage in the sidebar monitor** — the compact sidebar panel now
+  shows disk rows under CPU / memory / swap. The root filesystem is
+  labeled "磁盘"; additional mount points show their mount path, up to
+  three rows (the full list remains in the monitor view). Bars turn
+  orange above 85% and red above 95% usage, matching the full monitor
+  view.
+- **Terminal clipboard over the native channel** — copy-on-select,
+  right-click paste and OSC 52 now read and write the system clipboard
+  through the native clipboard plugin instead of the Web Clipboard API,
+  which WKWebView rejects with `NotAllowedError`. Failures degrade to a
+  console warning and no longer produce unhandled rejections.
+
+### Fixed
+
+- **Chinese IME input no longer fragments in the terminal** (macOS) —
+  input methods that report keyCode 229 for every key with no
+  composition events produced shattered or duplicated text such as
+  "f rf ree -h" (upstream xterm.js#5887). A host-level IME guard now
+  intercepts those events outside real composition windows and forwards
+  the exact inserted text to the terminal; pinyin composition is
+  untouched.
+- **WebGL context loss no longer breaks the terminal** — when the GPU
+  rendering context is lost, the addon disposes itself and the terminal
+  falls back to the built-in DOM renderer; cleanup no longer
+  double-disposes the dead addon.
+- **Clearer macOS keychain error** — when keychain access is denied
+  (typical after repeated dev rebuilds change the binary signature),
+  the error message now explains that re-saving the password on the
+  connection rebuilds the entry.
+
+### Changed
+
+- Network throughput tooltips use adaptive units (KiB/s, MiB/s, …)
+  instead of a fixed MB/s, and the monitor time axis now includes the
+  hour.
+- Polished the disconnected/reconnect banner styling.
+
 ## [0.2.20] - 2026-09-21
 
 ### Added
