@@ -1,9 +1,12 @@
 //! 监控采集用例(PRD §6.5、设计文档 §7.3):按会话调度采集、差值计算、环形缓冲。
 //!
-//! 采集流程:exec_once 执行单次 shell 命令 → 解析 → 差值 → MetricsSample → Channel 推送 + 环形缓冲。
-//! 断线联动:检测到连接断开即停止;重连后清空重采(不拼接断档数据)。
+//! 采集生命周期跟随会话而非视图:会话在线即持续采集(ensure 创建/就地调间隔),
+//! 视图挂载只是 attach 订阅样本、卸载 detach,切 tab 不中断采集、不清历史。
+//! 停止时机:会话关闭(close 钩子)或连接断开(run_loop 自检退出)。
+//! 断线后重连清空重采(不拼接断档数据)。
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
@@ -33,7 +36,15 @@ pub trait MetricsSink: Send + Sync {
     fn on_sample(&self, sample: &MetricsSample);
 }
 
-/// 会话采集可变状态(run_loop 单写者,recent 读快照)。
+/// 一个样本订阅者(attach 注册,detach 移除)。
+#[derive(Clone)]
+struct SinkEntry {
+    /// 订阅 ID(IPC 契约字符串)。
+    id: String,
+    sink: Arc<dyn MetricsSink>,
+}
+
+/// 会话采集可变状态(run_loop 单写者,recent/attach 读快照)。
 struct MonitorCore {
     /// 环形缓冲(最近 1h 样本)。
     ring: VecDeque<MetricsSample>,
@@ -41,10 +52,12 @@ struct MonitorCore {
     prev_raw: Option<RawSample>,
     /// 上次采集时刻。
     last_at: Instant,
-    /// 采集间隔。
+    /// 采集间隔(ensure 可就地调整)。
     interval: Duration,
-    /// 环形缓冲容量。
+    /// 环形缓冲容量(随间隔重算)。
     capacity: usize,
+    /// 订阅中的推送出口(锁内快照、锁外发送)。
+    sinks: Vec<SinkEntry>,
 }
 
 /// 进程快照缓存(按会话):差分 CPU% 需要相邻两次 ps 读数。
@@ -67,6 +80,9 @@ pub struct MonitorService {
     process_caches: Mutex<std::collections::HashMap<String, ProcessCache>>,
 }
 
+/// 订阅 ID 发号器。
+static SUBSCRIPTION_SEQ: AtomicU64 = AtomicU64::new(1);
+
 impl MonitorService {
     /// 构建服务。
     pub fn new(sessions: Arc<SessionService>, events: Arc<dyn SessionEventSink>) -> Self {
@@ -81,17 +97,35 @@ impl MonitorService {
     /// 环形缓冲时长上限(PRD §6.5:最近 1 小时)。
     const RING_DURATION: Duration = Duration::from_secs(3600);
 
-    /// 启动监控采集;已有任务先替换(间隔可变)。
-    pub async fn start(
+    /// 确保会话的采集任务在跑;已存在则**就地**更新间隔(保留环形缓冲与差值前值)。
+    ///
+    /// 幂等:视图挂载/改间隔/重连都可重复调用;仅首次创建时探测目标是否支持采集。
+    pub async fn ensure(
         self: &Arc<Self>,
         session_id: &str,
         interval_secs: u32,
-        sink: Arc<dyn MetricsSink>,
     ) -> Result<(), MonitorError> {
         let interval = Duration::from_secs(interval_secs.clamp(2, 60) as u64);
         let capacity = (Self::RING_DURATION.as_secs() / interval.as_secs()) as usize;
 
-        // 先探测目标是否支持采集(/proc/stat 可读;设计文档 §6.5 非inux 探测)。
+        // 已有任务:只调间隔与容量,历史与差值前值原样保留。
+        if let Some(core) = self
+            .monitors
+            .read()
+            .expect("监控注册表锁")
+            .get(session_id)
+            .cloned()
+        {
+            let mut c = core.lock().expect("监控核心锁");
+            c.interval = interval;
+            c.capacity = capacity;
+            while c.ring.len() > capacity {
+                c.ring.pop_front();
+            }
+            return Ok(());
+        }
+
+        // 首次创建:探测目标是否支持采集(/proc/stat 可读;设计文档 §6.5 非 Linux 探测)。
         let connection = self.sessions.connection_of(session_id)?;
         let probe = connection
             .exec_once("test -r /proc/stat && echo ok", Duration::from_secs(5))
@@ -101,29 +135,76 @@ impl MonitorService {
             return Err(MonitorError::Unsupported);
         }
 
-        // 注册任务(替换旧的 → 旧 run_loop 自动检测退出)。
         let core = Arc::new(Mutex::new(MonitorCore {
             ring: VecDeque::new(),
             prev_raw: None,
             last_at: Instant::now(),
             interval,
             capacity,
+            sinks: Vec::new(),
         }));
-        self.monitors
+        let replaced = self
+            .monitors
             .write()
             .expect("监控注册表锁")
             .insert(session_id.to_owned(), core.clone());
+        if replaced.is_some() {
+            // 并发 ensure 的失败方:放弃新 core,让已存在任务继续(避免覆盖在跑任务)。
+            tracing::debug!(
+                session = session_id,
+                "监控任务已由并发调用创建,复用现有任务"
+            );
+        }
 
-        // 启动采集循环。
+        // 启动采集循环(无订阅者也持续采集,订阅者随时 attach)。
         let service = Arc::clone(self);
         let sid = session_id.to_owned();
         tokio::spawn(async move {
-            service.run_loop(&sid, core, sink).await;
+            service.run_loop(&sid, core).await;
         });
         Ok(())
     }
 
-    /// 停止监控(移除注册表条目 → run_loop 下次检查退出)。
+    /// 注册样本订阅者,返回订阅 ID(detach 时凭此移除)。
+    ///
+    /// 要求采集任务已 ensure;未启动时返回 Collect 错误(前端保证先 ensure)。
+    pub fn attach(
+        &self,
+        session_id: &str,
+        sink: Arc<dyn MetricsSink>,
+    ) -> Result<String, MonitorError> {
+        let core = self
+            .monitors
+            .read()
+            .expect("监控注册表锁")
+            .get(session_id)
+            .cloned()
+            .ok_or_else(|| MonitorError::Collect("采集任务未启动".into()))?;
+        let id = format!("sub-{}", SUBSCRIPTION_SEQ.fetch_add(1, Ordering::Relaxed));
+        core.lock().expect("监控核心锁").sinks.push(SinkEntry {
+            id: id.clone(),
+            sink,
+        });
+        Ok(id)
+    }
+
+    /// 移除样本订阅者;ID 不存在时静默成功(幂等)。
+    pub fn detach(&self, session_id: &str, subscription_id: &str) {
+        if let Some(core) = self
+            .monitors
+            .read()
+            .expect("监控注册表锁")
+            .get(session_id)
+            .cloned()
+        {
+            core.lock()
+                .expect("监控核心锁")
+                .sinks
+                .retain(|entry| entry.id != subscription_id);
+        }
+    }
+
+    /// 停止并销毁采集任务(会话关闭钩子/断线自检调用,历史随会话终结)。
     pub fn stop(&self, session_id: &str) {
         self.monitors
             .write()
@@ -208,14 +289,9 @@ impl MonitorService {
     }
 
     /// 采集循环。
-    async fn run_loop(
-        self: &Arc<Self>,
-        session_id: &str,
-        core: Arc<Mutex<MonitorCore>>,
-        sink: Arc<dyn MetricsSink>,
-    ) {
+    async fn run_loop(self: &Arc<Self>, session_id: &str, core: Arc<Mutex<MonitorCore>>) {
         loop {
-            // 间隔等待(读取 interval;start 替换后用新 core,旧循环退出)。
+            // 间隔等待(每轮读取,ensure 就地改间隔即时生效)。
             let interval = {
                 let c = core.lock().expect("监控核心锁");
                 c.interval
@@ -237,7 +313,7 @@ impl MonitorService {
                 }
             };
 
-            // 采集 + 解析 + 差值 → 推送。
+            // 采集 + 解析 + 差值 → 快照订阅者后锁外分发。
             match connection
                 .exec_once(collector::COLLECT_COMMAND, Duration::from_secs(5))
                 .await
@@ -246,7 +322,7 @@ impl MonitorService {
                     Ok(raw) => {
                         let now = Instant::now();
                         let ts = now_ms();
-                        let (sample, interval) = {
+                        let (sample, sinks) = {
                             let mut c = core.lock().expect("监控核心锁");
                             let elapsed = now.duration_since(c.last_at).as_secs_f64();
                             let sample = compute_sample(c.prev_raw.as_ref(), &raw, elapsed, ts);
@@ -256,10 +332,11 @@ impl MonitorService {
                             }
                             c.prev_raw = Some(raw);
                             c.last_at = now;
-                            (sample, c.interval)
+                            (sample, c.sinks.clone())
                         };
-                        sink.on_sample(&sample);
-                        let _ = interval;
+                        for entry in sinks {
+                            entry.sink.on_sample(&sample);
+                        }
                     }
                     Err(err) => {
                         tracing::warn!(session = session_id, "监控解析失败: {err}");

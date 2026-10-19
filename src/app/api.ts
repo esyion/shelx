@@ -148,11 +148,14 @@ export const renameLocalEntry = localFsApi.renameLocalEntry;
 /** 删除本地文件。 */
 export const deleteLocalEntries = localFsApi.deleteLocalEntries;
 
-/** 启动监控采集。 */
-export const startMonitor = monitorApi.startMonitor;
+/** 确保监控采集任务在跑(幂等,就地改间隔不清历史)。 */
+export const ensureMonitor = monitorApi.ensureMonitor;
 
-/** 停止监控采集。 */
-export const stopMonitor = monitorApi.stopMonitor;
+/** 订阅样本推送,返回订阅 ID。 */
+export const attachMonitor = monitorApi.attachMonitor;
+
+/** 退订样本推送。 */
+export const detachMonitor = monitorApi.detachMonitor;
 
 /** 读取环形缓冲快照。 */
 export const recentMonitorSamples = monitorApi.recentMonitorSamples;

@@ -114,6 +114,9 @@ pub async fn close_session(
     state: State<'_, AppState>,
     request: IdRequestDto,
 ) -> Result<IpcResult<()>, String> {
+    // 采集生命周期跟随会话:关闭即停采集并清理进程缓存(重连后重新 ensure)。
+    state.monitor.stop(&request.id);
+    state.monitor.cleanup_session(&request.id);
     Ok(match state.sessions.close_session(&request.id).await {
         Ok(()) => IpcResult::ok(()),
         Err(err) => IpcResult::err(to_ipc_error(err)),

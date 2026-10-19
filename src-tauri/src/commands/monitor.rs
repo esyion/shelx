@@ -1,6 +1,7 @@
-//! 监控 command(AGENTS.md §4.2):启停采集与历史读取。
+//! 监控 command(AGENTS.md §4.2):采集保活、样本订阅与历史读取。
 //!
-//! 样本高频流经 `onSample` ipc Channel(按采样间隔推送)。
+//! 采集生命周期跟随会话:ensure 幂等保活(可就地改间隔),视图 attach/detach
+//! 订阅样本(高频流经 `onSample` ipc Channel);会话关闭由 sessions 钩子清理。
 
 use std::sync::Arc;
 
@@ -46,21 +47,19 @@ fn to_ipc_error(err: MonitorError) -> IpcError {
     }
 }
 
-/// 启动监控采集;样本流经 onSample Channel 持续推送。
+/// 确保采集任务在跑(幂等);已有任务仅就地更新采样间隔,历史不清空。
 ///
 /// 外层 `Result` 为 Tauri async 签名要求,恒为 Ok。
 #[tauri::command]
-pub async fn start_monitor(
+pub async fn ensure_monitor(
     state: State<'_, AppState>,
     request: crate::dto::sftp::SessionOnlyRequestDto,
     interval_secs: u32,
-    on_sample: Channel<InvokeResponseBody>,
 ) -> Result<IpcResult<()>, String> {
-    let sink = Arc::new(ChannelMetricsSink(on_sample));
     Ok(
         match state
             .monitor
-            .start(&request.session_id, interval_secs, sink)
+            .ensure(&request.session_id, interval_secs)
             .await
         {
             Ok(()) => IpcResult::ok(()),
@@ -69,13 +68,28 @@ pub async fn start_monitor(
     )
 }
 
-/// 停止监控采集。
+/// 订阅样本推送,返回订阅 ID(detach_monitor 凭此退订)。
 #[tauri::command]
-pub fn stop_monitor(
+pub async fn attach_monitor(
+    state: State<'_, AppState>,
+    request: crate::dto::sftp::SessionOnlyRequestDto,
+    on_sample: Channel<InvokeResponseBody>,
+) -> Result<IpcResult<String>, String> {
+    let sink = Arc::new(ChannelMetricsSink(on_sample));
+    Ok(match state.monitor.attach(&request.session_id, sink) {
+        Ok(id) => IpcResult::ok(id),
+        Err(err) => IpcResult::err(to_ipc_error(err)),
+    })
+}
+
+/// 退订样本推送(ID 不存在时静默成功)。
+#[tauri::command]
+pub fn detach_monitor(
     state: State<AppState>,
     request: crate::dto::sftp::SessionOnlyRequestDto,
+    subscription_id: String,
 ) -> IpcResult<()> {
-    state.monitor.stop(&request.session_id);
+    state.monitor.detach(&request.session_id, &subscription_id);
     IpcResult::ok(())
 }
 

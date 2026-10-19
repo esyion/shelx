@@ -1,20 +1,20 @@
 /**
  * 侧栏紧凑监控(PRD §6.5 衍生):常驻 CPU / 内存 / 交换 / 磁盘 进度条。
  *
- * 采集策略:
- * - 后端 MonitorService 同 sessionId 多次 start 会替换 sink(后启动者接管)。
- * - 本组件在 status===online 时主动以 2s 间隔启动采集;切换/卸载时 stop。
+ * 采集策略:采集任务随会话常驻(Rust 端),本组件 status===online 时
+ * 幂等保活(2s)并订阅样本,卸载仅退订——与监控视图并行不互抢。
  *
  * 系统信息入口:header 右侧 Info 按钮,点击弹窗。
  */
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Info, Server } from "lucide-react";
 import {
+  attachMonitor,
+  detachMonitor,
+  ensureMonitor,
   fetchSystemInfo,
-  startMonitor,
-  stopMonitor,
 } from "@/app/api";
 import { Button } from "@/components/ui/button";
 import {
@@ -59,35 +59,33 @@ export function SidebarMonitor({ sessionId }: SidebarMonitorProps) {
   /** 仅持有「是否已至少有一个样本」,用于切换 Empty 与进度条视图。 */
   const [hasSample, setHasSample] = useState(false);
   const [latest, setLatest] = useState<MetricsSample | null>(null);
-  /** 本组件是否在主动 start/stop;为 false 时仅轮询。 */
-  const ownsSubscription = useRef(false);
 
   useEffect(() => {
     if (!sessionId) {
       setHasSample(false);
       setLatest(null);
-      ownsSubscription.current = false;
       return;
     }
     const current = useSessionsStore.getState().byId[sessionId]?.status;
     if (current !== "online") return;
 
+    // 采集任务随会话常驻:这里只做幂等保活 + 订阅,卸载仅退订(不停采集)。
     let cancelled = false;
-    ownsSubscription.current = true;
-    void startMonitor(sessionId, SIDEBAR_INTERVAL_SECS, (sample) => {
+    let subscriptionId: string | null = null;
+    void (async () => {
+      await ensureMonitor(sessionId, SIDEBAR_INTERVAL_SECS);
       if (cancelled) return;
-      setLatest(sample);
-      setHasSample(true);
-    }).catch((err) => {
-      // 静默失败:UI Empty 已说明;Workspace Alt+2 视图可能也在跑同一 session。
-      void err;
+      subscriptionId = await attachMonitor(sessionId, (sample) => {
+        if (cancelled) return;
+        setLatest(sample);
+        setHasSample(true);
+      });
+    })().catch(() => {
+      // 静默失败:UI Empty 已说明(如目标系统不支持采集)。
     });
     return () => {
       cancelled = true;
-      if (ownsSubscription.current) {
-        ownsSubscription.current = false;
-        void stopMonitor(sessionId);
-      }
+      if (subscriptionId) void detachMonitor(sessionId, subscriptionId);
     };
   }, [sessionId, status]);
 

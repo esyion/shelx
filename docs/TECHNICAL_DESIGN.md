@@ -326,10 +326,12 @@ type IpcResult<T> =
 
 | 命令 | 参数 → 返回 |
 | ------ | ------------- |
-| `start_monitor` | `{sessionId, intervalSecs, onSample: Channel<MetricsSample>} → void` |
-| `stop_monitor` | `{sessionId} → void` |
+| `ensure_monitor` | `{sessionId, intervalSecs} → void`(幂等保活;已有任务就地改间隔,历史不清空) |
+| `attach_monitor` | `{sessionId, onSample: Channel<MetricsSample>} → subscriptionId: string` |
+| `detach_monitor` | `{sessionId, subscriptionId} → void`(幂等) |
 | `recent_monitor_samples` | `{sessionId} → MetricsSample[]`(后端环形缓冲 1h,P1 回看 UI 用;P0 先落数据) |
-| `list_remote_processes` | `{sessionId} → ProcessInfo[]`(P1) |
+| `list_processes` | `{sessionId} → ProcessInfo[]`(任务管理器;相邻快照差分 CPU%) |
+| `kill_process` | `{sessionId, pid: string} → void`(SIGTERM,pid 边界校验) |
 
 **设置 / 本地文件**
 
@@ -648,16 +650,20 @@ enqueue_upload(local, remoteDir, policy)
 ### 9.5 监控采集
 
 ```
-start_monitor(session, interval, channel)
+ensure_monitor(session, interval)           # 幂等:已有任务仅就地改间隔(cap 重算,缓冲保留)
   → collector 拼单次 shell(分隔符分段):
       echo ===S; cat /proc/stat; echo ===M; cat /proc/meminfo;
       echo ===N; cat /proc/net/dev; echo ===L; cat /proc/loadavg; cat /proc/uptime;
       echo ===D; df -P -k
   → 解析器产出 RawProcSample(fixtures 单测,见 §11)
   → domain 差值计算(vs 上次原始读数)→ MetricsSample(首个样本 cpuPercent=null)
-  → 环形缓冲(cap = 3600s/interval)入队 + channel 推送
-  断线 → 采集任务取消;重连 + 用户回到监控视图 → 清空重采(不拼接断档)
-  首次执行前探测 /proc/stat 可读性,失败 → MONITOR_UNSUPPORTED(面板占位)
+  → 环形缓冲(cap = 3600s/interval)入队 + 快照订阅者锁外分发
+attach_monitor(session, channel) → subId    # 视图挂载订阅;detach_monitor 退订
+                                            # 采集生命周期跟随会话:无订阅者也持续采集,
+                                            # 切 tab 不中断;改间隔不清历史(CPU 无 null 断档)
+  会话关闭(close 钩子)或断线(run_loop 自检)→ 停止并销毁缓冲
+  重连 + 用户回到监控视图 → 清空重采(不拼接断档)
+  首次创建前探测 /proc/stat 可读性,失败 → MONITOR_UNSUPPORTED(面板占位)
 ```
 
 ### 9.6 关闭确认

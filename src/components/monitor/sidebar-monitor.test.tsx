@@ -3,21 +3,23 @@
  * mock @/app/api,验证:收到样本后磁盘行按挂载点展示——
  * 根挂载点显示为「磁盘」、其他挂载点显示路径、最多 3 个、无数据不渲染。
  */
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useSessionsStore } from "@/stores/sessions";
 import type { MetricsSample, SessionInfo } from "@/types";
 
 const mocks = vi.hoisted(() => ({
-  startMonitor: vi.fn(),
-  stopMonitor: vi.fn(),
+  ensureMonitor: vi.fn(),
+  attachMonitor: vi.fn(),
+  detachMonitor: vi.fn(),
   fetchSystemInfo: vi.fn(),
 }));
 
 vi.mock("@/app/api", () => ({
-  startMonitor: mocks.startMonitor,
-  stopMonitor: mocks.stopMonitor,
+  ensureMonitor: mocks.ensureMonitor,
+  attachMonitor: mocks.attachMonitor,
+  detachMonitor: mocks.detachMonitor,
   fetchSystemInfo: mocks.fetchSystemInfo,
 }));
 
@@ -76,17 +78,17 @@ async function renderWithSample(
 ): Promise<void> {
   seedOnlineSession();
   let push: ((s: MetricsSample) => void) | undefined;
-  mocks.startMonitor.mockImplementation(
-    (
-      _sessionId: string,
-      _interval: number,
-      onSample: (s: MetricsSample) => void,
-    ) => {
+  mocks.ensureMonitor.mockResolvedValue(undefined);
+  mocks.attachMonitor.mockImplementation(
+    (_sessionId: string, onSample: (s: MetricsSample) => void) => {
       push = onSample;
-      return Promise.resolve();
+      return Promise.resolve("sub-1");
     },
   );
+  mocks.detachMonitor.mockResolvedValue(undefined);
   render(<SidebarMonitor sessionId={SESSION_ID} />);
+  // 等待 ensure→attach 链路完成(push 由 attachMonitor mock 注入)。
+  await waitFor(() => expect(push).toBeDefined());
   await act(async () => {
     push?.(sampleWith(disks));
   });

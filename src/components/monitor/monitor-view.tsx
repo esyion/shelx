@@ -1,12 +1,12 @@
 /**
  * 监控视图(PRD §6.5):顶部信息条 + Recharts 图表网格 + 采样间隔 + 断线置灰。
  *
- * 数据流:start_monitor Channel 推样本 → useRef 缓冲(F4,不进全局 store)
- * → 图表按采样间隔重绘(Recharts 关动画)。
+ * 数据流:采集任务随会话常驻(Rust 端环形缓冲,切 tab 不中断)→ 本视图挂载时
+ * 恢复历史 + attach 订阅,卸载仅 detach;样本入 useRef 缓冲,按采样间隔重绘。
  */
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CartesianGrid,
   Cell,
@@ -21,7 +21,7 @@ import {
 } from "recharts";
 import { Cpu, HardDrive, type LucideIcon } from "lucide-react";
 import { NativeSelect } from "@/components/ui/native-select";
-import { recentMonitorSamples, startMonitor, stopMonitor } from "@/app/api";
+import { attachMonitor, detachMonitor, ensureMonitor, recentMonitorSamples } from "@/app/api";
 import { formatBytes, formatDuration } from "@/lib/format";
 import { isGatewayError } from "@/gateway";
 import { useSessionsStore } from "@/stores/sessions";
@@ -30,6 +30,9 @@ import type { MetricsSample } from "@/types";
 
 /** 样本缓冲上限(1h @ 2s ≈ 1800 点;截断即可)。 */
 const MAX_SAMPLES = 1800;
+
+/** 单条曲线渲染点数上限(超出按步长降采样,保住 Recharts 流畅度)。 */
+const MAX_RENDER_POINTS = 600;
 
 /** 监控视图属性。 */
 export interface MonitorViewProps {
@@ -41,6 +44,8 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
   const samplesRef = useRef<MetricsSample[]>([]);
   const [, forceRender] = useState(0);
   const [intervalSecs, setIntervalSecs] = useState(2);
+  /** 曲线时间窗(秒);默认 15 分钟。 */
+  const [windowSecs, setWindowSecs] = useState(900);
   const [error, setError] = useState<string | null>(null);
   const status = useSessionsStore((s) => s.byId[sessionId]?.status);
   const serverInfo = useSessionsStore((s) => s.byId[sessionId]?.serverInfo);
@@ -55,32 +60,36 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
     forceRender((n) => n + 1);
   }, []);
 
-  /** 启动采集(挂载/间隔变化/重连时)。 */
+  /** 保活采集 + 订阅样本(挂载/间隔变化/重连时;卸载只退订,不停采集、不清历史)。 */
   useEffect(() => {
     if (status !== "online") return;
-    samplesRef.current = [];
-    let stopped = false;
+    let cancelled = false;
+    let subscriptionId: string | null = null;
 
-    // 先恢复历史(切走再切回不丢数据)。
-    void recentMonitorSamples(sessionId).then((history) => {
-      if (stopped) return;
+    void (async () => {
+      // 恢复历史:采集任务随会话常驻,切走再切回/改间隔后这里拿到完整曲线。
+      const history = await recentMonitorSamples(sessionId).catch(() => []);
+      if (cancelled) return;
       samplesRef.current = history.slice(-MAX_SAMPLES);
       forceRender((n) => n + 1);
-    });
 
-    // 启动持续采集。
-    void startMonitor(sessionId, intervalSecs, pushSample).catch((err) => {
+      // 幂等保活(已有任务仅就地改间隔),再订阅样本推送。
+      await ensureMonitor(sessionId, intervalSecs);
+      if (cancelled) return;
+      subscriptionId = await attachMonitor(sessionId, pushSample);
+    })().catch((err) => {
+      if (cancelled) return;
       if (isGatewayError(err) && err.code === "MONITOR_UNSUPPORTED") {
         setError("目标系统不支持监控采集(仅支持 Linux)");
       } else {
         setError(err instanceof Error ? err.message : String(err));
-        toast(`监控启动失败:${error ?? ""}`, "error");
+        toast(`监控启动失败:${err instanceof Error ? err.message : String(err)}`, "error");
       }
     });
 
     return () => {
-      stopped = true;
-      void stopMonitor(sessionId);
+      cancelled = true;
+      if (subscriptionId) void detachMonitor(sessionId, subscriptionId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, intervalSecs, status, pushSample]);
@@ -88,6 +97,15 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
   const samples = samplesRef.current;
   const latest = samples[samples.length - 1];
   const paused = status !== "online";
+
+  /** 时间窗内可见样本(>600 点按步长降采样,保留最新点)。 */
+  const visibleSamples = useMemo(() => {
+    const count = Math.max(1, Math.floor(windowSecs / intervalSecs));
+    const window = samples.slice(-count);
+    const step = Math.ceil(window.length / MAX_RENDER_POINTS);
+    if (step <= 1) return window;
+    return window.filter((_, i) => i % step === 0 || i === window.length - 1);
+  }, [samples, windowSecs, intervalSecs]);
 
   if (error) {
     return (
@@ -132,6 +150,21 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
         )}
         <span>运行 {formatDuration(latest.uptimeSecs)}</span>
         <span className="ml-auto">
+          时间窗
+          <NativeSelect
+            className="ml-1 inline-block w-16 text-xs"
+            value={String(windowSecs)}
+            onChange={(e) => setWindowSecs(Number(e.target.value))}
+            aria-label="曲线时间窗"
+          >
+            {[5, 15, 30, 60].map((m) => (
+              <option key={m} value={m * 60}>
+                {m}m
+              </option>
+            ))}
+          </NativeSelect>
+        </span>
+        <span>
           采样间隔
           <NativeSelect
             className="ml-1 inline-block w-16 text-xs"
@@ -160,7 +193,7 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
         <ChartCard
           title={`网络 ↓${formatBytes(latest.netRxBps)}/s ↑${formatBytes(latest.netTxBps)}/s`}
         >
-          <NetworkChart samples={samples} />
+          <NetworkChart samples={visibleSamples} />
         </ChartCard>
         <ChartCard
           title={
@@ -176,7 +209,7 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
           }
           extra={`1m ${latest.load1.toFixed(2)} · 5m ${latest.load5.toFixed(2)} · 15m ${latest.load15.toFixed(2)}`}
         >
-          <LoadChart samples={samples} />
+          <LoadChart samples={visibleSamples} />
         </ChartCard>
       </div>
 
@@ -257,11 +290,11 @@ function loadState(latest: MetricsSample): {
   return { label: "过载", className: "text-red-500" };
 }
 
-/** 通用时间轴(样本 → 折线图数据;CPU/内存用饼图,只看最新样本)。 */
+/** 通用时间轴(样本 → 折线图数据;时间窗切片与降采样已在视图层完成)。 */
 function toTimeline(
   samples: MetricsSample[],
 ): { time: string; [key: string]: number | string }[] {
-  return samples.slice(-120).map((s) => ({
+  return samples.map((s) => ({
     time: new Date(s.ts).toLocaleTimeString("zh-CN", {
       hour12: false,
       hour: "2-digit",
