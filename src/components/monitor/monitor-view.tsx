@@ -34,6 +34,22 @@ const MAX_SAMPLES = 1800;
 /** 单条曲线渲染点数上限(超出按步长降采样,保住 Recharts 流畅度)。 */
 const MAX_RENDER_POINTS = 600;
 
+/**
+ * 时间窗切片 + 降采样(纯函数):取最近 windowSecs/intervalSecs 个样本,
+ * 超过渲染上限时按步长抽取,且始终保留最后一个点(最新值不丢)。
+ */
+export function sliceVisibleSamples(
+  samples: MetricsSample[],
+  windowSecs: number,
+  intervalSecs: number,
+): MetricsSample[] {
+  const count = Math.max(1, Math.floor(windowSecs / intervalSecs));
+  const window = samples.slice(-count);
+  const step = Math.ceil(window.length / MAX_RENDER_POINTS);
+  if (step <= 1) return window;
+  return window.filter((_, i) => i % step === 0 || i === window.length - 1);
+}
+
 /** 监控视图属性。 */
 export interface MonitorViewProps {
   sessionId: string;
@@ -51,12 +67,13 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
   const serverInfo = useSessionsStore((s) => s.byId[sessionId]?.serverInfo);
   const toast = useUiStore((s) => s.toast);
 
-  /** 推入样本并触发重绘。 */
+  /** 推入样本并触发重绘(不可变更新:替换数组引用,依赖该引用的 useMemo 才会失效)。 */
   const pushSample = useCallback((sample: MetricsSample) => {
-    samplesRef.current.push(sample);
-    if (samplesRef.current.length > MAX_SAMPLES) {
-      samplesRef.current.shift();
+    const next = [...samplesRef.current, sample];
+    if (next.length > MAX_SAMPLES) {
+      next.shift();
     }
+    samplesRef.current = next;
     forceRender((n) => n + 1);
   }, []);
 
@@ -98,14 +115,11 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
   const latest = samples[samples.length - 1];
   const paused = status !== "online";
 
-  /** 时间窗内可见样本(>600 点按步长降采样,保留最新点)。 */
-  const visibleSamples = useMemo(() => {
-    const count = Math.max(1, Math.floor(windowSecs / intervalSecs));
-    const window = samples.slice(-count);
-    const step = Math.ceil(window.length / MAX_RENDER_POINTS);
-    if (step <= 1) return window;
-    return window.filter((_, i) => i % step === 0 || i === window.length - 1);
-  }, [samples, windowSecs, intervalSecs]);
+  /** 时间窗内可见样本(引用随 samples 每个样本更新;>600 点降采样)。 */
+  const visibleSamples = useMemo(
+    () => sliceVisibleSamples(samples, windowSecs, intervalSecs),
+    [samples, windowSecs, intervalSecs],
+  );
 
   if (error) {
     return (
