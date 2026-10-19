@@ -7,6 +7,36 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > Versions prior to `0.2.0` were internal iterations before the project
 > was open-sourced; their changes are summarized under "Unreleased / 0.2.0".
 
+## [0.2.24] - 2026-10-19
+
+### Added
+
+- **Persistent monitoring history** — collection now follows the session
+  instead of the monitor view: switching tabs no longer stops collection
+  or wipes the ring buffer, so returning to the「监控」tab shows the
+  continuous curve instead of rebuilding from zero. Changing the
+  sampling interval keeps history in place (no more CPU gap). A
+  time-window selector (5m / 15m / 30m / 1h, default 15m) replaces the
+  previous hard-coded ~4-minute view; beyond 600 points curves are
+  downsampled with the newest point always kept.
+
+### Changed
+
+- **Monitor IPC contract** — `start_monitor`/`stop_monitor` are replaced
+  by `ensure_monitor` (idempotent keep-alive, in-place interval update),
+  `attach_monitor` (subscribe, returns a subscription id) and
+  `detach_monitor` (unsubscribe). Stopping is now owned by the session
+  close hook and the disconnect self-check; view unmount only detaches.
+  See docs/TECHNICAL_DESIGN.md §9.5 and the IPC table.
+
+### Fixed
+
+- **Sidebar monitor no longer freezes** — the sidebar and the monitor
+  view previously fought over a single collector slot per session
+  (last starter took over the sample channel; leaving the monitor view
+  killed collection entirely, freezing the sidebar on stale values).
+  Both are now independent subscribers of a session-scoped collector.
+
 ## [0.2.23] - 2026-10-19
 
 ### Added
