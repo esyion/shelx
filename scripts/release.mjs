@@ -152,7 +152,9 @@ function qualityGates() {
 
   log.ok("bun run build(前端静态导出)");
   try {
-    sh("bun", ["run", "build"]);
+    // Windows 上 `bun` 是 bun.cmd,execFileSync 不经过 shell 会 ENOENT;
+    // 仅这条调用走 shell(其余 git/cargo 带空格参数,不能被 shell 再切一次)。
+    sh("bun", ["run", "build"], { shell: true });
   } catch {
     log.err("前端 build 失败。");
     process.exit(3);
