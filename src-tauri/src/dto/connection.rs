@@ -1,6 +1,8 @@
-//! 连接管理 IPC DTO:请求/响应形状,与前端 `src/types/connections.ts` 对齐。
+//! 连接管理 IPC DTO:请求/响应形状,是本模块跨边界契约的唯一定义。
 //!
-//! 字段 camelCase;ID 一律 string(AGENTS.md §5)。
+//! 前端类型由 `bun run gen:ipc` 从本文件的 serde 形状生成
+//! (`src/types/gen/connection.ts`),不再存在手写镜像(AGENTS.md §5)。
+//! 字段 camelCase;ID 一律 string。
 
 use serde::{Deserialize, Serialize};
 
@@ -13,7 +15,7 @@ use crate::domain::error::DomainError;
 use crate::domain::group::Group;
 
 /// 认证方式(snake_case 字符串跨边界)。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AuthMethodDto {
     /// 账号密码。
@@ -49,7 +51,7 @@ impl From<AuthMethodDto> for AuthMethod {
 }
 
 /// 终端编码(跨边界字符串与数据库枚举一致:'utf-8' / 'gbk')。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub enum EncodingDto {
     /// UTF-8(默认)。
     #[serde(rename = "utf-8")]
@@ -78,7 +80,7 @@ impl From<EncodingDto> for Encoding {
 }
 
 /// 连接响应 DTO;凭据本体永不返回,以 `hasStored*` 布尔表达保存状态。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionDto {
     /// 连接 ID。
@@ -133,7 +135,7 @@ impl From<ConnConfig> for ConnectionDto {
 }
 
 /// 分组响应 DTO。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GroupDto {
     /// 分组 ID。
@@ -155,7 +157,7 @@ impl From<Group> for GroupDto {
 }
 
 /// 连接树节点;`kind` 判别("group" / "connection")。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum ConnectionNodeDto {
     /// 分组节点。
@@ -169,8 +171,12 @@ pub enum ConnectionNodeDto {
         /// 子节点。
         children: Vec<ConnectionNodeDto>,
     },
-    /// 连接叶子。
-    Connection(ConnectionDto),
+    /// 连接叶子(字段展平,前端按 `kind` 判别后可直接取用)。
+    Connection {
+        /// 连接记录本体。
+        #[serde(flatten)]
+        connection: ConnectionDto,
+    },
 }
 
 impl From<ConnectionNode> for ConnectionNodeDto {
@@ -182,13 +188,15 @@ impl From<ConnectionNode> for ConnectionNodeDto {
                 position: group.position,
                 children: children.into_iter().map(Into::into).collect(),
             },
-            ConnectionNode::Connection(config) => Self::Connection(config.into()),
+            ConnectionNode::Connection(config) => Self::Connection {
+                connection: config.into(),
+            },
         }
     }
 }
 
 /// 凭据保存方式(snake_case 跨边界)。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SecretSaveModeDto {
     /// 持久凭据存储(系统钥匙串,不可用时降级加密文件)。
@@ -200,7 +208,7 @@ pub enum SecretSaveModeDto {
 }
 
 /// 凭据输入:明文值 + 保存方式;仅随请求进入,永不随响应返回。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CredentialInputDto {
     /// 凭据明文。
@@ -224,7 +232,7 @@ impl From<CredentialInputDto> for CredentialInput {
 
 /// 连接新建/编辑请求体;encoding/tagColor 缺省时回退默认值,
 /// password/passphrase 为 `None` 时表示保留既有凭据(更新语义)。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionInputDto {
     /// 所属分组;null 为根目录。
@@ -288,7 +296,7 @@ pub fn parse_conn_id(value: String) -> Result<ConnId, ConnectionError> {
 }
 
 /// 更新连接请求体。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateConnectionRequestDto {
     /// 目标连接 ID。
@@ -298,7 +306,7 @@ pub struct UpdateConnectionRequestDto {
 }
 
 /// 单 ID 请求体。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct IdRequestDto {
     /// 目标资源 ID。
@@ -306,7 +314,7 @@ pub struct IdRequestDto {
 }
 
 /// 移动连接请求体。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MoveConnectionRequestDto {
     /// 连接 ID。
@@ -318,7 +326,7 @@ pub struct MoveConnectionRequestDto {
 }
 
 /// 新建分组请求体。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateGroupRequestDto {
     /// 分组名。
@@ -328,7 +336,7 @@ pub struct CreateGroupRequestDto {
 }
 
 /// 重命名分组请求体。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RenameGroupRequestDto {
     /// 分组 ID。
@@ -338,7 +346,7 @@ pub struct RenameGroupRequestDto {
 }
 
 /// 删除分组策略(kebab-case 跨边界)。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum DeleteGroupModeDto {
     /// 仅允许删除空分组。
@@ -357,7 +365,7 @@ impl From<DeleteGroupModeDto> for DeleteGroupMode {
 }
 
 /// 删除分组请求体。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeleteGroupRequestDto {
     /// 分组 ID。
@@ -367,7 +375,7 @@ pub struct DeleteGroupRequestDto {
 }
 
 /// 移动分组请求体。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MoveGroupRequestDto {
     /// 分组 ID。
@@ -449,6 +457,32 @@ mod tests {
         assert_eq!(
             draft.passphrase.map(|p| p.save),
             Some(SecretSaveMode::Never)
+        );
+    }
+
+    /// 连接叶子展平后线上形状不变:`kind` + 连接字段同一层(回归锁,AGENTS.md §5)。
+    #[test]
+    fn connection_node_flattens_leaf_without_changing_wire_shape() {
+        let config = crate::domain::connection::ConnConfig::new(
+            crate::domain::connection::ConnId::new("c-7").unwrap(),
+            None,
+            "web-01".into(),
+            "10.0.0.1".into(),
+            22,
+            "root".into(),
+            crate::domain::connection::AuthMethod::Password,
+        )
+        .unwrap();
+        let node = ConnectionNodeDto::from(
+            crate::application::connections::ConnectionNode::Connection(config),
+        );
+        let json = serde_json::to_value(&node).unwrap();
+        assert_eq!(json["kind"], "connection");
+        assert_eq!(json["id"], "c-7");
+        assert_eq!(json["host"], "10.0.0.1");
+        assert!(
+            json.get("connection").is_none(),
+            "展平后不应再包一层 connection 对象"
         );
     }
 

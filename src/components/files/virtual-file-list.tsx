@@ -7,6 +7,7 @@
 import { useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { cn } from "@/lib/utils";
+import { formatDateTime } from "@/lib/format";
 import type { FileEntry } from "@/types";
 
 /** 列表属性。 */
@@ -23,6 +24,8 @@ export interface VirtualFileListProps {
   onContextMenu?: (entry: FileEntry) => void;
   /** 空态文案。 */
   emptyText?: string;
+  /** 是否显示权限列(无 POSIX 权限信息时隐藏,避免一整列空白)。 */
+  showPermissions?: boolean;
   /** 额外行渲染(排序指示等,可选)。 */
   rowHeight?: number;
 }
@@ -37,6 +40,7 @@ export function VirtualFileList({
   onSelect,
   onOpen,
   emptyText = "空目录",
+  showPermissions = true,
   rowHeight = ROW_HEIGHT,
 }: VirtualFileListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
@@ -90,9 +94,14 @@ export function VirtualFileList({
               <span className="w-20 shrink-0 text-right tabular-nums text-muted-foreground">
                 {isDir ? "—" : formatSize(entry.size)}
               </span>
-              <span className="w-24 shrink-0 text-right font-mono text-[10px] text-muted-foreground">
-                {entry.permissions}
+              <span className="w-28 shrink-0 text-right tabular-nums text-[10px] text-muted-foreground">
+                {formatDateTime(entry.mtime)}
               </span>
+              {showPermissions && (
+                <span className="w-24 shrink-0 text-right font-mono text-[10px] text-muted-foreground">
+                  {entry.permissions}
+                </span>
+              )}
             </button>
           );
         })}

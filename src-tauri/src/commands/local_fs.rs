@@ -2,6 +2,10 @@
 //!
 //! 安全约束:所有操作经 `LocalFs` 端口,路径规范化在 StdLocalFs 内处理;
 //! 删除需前端确认(PRD §6.4);无 shell 调用。
+//!
+//! 元数据契约:权限/属主/修改时间取本地真实值;平台无该信息时
+//! `mode=None` 且 `permissions` 为空串(如 Windows 无 POSIX 权限位),
+//! 前端须在空值时留空展示,而不是由后端伪造 `drwxr-xr-x`。
 
 use crate::application::ports::LocalFs;
 use crate::dto::common::IpcResult;
@@ -42,16 +46,25 @@ pub fn list_local_entries(request: SessionPathRequestDto) -> IpcResult<Vec<FileE
             name
         );
         let size = fs.file_size(&full).ok().flatten().unwrap_or(0);
-        let mode = if is_dir { 0o755 } else { 0o644 };
+        let stat = fs.stat_local_entry(&full);
+        // mode 为 None 表示平台/系统无 POSIX 权限信息,permissions 返回空串
+        // 让前端留空展示;禁止伪造固定权限位。
+        let (mode, permissions) = match stat.mode {
+            Some(mode) => (
+                Some(mode),
+                crate::dto::sftp::permission_string_of(mode, is_dir),
+            ),
+            None => (None, String::new()),
+        };
         let file_type = if is_dir { "dir" } else { "file" };
         result.push(FileEntryDto {
             name,
             file_type: crate::dto::sftp::parse_file_type(file_type),
             size,
-            mtime: None, // std::fs::metadata 的 mtime 平台差异大,P0 略
-            mode: Some(mode),
-            permissions: crate::dto::sftp::permission_string_of(mode, is_dir),
-            owner: None,
+            mtime: stat.mtime,
+            mode,
+            permissions,
+            owner: stat.owner,
         });
     }
     IpcResult::ok(result)
@@ -99,6 +112,11 @@ impl StdLocalFsBridge {
             inner: crate::infrastructure::local_fs::StdLocalFs::new(),
         }
     }
+
+    /// 本地条目真实元数据(权限/mtime/属主);委托 infrastructure 处理平台差异。
+    fn stat_local_entry(&self, path: &str) -> crate::infrastructure::local_fs::LocalEntryStat {
+        self.inner.stat_local_entry(path)
+    }
 }
 
 impl LocalFs for StdLocalFsBridge {
@@ -131,5 +149,63 @@ impl LocalFs for StdLocalFsBridge {
     }
     fn remove_file(&self, path: &str) -> Result<(), String> {
         self.inner.remove_file(path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// list_local_entries 返回真实元数据:mtime 有值;
+    /// unix 下 permissions 由真实 mode 派生,Windows 下 mode=None 且
+    /// permissions 为空串(表达"无该信息",不伪造 drwxr-xr-x)。
+    #[test]
+    fn list_local_entries_returns_real_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.txt"), b"hello").unwrap();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(
+                dir.path().join("a.txt"),
+                std::fs::Permissions::from_mode(0o604),
+            )
+            .unwrap();
+        }
+        let base = dir.path().to_string_lossy().replace('\\', "/");
+        let out = list_local_entries(SessionPathRequestDto {
+            session_id: String::new(),
+            path: base,
+        });
+        let entries = out.into_data().expect("列目录应成功");
+        let file = entries
+            .iter()
+            .find(|e| e.name == "a.txt")
+            .expect("应包含 a.txt");
+        assert_eq!(file.size, 5);
+        assert!(file.mtime.is_some(), "mtime 不再是恒 None");
+        #[cfg(unix)]
+        {
+            assert_eq!(file.mode, Some(0o604), "应透传真实 mode");
+            assert_eq!(
+                file.permissions,
+                crate::dto::sftp::permission_string_of(0o604, false)
+            );
+        }
+        #[cfg(windows)]
+        {
+            assert_eq!(file.mode, None, "Windows 不伪造权限位");
+            assert_eq!(file.permissions, "", "Windows 权限列为空串,前端留空");
+        }
+        let dir_entry = entries
+            .iter()
+            .find(|e| e.name == "sub")
+            .expect("应包含 sub");
+        assert_eq!(
+            dir_entry.file_type,
+            crate::dto::sftp::RemoteFileTypeDto::Dir
+        );
+        assert!(dir_entry.mtime.is_some());
     }
 }

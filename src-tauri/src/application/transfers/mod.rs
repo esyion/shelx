@@ -462,7 +462,7 @@ impl TransferService {
         record.sink.on_progress(&TransferProgressEvent {
             task_id: task.task_id,
             group_id: task.group_id,
-            status: task.status.as_str().to_owned(),
+            status: task.status,
             transferred_bytes: task.transferred_bytes,
             total_bytes: task.total_bytes,
             speed_bps: task.speed_bps,

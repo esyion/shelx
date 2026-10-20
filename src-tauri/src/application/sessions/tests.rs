@@ -27,7 +27,7 @@ impl SessionEventSink for RecordingSink {
         self.statuses
             .lock()
             .expect("事件锁")
-            .push((event.session_id.clone(), event.status.clone()));
+            .push((event.session_id.clone(), event.status.as_str().to_owned()));
     }
 }
 
@@ -110,6 +110,53 @@ async fn missing_password_requires_credentials() {
     let err = svc.connect_quick(input).await.unwrap_err();
     assert!(matches!(err, SessionError::CredentialsRequired));
     assert!(svc.list().is_empty(), "不应留下会话记录");
+}
+
+/// 构建暴露连接服务的被测服务(断言快速连接落库与回滚)。
+fn service_with_connections(
+    transport: FakeTransport,
+) -> (
+    Arc<SessionService>,
+    Arc<crate::application::connections::ConnectionService>,
+) {
+    let connections = Arc::new(build_connection_service());
+    let svc = Arc::new(SessionService::new(
+        Arc::new(transport),
+        Arc::clone(&connections),
+        Arc::new(RecordingSink::default()),
+    ));
+    (svc, connections)
+}
+
+/// 快速连接勾选保存但建连失败:回滚刚落库的连接记录,不留幽灵连接。
+#[tokio::test]
+async fn quick_connect_save_rolls_back_record_when_connect_fails() {
+    let (svc, connections) =
+        service_with_connections(FakeTransport::fail_once(TransportError::AuthRejected {
+            remaining: vec!["publickey".into()],
+        }));
+    let mut input = spec();
+    input.save = true;
+    let err = svc.connect_quick(input).await.unwrap_err();
+    assert!(matches!(err, SessionError::Connect(_)));
+    assert!(
+        connections.list_tree().unwrap().is_empty(),
+        "建连失败后不应留下已保存的连接记录"
+    );
+}
+
+/// 快速连接勾选保存且建连成功:记录保留,会话关联到该记录(非临时)。
+#[tokio::test]
+async fn quick_connect_save_keeps_record_and_links_session() {
+    let (svc, connections) = service_with_connections(FakeTransport::always_ok());
+    let mut input = spec();
+    input.save = true;
+    input.name = Some("web-quick".into());
+    let info = svc.connect_quick(input).await.expect("应连接成功");
+    assert_eq!(info.status, SessionStatus::Online);
+    assert!(!info.temporary, "落库会话不应标记为临时");
+    assert!(info.conn_id.is_some());
+    assert_eq!(connections.list_tree().unwrap().len(), 1);
 }
 
 /// 关闭会话:断开连接且状态置 Disconnected;条目保留可重连。

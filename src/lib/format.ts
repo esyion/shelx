@@ -23,6 +23,32 @@ export function formatBytes(bytes: number): string {
 }
 
 /**
+ * UNIX 秒 → 文件列表用的紧凑修改时间(`MM-DD HH:mm`,跨年补年份)。
+ *
+ * 无值返回空串,由列表列留空表达"没有时间信息",不显示 `1970-01-01` 之类假值。
+ *
+ * @param epochSeconds 修改时间(UNIX 秒);null/undefined/非法值返回空串
+ * @returns 如 `10-20 14:03`、`2025-12-31 09:00`
+ */
+export function formatDateTime(epochSeconds: number | null | undefined): string {
+  if (
+    epochSeconds === null ||
+    epochSeconds === undefined ||
+    !Number.isFinite(epochSeconds) ||
+    epochSeconds <= 0
+  ) {
+    return "";
+  }
+  const date = new Date(epochSeconds * 1000);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const time = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  if (date.getFullYear() === new Date().getFullYear()) {
+    return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${time}`;
+  }
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/**
  * 秒数的中文时长格式化(传输剩余时间 / 服务器 uptime,PRD §6.5)。
  *
  * 自动选取最大可用单位:秒 → 分秒 → 时分 → 天时。

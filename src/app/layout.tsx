@@ -150,7 +150,8 @@ export default function RootLayout({
           return;
         }
         for (const localPath of paths) {
-          void enqueueUploadAndShow(sessionId, localPath, remotePath, "ask");
+          // 不传策略:由入队层读取设置里的「冲突默认策略」。
+          void enqueueUploadAndShow(sessionId, localPath, remotePath);
         }
       })
       .then((fn) => {

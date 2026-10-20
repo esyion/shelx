@@ -18,9 +18,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./api", () => ({
   getDataMigrationStatus: mocks.getDataMigrationStatus,
   approveDataMigration: mocks.approveDataMigration,
-}));
-vi.mock(import("@/gateway"), async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/gateway")>()),
   relaunchForMigration: mocks.relaunchForMigration,
 }));
 

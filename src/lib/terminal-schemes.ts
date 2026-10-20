@@ -9,7 +9,7 @@ import type { TerminalColorScheme } from "@/types";
 export interface TerminalColorSchemeOption {
   /** 契约 ID(与 Rust `TerminalColorScheme` 枚举取值一致)。 */
   id: TerminalColorScheme;
-  /** 设置页展示名。 */
+  /** 设置页展示名(中文在前,括注方案原名便于识别)。 */
   name: string;
   /** xterm 主题(固定方案为完整调色板)。 */
   theme: ITheme;
@@ -44,7 +44,7 @@ const GITHUB_LIGHT_THEME: ITheme = {
 const FIXED_SCHEMES: TerminalColorSchemeOption[] = [
   {
     id: "dracula",
-    name: "Dracula",
+    name: "暗色高对比(Dracula)",
     theme: {
       background: "#282A36",
       foreground: "#F8F8F2",
@@ -71,7 +71,7 @@ const FIXED_SCHEMES: TerminalColorSchemeOption[] = [
   },
   {
     id: "tokyo_night",
-    name: "Tokyo Night",
+    name: "蓝紫夜色(Tokyo Night)",
     theme: {
       background: "#1A1B26",
       foreground: "#C0CAF5",
@@ -98,7 +98,7 @@ const FIXED_SCHEMES: TerminalColorSchemeOption[] = [
   },
   {
     id: "one_dark",
-    name: "One Dark",
+    name: "柔和暗色(One Dark)",
     theme: {
       background: "#282C34",
       foreground: "#ABB2BF",
@@ -125,7 +125,7 @@ const FIXED_SCHEMES: TerminalColorSchemeOption[] = [
   },
   {
     id: "nord",
-    name: "Nord",
+    name: "冷色海洋(Nord)",
     theme: {
       background: "#2E3440",
       foreground: "#D8DEE9",
@@ -152,7 +152,7 @@ const FIXED_SCHEMES: TerminalColorSchemeOption[] = [
   },
   {
     id: "solarized_dark",
-    name: "Solarized Dark",
+    name: "护眼暗色(Solarized Dark)",
     theme: {
       background: "#002B36",
       foreground: "#839496",
@@ -179,7 +179,7 @@ const FIXED_SCHEMES: TerminalColorSchemeOption[] = [
   },
   {
     id: "solarized_light",
-    name: "Solarized Light",
+    name: "护眼浅色(Solarized Light)",
     theme: {
       background: "#FDF6E3",
       foreground: "#657B83",
@@ -206,7 +206,7 @@ const FIXED_SCHEMES: TerminalColorSchemeOption[] = [
   },
   {
     id: "github_light",
-    name: "GitHub Light",
+    name: "浅色默认(GitHub Light)",
     theme: GITHUB_LIGHT_THEME,
   },
 ];

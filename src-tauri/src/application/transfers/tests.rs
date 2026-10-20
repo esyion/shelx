@@ -139,7 +139,7 @@ async fn upload_round_trip() {
         .lock()
         .expect("进度锁")
         .iter()
-        .map(|e| e.status.clone())
+        .map(|e| e.status.as_str().to_owned())
         .collect();
     assert!(statuses.iter().any(|s| s == "completed"));
 }
@@ -348,7 +348,7 @@ async fn conflict_overwrite_retry_reuses_decision() {
         .lock()
         .expect("进度锁")
         .iter()
-        .filter(|e| e.status == "awaiting_conflict")
+        .filter(|e| e.status.as_str() == "awaiting_conflict")
         .count();
     assert_eq!(asks, 1, "自动重试不得再次询问冲突决策");
 }

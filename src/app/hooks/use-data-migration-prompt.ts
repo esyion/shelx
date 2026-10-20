@@ -20,13 +20,13 @@ import {
 } from "@/app/api";
 import { relaunchForMigration } from "@/gateway";
 import { useUiStore } from "@/stores/ui";
-import type { DataMigrationStatus } from "@/types";
+import type { DataMigrationItem, DataMigrationStatus } from "@/types";
 
 /** 自动弹窗延迟:等应用壳渲染稳定后再询问,避免与首屏加载争抢注意力。 */
 const PROMPT_DELAY_MS = 2000;
 
 /** 把内容清单拼成一句话(弹窗正文为纯文本,不做列表排版)。 */
-function itemsSummary(items: { label: string; detail?: string }[]): string {
+function itemsSummary(items: DataMigrationItem[]): string {
   return items
     .map((item) => (item.detail ? `${item.label}(${item.detail})` : item.label))
     .join("、");

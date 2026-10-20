@@ -7,7 +7,7 @@ use serde::Serialize;
 use crate::application::migration::{MigrationItemView, MigrationStatus};
 
 /// 数据目录来源。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum DataDirSourceDto {
     /// 标准新位置(`~/.shelx`)。
@@ -17,7 +17,7 @@ pub enum DataDirSourceDto {
 }
 
 /// 单条待迁移内容。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DataMigrationItem {
     /// 条目名称(如「连接与分组配置(SQLite 数据库)」)。
@@ -28,7 +28,7 @@ pub struct DataMigrationItem {
 }
 
 /// 待执行的数据迁移。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DataMigration {
     /// 稳定迁移 id(批准/忽略均回传此值)。
@@ -46,7 +46,7 @@ pub struct DataMigration {
 }
 
 /// 迁移状态(自动弹窗条件 = `pending` 非空且 `autoPromptSuppressed` 为 false)。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DataMigrationStatus {
     /// 本进程实际使用的数据目录。

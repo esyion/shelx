@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import type { MetricsSample } from "@/types";
 import { sliceVisibleSamples } from "./monitor-view";
+import { loadState } from "./monitor-charts";
 
 /** 构造第 i 个样本(仅 ts 有区分度)。 */
 function sampleAt(i: number): MetricsSample {
@@ -59,5 +60,28 @@ describe("sliceVisibleSamples", () => {
   it("空样本与非法间隔不崩溃", () => {
     expect(sliceVisibleSamples([], 900, 2)).toHaveLength(0);
     expect(sliceVisibleSamples([sampleAt(0)], 900, 0)).toHaveLength(1);
+  });
+});
+
+describe("loadState(负载档位判定)", () => {
+  /** 构造指定负载与核数的样本。 */
+  function sampleWithLoad(load1: number, cores: number): MetricsSample {
+    return {
+      ...sampleAt(0),
+      load1,
+      cpuCoresPercent: Array.from({ length: cores }, () => 0),
+    };
+  }
+
+  it("按核心数归一切换空闲/正常/繁忙/过载", () => {
+    expect(loadState(sampleWithLoad(0.2, 2)).label).toBe("空闲");
+    expect(loadState(sampleWithLoad(1.2, 2)).label).toBe("正常");
+    expect(loadState(sampleWithLoad(1.8, 2)).label).toBe("繁忙");
+    expect(loadState(sampleWithLoad(5, 2)).label).toBe("过载");
+  });
+
+  it("零核样本不崩溃(至少按 1 核折算)", () => {
+    // 0.5 ÷ 1 核 = 0.5 → 正常档。
+    expect(loadState(sampleWithLoad(0.5, 0)).label).toBe("正常");
   });
 });

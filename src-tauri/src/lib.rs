@@ -12,6 +12,9 @@ pub mod infrastructure;
 pub mod shared;
 pub mod state;
 
+#[cfg(test)]
+mod ipc_contract;
+
 /// 启动 Tauri 应用:注册插件、注入应用状态并挂载全部 command。
 ///
 /// 启动关键时序(均在 setup 内、任何文件句柄打开之前):
@@ -83,7 +86,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::greet::greet,
             commands::app_meta::get_app_version,
             commands::connections::list_connections,
             commands::connections::create_connection,
@@ -96,6 +98,7 @@ pub fn run() {
             commands::groups::delete_group,
             commands::groups::move_group,
             commands::settings::get_settings,
+            commands::settings::get_settings_schema,
             commands::settings::update_settings,
             commands::settings::get_layout,
             commands::settings::save_layout,

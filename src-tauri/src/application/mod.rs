@@ -6,7 +6,6 @@
 //! 实现放 infrastructure 层。
 
 pub mod connections;
-pub mod greet;
 pub mod migration;
 pub mod monitoring;
 pub mod ports;

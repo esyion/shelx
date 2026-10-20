@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::application::transfers::{ConflictDecision, ConflictPolicy, TransferTask};
 
 /// 冲突策略跨边界(小写;rename = 保留两者)。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ConflictPolicyDto {
     /// 每次询问。
@@ -30,7 +30,7 @@ impl From<ConflictPolicyDto> for ConflictPolicy {
 }
 
 /// 冲突决策跨边界(respond 用)。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ConflictDecisionDto {
     /// 覆盖。
@@ -52,7 +52,7 @@ impl From<ConflictDecisionDto> for ConflictDecision {
 }
 
 /// 任务 DTO(传输中心列表)。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TransferTaskDto {
     /// 任务 ID。
@@ -62,7 +62,7 @@ pub struct TransferTaskDto {
     /// 会话 ID。
     pub session_id: String,
     /// 方向(upload / download)。
-    pub direction: String,
+    pub direction: crate::application::ports::TransferDirection,
     /// 文件名。
     pub file_name: String,
     /// 本地路径。
@@ -73,8 +73,8 @@ pub struct TransferTaskDto {
     pub total_bytes: u64,
     /// 已传输字节。
     pub transferred_bytes: u64,
-    /// 状态(queued/preparing/awaiting_conflict/transferring/completed/failed/cancelled)。
-    pub status: String,
+    /// 状态(枚举由 `domain::TransferStatus` 定义,契约导出同源)。
+    pub status: crate::domain::transfer::TransferStatus,
     /// 平均速度(字节/秒)。
     pub speed_bps: Option<u64>,
     /// 失败/跳过原因。
@@ -87,16 +87,13 @@ impl From<TransferTask> for TransferTaskDto {
             task_id: value.task_id,
             group_id: value.group_id,
             session_id: value.session_id,
-            direction: match value.direction {
-                crate::application::ports::TransferDirection::Upload => "upload".into(),
-                crate::application::ports::TransferDirection::Download => "download".into(),
-            },
+            direction: value.direction,
             file_name: value.file_name,
             local_path: value.local_path,
             remote_path: value.remote_path,
             total_bytes: value.total_bytes,
             transferred_bytes: value.transferred_bytes,
-            status: value.status.as_str().into(),
+            status: value.status,
             speed_bps: value.speed_bps,
             error: value.error,
         }
@@ -104,7 +101,7 @@ impl From<TransferTask> for TransferTaskDto {
 }
 
 /// 入队上传请求体。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct EnqueueUploadRequestDto {
     /// 会话 ID。
@@ -118,7 +115,7 @@ pub struct EnqueueUploadRequestDto {
 }
 
 /// 入队下载请求体。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct EnqueueDownloadRequestDto {
     /// 会话 ID。
@@ -132,7 +129,7 @@ pub struct EnqueueDownloadRequestDto {
 }
 
 /// 入队结果。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct EnqueueResultDto {
     /// 首个任务 ID(单文件即唯一任务)。
@@ -144,7 +141,7 @@ pub struct EnqueueResultDto {
 }
 
 /// 冲突应答请求体。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RespondConflictRequestDto {
     /// 任务 ID。
@@ -156,7 +153,7 @@ pub struct RespondConflictRequestDto {
 }
 
 /// 清理请求体。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ClearTransfersRequestDto {
     /// 仅清理已完成/失败/取消的任务。

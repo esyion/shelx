@@ -9,7 +9,6 @@
 
 pub mod app_meta;
 pub mod connections;
-pub mod greet;
 pub mod groups;
 pub mod local_fs;
 pub mod migration;

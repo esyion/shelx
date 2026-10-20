@@ -6,12 +6,15 @@
 
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { cancelTransferTask, clearTransferTasks, listTransferTasks, retryTransferTask } from "@/app/api";
 import { useTransferStore } from "@/stores/transfer";
 import { useUiStore } from "@/stores/ui";
 import { formatBytes, formatDuration } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { TRANSFER_STATUS_DISPLAY, summarizeTransferCounts } from "@/lib/transfer-status";
 import type { TransferItem } from "@/stores/transfer";
+import type { TransferStatus } from "@/types";
 
 /** 传输中心面板。 */
 export function TransferCenter() {
@@ -31,10 +34,10 @@ export function TransferCenter() {
   }, []);
 
   const items = Object.values(byId).sort((a, b) => (b.taskId > a.taskId ? 1 : -1));
-  const active = items.filter(
-    (t) => t.status === "transferring" || t.status === "preparing" || t.status === "queued",
-  );
-  const totalSpeed = active.reduce((sum, t) => sum + (t.speedBps ?? 0), 0);
+  const { active: activeCount, pendingConflicts } = summarizeTransferCounts(items);
+  const totalSpeed = items
+    .filter((t) => t.status === "transferring" || t.status === "preparing" || t.status === "queued")
+    .reduce((sum, t) => sum + (t.speedBps ?? 0), 0);
 
   return (
     <div className="flex h-full flex-col">
@@ -42,8 +45,17 @@ export function TransferCenter() {
       <div className="flex items-center gap-2 border-b px-2 py-1 text-xs text-muted-foreground">
         <span>
           {items.length} 个任务
-          {active.length > 0 && ` · ${active.length} 个进行中 · 总速度 ${formatBytes(totalSpeed)}/s`}
+          {activeCount > 0 && ` · ${activeCount} 个进行中 · 总速度 ${formatBytes(totalSpeed)}/s`}
         </span>
+        {pendingConflicts > 0 && (
+          <Badge
+            variant="default"
+            className="bg-amber-500 text-amber-50"
+            title="有同名文件需要你决定怎么处理"
+          >
+            {pendingConflicts} 个等待你决定
+          </Badge>
+        )}
         <Button
           variant="ghost"
           size="sm"
@@ -69,7 +81,7 @@ export function TransferCenter() {
         <span className="w-20 text-right">速度</span>
         <span className="w-16 text-right">剩余</span>
         <span className="w-20 text-center">状态</span>
-        <span className="w-16 text-center">操作</span>
+        <span className="w-24 text-center">操作</span>
       </div>
 
       {/* 任务行(条目级滚动,万级任务也用列表本身分页足够) */}
@@ -104,12 +116,14 @@ function TransferRow({ item }: { item: TransferItem }) {
   const isFailed = item.status === "failed";
   const isDone = item.status === "completed";
   const isCancelled = item.status === "cancelled";
+  const isConflict = item.status === "awaiting_conflict";
 
   return (
     <div
       className={cn(
         "flex items-center gap-2 border-b px-2 py-1 text-xs",
         isFailed && "bg-red-500/5",
+        isConflict && "bg-amber-500/5",
         isDone && "opacity-60",
       )}
     >
@@ -145,26 +159,34 @@ function TransferRow({ item }: { item: TransferItem }) {
         {isRunning && item.speedBps ? `${formatBytes(item.speedBps)}/s` : "—"}
       </span>
       <span className="w-16 text-right text-muted-foreground">{isRunning ? eta : "—"}</span>
-      <span
-        className={cn(
-          "w-20 text-center",
-          isFailed && "text-red-500",
-          isDone && "text-emerald-500",
-        )}
-      >
-        {item.status}
+      <span className="flex w-20 flex-col items-center gap-0.5">
+        <TransferStatusBadge status={item.status} />
         {item.error && (
-          <span className="block truncate text-[10px] text-red-500" title={item.error}>
+          <span className="w-full truncate text-[10px] text-red-500" title={item.error}>
             {item.error}
           </span>
         )}
       </span>
-      <span className="flex w-16 items-center justify-center gap-1">
-        {(isRunning || item.status === "preparing" || item.status === "queued" || item.status === "awaiting_conflict") && (
+      <span className="flex w-24 items-center justify-center gap-1">
+        {isConflict && (
+          <Button
+            variant="outline"
+            size="xs"
+            className="h-5 px-1.5 text-[10px]"
+            title="重新打开冲突处理:跳过此文件 / 保留两者 / 覆盖"
+            onClick={() => useUiStore.getState().setConflictTaskId(item.taskId)}
+          >
+            处理冲突
+          </Button>
+        )}
+        {(isRunning ||
+          item.status === "preparing" ||
+          item.status === "queued" ||
+          isConflict) && (
           <button
             type="button"
             className="rounded p-0.5 hover:bg-accent"
-            title="取消"
+            title="取消任务(不再传输该文件)"
             onClick={() => void cancelTransferTask(item.taskId)}
           >
             ✕
@@ -174,7 +196,7 @@ function TransferRow({ item }: { item: TransferItem }) {
           <button
             type="button"
             className="rounded p-0.5 hover:bg-accent"
-            title="重试"
+            title="重试该传输"
             onClick={() => void retryTransferTask(item.taskId)}
           >
             ↻
@@ -182,5 +204,20 @@ function TransferRow({ item }: { item: TransferItem }) {
         )}
       </span>
     </div>
+  );
+}
+
+/** 状态徽章:把内部枚举渲染为中文标签 + 视觉区分,枚举原文不外泄。 */
+function TransferStatusBadge({ status }: { status: TransferStatus | undefined }) {
+  if (!status) return <span className="text-muted-foreground">—</span>;
+  const display = TRANSFER_STATUS_DISPLAY[status];
+  return (
+    <Badge
+      variant={display.variant}
+      className={cn("h-4 px-1.5 text-[10px]", display.className)}
+      title={display.description}
+    >
+      {display.label}
+    </Badge>
   );
 }

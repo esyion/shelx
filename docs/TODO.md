@@ -13,7 +13,7 @@
 
 ## M0 工程脚手架(约 0.5 周)— ✅ 已完成(2026-09-10)
 
-实况备注:Next 16 + React 19 + shadcn v4(@base-ui 体系),devUrl 为 `localhost:12345`(非 56789,该端口落入 Windows 保留段触发 EACCES);Rust 侧已含 greet 冒烟链路(薄 command + IpcResult 信封 + 测试)与 domain(connection/session/transfer)骨架;russh 锁定 0.63(ring 后端,规避 Windows NASM 依赖)、keyring 4.x。
+实况备注:Next 16 + React 19 + shadcn v4(@base-ui 体系),devUrl 为 `localhost:12345`(非 56789,该端口落入 Windows 保留段触发 EACCES);Rust 侧当时以 greet 冒烟链路(薄 command + IpcResult 信封 + 测试)验证分层与 IPC 通路,该脚手架残留已于 0.2.26 移除;domain(connection/session/transfer)骨架保留;russh 锁定 0.63(ring 后端,规避 Windows NASM 依赖)、keyring 4.x。
 
 - [x] M0-1 初始化仓库:git、`.gitignore`、README、editorconfig
 - [x] M0-2 前端脚手架:bun + Next.js(TS / App Router / Tailwind / 静态导出 `output: 'export'`)

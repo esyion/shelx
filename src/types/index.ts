@@ -1,5 +1,11 @@
-/** 类型定义目录对外公开入口。 */
-export type { IpcError, IpcResult } from "./ipc";
+/**
+ * 类型定义目录对外公开入口。
+ *
+ * 除 `IpcResult` / `LayoutState` / `TerminalDataHandler` 等前端自有形状外,
+ * 这里导出的跨边界类型全部再导自 Rust 生成物(`src/types/gen/`);
+ * 改契约请改 Rust DTO 后 `bun run gen:ipc`,不要在本目录新增手写字段(AGENTS.md §5)。
+ */
+export type { IpcError, IpcErrorCode, IpcResult } from "./ipc";
 export type {
   AuthMethod,
   ConnectionDto,
@@ -15,23 +21,22 @@ export type {
 export type {
   AppSettings,
   AppSettingsPatch,
-  AppearanceSettings,
-  ConnectionSettings,
   CursorStyle,
   DefaultAuthMethod,
+  DefaultConflictPolicy,
   Language,
   LayoutState,
-  MigrationSettings,
-  MonitorSettings,
+  SettingKind,
+  SettingPath,
+  SettingSpec,
+  SettingViolation,
   TerminalColorScheme,
-  TerminalSettings,
   ThemeMode,
-  TransferSettings,
-  UpdateSettings,
 } from "./settings";
 export type {
   AuthPromptEvent,
   HostKeyConfirmEvent,
+  PromptSpec,
   QuickConnectInput,
   ServerInfo,
   SessionInfo,

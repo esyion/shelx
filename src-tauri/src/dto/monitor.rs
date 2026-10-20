@@ -6,7 +6,7 @@ use crate::domain::metrics::MetricsSample;
 use crate::domain::processes::ProcessInfo;
 
 /// 进程列表条目(任务管理器)。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessInfoDto {
     /// 进程 ID(IPC 契约统一字符串)。
@@ -49,7 +49,7 @@ impl From<ProcessInfo> for ProcessInfoDto {
 }
 
 /// 磁盘挂载点。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DiskInfoDto {
     /// 挂载路径。
@@ -61,7 +61,7 @@ pub struct DiskInfoDto {
 }
 
 /// 一次监控样本(Channel 推送载荷)。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MetricsSampleDto {
     /// 时间戳(ms)。

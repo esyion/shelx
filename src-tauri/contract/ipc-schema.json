@@ -1,0 +1,3259 @@
+{
+  "modules": {
+    "appMeta": {
+      "$defs": {
+        "AppVersionDto": {
+          "description": "应用版本响应。",
+          "properties": {
+            "version": {
+              "description": "语义化版本字符串,如 `\"0.2.0\"`。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "version"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "AppVersionDto": {
+          "$ref": "#/$defs/AppVersionDto"
+        }
+      },
+      "required": [
+        "AppVersionDto"
+      ],
+      "type": "object"
+    },
+    "connection": {
+      "$defs": {
+        "AuthMethodDto": {
+          "description": "认证方式(snake_case 字符串跨边界)。",
+          "oneOf": [
+            {
+              "const": "password",
+              "description": "账号密码。",
+              "type": "string"
+            },
+            {
+              "const": "private_key",
+              "description": "私钥文件。",
+              "type": "string"
+            },
+            {
+              "const": "keyboard_interactive",
+              "description": "键盘交互(OTP)。",
+              "type": "string"
+            },
+            {
+              "const": "agent",
+              "description": "免密(ssh-agent / 默认密钥)。",
+              "type": "string"
+            }
+          ]
+        },
+        "ConnectionDto": {
+          "description": "连接响应 DTO;凭据本体永不返回,以 `hasStored*` 布尔表达保存状态。",
+          "properties": {
+            "authMethod": {
+              "$ref": "#/$defs/AuthMethodDto",
+              "description": "认证方式。"
+            },
+            "encoding": {
+              "$ref": "#/$defs/EncodingDto",
+              "description": "编码。"
+            },
+            "groupId": {
+              "description": "所属分组 ID;根目录为 null。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "hasStoredPassphrase": {
+              "description": "是否已保存私钥口令(持久存储)。",
+              "type": "boolean"
+            },
+            "hasStoredPassword": {
+              "description": "是否已保存密码(持久存储)。",
+              "type": "boolean"
+            },
+            "host": {
+              "description": "主机。",
+              "type": "string"
+            },
+            "id": {
+              "description": "连接 ID。",
+              "type": "string"
+            },
+            "name": {
+              "description": "显示名。",
+              "type": "string"
+            },
+            "port": {
+              "description": "端口。",
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "position": {
+              "description": "同级排序位置。",
+              "format": "int64",
+              "type": "integer"
+            },
+            "privateKeyPath": {
+              "description": "私钥路径。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "remark": {
+              "description": "备注。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "tagColor": {
+              "description": "标签颜色。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "username": {
+              "description": "用户名。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "groupId",
+            "name",
+            "host",
+            "port",
+            "username",
+            "authMethod",
+            "privateKeyPath",
+            "hasStoredPassword",
+            "hasStoredPassphrase",
+            "encoding",
+            "tagColor",
+            "remark",
+            "position"
+          ],
+          "type": "object"
+        },
+        "ConnectionInputDto": {
+          "description": "连接新建/编辑请求体;encoding/tagColor 缺省时回退默认值,\npassword/passphrase 为 `None` 时表示保留既有凭据(更新语义)。",
+          "properties": {
+            "authMethod": {
+              "$ref": "#/$defs/AuthMethodDto",
+              "description": "认证方式。"
+            },
+            "encoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/EncodingDto"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "编码;缺省 UTF-8。"
+            },
+            "groupId": {
+              "description": "所属分组;null 为根目录。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "host": {
+              "description": "主机(必填)。",
+              "type": "string"
+            },
+            "name": {
+              "description": "显示名(必填)。",
+              "type": "string"
+            },
+            "passphrase": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/CredentialInputDto"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "私钥口令输入;null 表示本次不变更。"
+            },
+            "password": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/CredentialInputDto"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "密码输入;null 表示本次不变更。"
+            },
+            "port": {
+              "description": "端口(1–65535);收宽类型 i64,越界在转换时校验并返回信封内错误,\n避免 serde 拒绝时绕过 IpcResult 契约。",
+              "format": "int64",
+              "type": "integer"
+            },
+            "privateKeyPath": {
+              "description": "私钥路径。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "remark": {
+              "description": "备注。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "tagColor": {
+              "description": "标签颜色。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "username": {
+              "description": "用户名(必填)。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "groupId",
+            "name",
+            "host",
+            "port",
+            "username",
+            "authMethod",
+            "privateKeyPath",
+            "password",
+            "passphrase",
+            "encoding",
+            "tagColor",
+            "remark"
+          ],
+          "type": "object"
+        },
+        "ConnectionNodeDto": {
+          "description": "连接树节点;`kind` 判别(\"group\" / \"connection\")。",
+          "oneOf": [
+            {
+              "description": "分组节点。",
+              "properties": {
+                "children": {
+                  "description": "子节点。",
+                  "items": {
+                    "$ref": "#/$defs/ConnectionNodeDto"
+                  },
+                  "type": "array"
+                },
+                "id": {
+                  "description": "分组 ID。",
+                  "type": "string"
+                },
+                "kind": {
+                  "const": "group",
+                  "type": "string"
+                },
+                "name": {
+                  "description": "名称。",
+                  "type": "string"
+                },
+                "position": {
+                  "description": "同级排序位置。",
+                  "format": "int64",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind",
+                "id",
+                "name",
+                "position",
+                "children"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "连接叶子(字段展平,前端按 `kind` 判别后可直接取用)。",
+              "properties": {
+                "authMethod": {
+                  "$ref": "#/$defs/AuthMethodDto",
+                  "description": "认证方式。"
+                },
+                "encoding": {
+                  "$ref": "#/$defs/EncodingDto",
+                  "description": "编码。"
+                },
+                "groupId": {
+                  "description": "所属分组 ID;根目录为 null。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "hasStoredPassphrase": {
+                  "description": "是否已保存私钥口令(持久存储)。",
+                  "type": "boolean"
+                },
+                "hasStoredPassword": {
+                  "description": "是否已保存密码(持久存储)。",
+                  "type": "boolean"
+                },
+                "host": {
+                  "description": "主机。",
+                  "type": "string"
+                },
+                "id": {
+                  "description": "连接 ID。",
+                  "type": "string"
+                },
+                "kind": {
+                  "const": "connection",
+                  "type": "string"
+                },
+                "name": {
+                  "description": "显示名。",
+                  "type": "string"
+                },
+                "port": {
+                  "description": "端口。",
+                  "format": "uint16",
+                  "maximum": 65535,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "position": {
+                  "description": "同级排序位置。",
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "privateKeyPath": {
+                  "description": "私钥路径。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "remark": {
+                  "description": "备注。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "tagColor": {
+                  "description": "标签颜色。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "username": {
+                  "description": "用户名。",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "id",
+                "groupId",
+                "name",
+                "host",
+                "port",
+                "username",
+                "authMethod",
+                "privateKeyPath",
+                "hasStoredPassword",
+                "hasStoredPassphrase",
+                "encoding",
+                "tagColor",
+                "remark",
+                "position"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "CreateGroupRequestDto": {
+          "description": "新建分组请求体。",
+          "properties": {
+            "name": {
+              "description": "分组名。",
+              "type": "string"
+            },
+            "parentId": {
+              "description": "父分组;null 为根级。",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "name",
+            "parentId"
+          ],
+          "type": "object"
+        },
+        "CredentialInputDto": {
+          "description": "凭据输入:明文值 + 保存方式;仅随请求进入,永不随响应返回。",
+          "properties": {
+            "save": {
+              "$ref": "#/$defs/SecretSaveModeDto",
+              "description": "保存方式。"
+            },
+            "value": {
+              "description": "凭据明文。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "value",
+            "save"
+          ],
+          "type": "object"
+        },
+        "DeleteGroupModeDto": {
+          "description": "删除分组策略(kebab-case 跨边界)。",
+          "oneOf": [
+            {
+              "const": "require-empty",
+              "description": "仅允许删除空分组。",
+              "type": "string"
+            },
+            {
+              "const": "promote-children",
+              "description": "子项提升到父级后删除。",
+              "type": "string"
+            }
+          ]
+        },
+        "DeleteGroupRequestDto": {
+          "description": "删除分组请求体。",
+          "properties": {
+            "id": {
+              "description": "分组 ID。",
+              "type": "string"
+            },
+            "mode": {
+              "$ref": "#/$defs/DeleteGroupModeDto",
+              "description": "删除策略。"
+            }
+          },
+          "required": [
+            "id",
+            "mode"
+          ],
+          "type": "object"
+        },
+        "EncodingDto": {
+          "description": "终端编码(跨边界字符串与数据库枚举一致:'utf-8' / 'gbk')。",
+          "oneOf": [
+            {
+              "const": "utf-8",
+              "description": "UTF-8(默认)。",
+              "type": "string"
+            },
+            {
+              "const": "gbk",
+              "description": "GBK。",
+              "type": "string"
+            }
+          ]
+        },
+        "GroupDto": {
+          "description": "分组响应 DTO。",
+          "properties": {
+            "id": {
+              "description": "分组 ID。",
+              "type": "string"
+            },
+            "name": {
+              "description": "名称。",
+              "type": "string"
+            },
+            "position": {
+              "description": "同级排序位置。",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "position"
+          ],
+          "type": "object"
+        },
+        "IdRequestDto": {
+          "description": "单 ID 请求体。",
+          "properties": {
+            "id": {
+              "description": "目标资源 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "MoveConnectionRequestDto": {
+          "description": "移动连接请求体。",
+          "properties": {
+            "id": {
+              "description": "连接 ID。",
+              "type": "string"
+            },
+            "position": {
+              "description": "目标排序位置;缺省追加到末尾。",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "targetGroupId": {
+              "description": "目标分组;null 移到根目录。",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "targetGroupId",
+            "position"
+          ],
+          "type": "object"
+        },
+        "MoveGroupRequestDto": {
+          "description": "移动分组请求体。",
+          "properties": {
+            "id": {
+              "description": "分组 ID。",
+              "type": "string"
+            },
+            "position": {
+              "description": "目标排序位置;缺省追加到末尾。",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "targetParentId": {
+              "description": "目标父分组;null 移到根级。",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "targetParentId",
+            "position"
+          ],
+          "type": "object"
+        },
+        "RenameGroupRequestDto": {
+          "description": "重命名分组请求体。",
+          "properties": {
+            "id": {
+              "description": "分组 ID。",
+              "type": "string"
+            },
+            "name": {
+              "description": "新名称。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name"
+          ],
+          "type": "object"
+        },
+        "SecretSaveModeDto": {
+          "description": "凭据保存方式(snake_case 跨边界)。",
+          "oneOf": [
+            {
+              "const": "keyring",
+              "description": "持久凭据存储(系统钥匙串,不可用时降级加密文件)。",
+              "type": "string"
+            },
+            {
+              "const": "session",
+              "description": "只存本次会话(进程内存,重启即失)。",
+              "type": "string"
+            },
+            {
+              "const": "never",
+              "description": "不保存,并清除既有凭据。",
+              "type": "string"
+            }
+          ]
+        },
+        "UpdateConnectionRequestDto": {
+          "description": "更新连接请求体。",
+          "properties": {
+            "id": {
+              "description": "目标连接 ID。",
+              "type": "string"
+            },
+            "input": {
+              "$ref": "#/$defs/ConnectionInputDto",
+              "description": "编辑后的字段。"
+            }
+          },
+          "required": [
+            "id",
+            "input"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "AuthMethodDto": {
+          "$ref": "#/$defs/AuthMethodDto"
+        },
+        "ConnectionDto": {
+          "$ref": "#/$defs/ConnectionDto"
+        },
+        "ConnectionInputDto": {
+          "$ref": "#/$defs/ConnectionInputDto"
+        },
+        "ConnectionNodeDto": {
+          "$ref": "#/$defs/ConnectionNodeDto"
+        },
+        "CreateGroupRequestDto": {
+          "$ref": "#/$defs/CreateGroupRequestDto"
+        },
+        "CredentialInputDto": {
+          "$ref": "#/$defs/CredentialInputDto"
+        },
+        "DeleteGroupModeDto": {
+          "$ref": "#/$defs/DeleteGroupModeDto"
+        },
+        "DeleteGroupRequestDto": {
+          "$ref": "#/$defs/DeleteGroupRequestDto"
+        },
+        "EncodingDto": {
+          "$ref": "#/$defs/EncodingDto"
+        },
+        "GroupDto": {
+          "$ref": "#/$defs/GroupDto"
+        },
+        "IdRequestDto": {
+          "$ref": "#/$defs/IdRequestDto"
+        },
+        "MoveConnectionRequestDto": {
+          "$ref": "#/$defs/MoveConnectionRequestDto"
+        },
+        "MoveGroupRequestDto": {
+          "$ref": "#/$defs/MoveGroupRequestDto"
+        },
+        "RenameGroupRequestDto": {
+          "$ref": "#/$defs/RenameGroupRequestDto"
+        },
+        "SecretSaveModeDto": {
+          "$ref": "#/$defs/SecretSaveModeDto"
+        },
+        "UpdateConnectionRequestDto": {
+          "$ref": "#/$defs/UpdateConnectionRequestDto"
+        }
+      },
+      "required": [
+        "AuthMethodDto",
+        "EncodingDto",
+        "SecretSaveModeDto",
+        "DeleteGroupModeDto",
+        "CredentialInputDto",
+        "ConnectionDto",
+        "GroupDto",
+        "ConnectionNodeDto",
+        "ConnectionInputDto",
+        "UpdateConnectionRequestDto",
+        "IdRequestDto",
+        "MoveConnectionRequestDto",
+        "CreateGroupRequestDto",
+        "RenameGroupRequestDto",
+        "DeleteGroupRequestDto",
+        "MoveGroupRequestDto"
+      ],
+      "type": "object"
+    },
+    "ipc": {
+      "$defs": {
+        "IpcError": {
+          "description": "IPC 结构化错误,随 `IpcResult::Err` 信封返回给前端。",
+          "properties": {
+            "code": {
+              "$ref": "#/$defs/IpcErrorCode",
+              "description": "稳定错误码。"
+            },
+            "details": {
+              "description": "可选附加详情;必须脱敏,禁止携带凭据、路径全集或内部堆栈。"
+            },
+            "message": {
+              "description": "可展示给用户的文案(中文)。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "type": "object"
+        },
+        "IpcErrorCode": {
+          "description": "IPC 错误码枚举(PRD §7.7-7)。\n\ncode 是跨版本稳定的枚举值,前端据此精确分支;\n用户可读文案放在 [`IpcError::message`],与 code 解耦。",
+          "oneOf": [
+            {
+              "const": "INVALID_ARGUMENT",
+              "description": "请求参数未通过边界校验(空值、超长、非法格式)。",
+              "type": "string"
+            },
+            {
+              "const": "NOT_FOUND",
+              "description": "目标资源不存在(连接/分组/会话/终端/任务)。",
+              "type": "string"
+            },
+            {
+              "const": "AUTH_FAILED",
+              "description": "认证失败:密码/私钥口令错误,或服务器拒绝该认证方式(PRD §6.2)。",
+              "type": "string"
+            },
+            {
+              "const": "AUTH_CREDENTIALS_REQUIRED",
+              "description": "认证方式需要凭据但存储中没有,前端应弹输入框补收(PRD §6.2)。",
+              "type": "string"
+            },
+            {
+              "const": "HOSTKEY_CHANGED",
+              "description": "主机公钥指纹与已记录的不一致,TOFU 策略阻断(PRD §6.2)。",
+              "type": "string"
+            },
+            {
+              "const": "HOSTKEY_REJECTED",
+              "description": "首次主机指纹未获用户确认(拒绝或超时)。",
+              "type": "string"
+            },
+            {
+              "const": "SESSION_CLOSED",
+              "description": "会话已断开,通道操作不可用。",
+              "type": "string"
+            },
+            {
+              "const": "PERMISSION_DENIED",
+              "description": "远端文件或命令操作被服务端权限拒绝。",
+              "type": "string"
+            },
+            {
+              "const": "REMOTE_FS_ERROR",
+              "description": "SFTP 文件操作失败(服务端消息见 details)。",
+              "type": "string"
+            },
+            {
+              "const": "LOCAL_FS_ERROR",
+              "description": "本地文件操作失败。",
+              "type": "string"
+            },
+            {
+              "const": "MONITOR_UNSUPPORTED",
+              "description": "目标系统不支持监控采集(非 Linux)。",
+              "type": "string"
+            },
+            {
+              "const": "KEYRING_UNAVAILABLE",
+              "description": "凭据存储不可用(钥匙串初始化失败且降级存储不可用)。",
+              "type": "string"
+            },
+            {
+              "const": "NET_TIMEOUT",
+              "description": "网络读写超时。",
+              "type": "string"
+            },
+            {
+              "const": "NET_UNREACHABLE",
+              "description": "网络不可达或连接被拒绝(细节见消息)。",
+              "type": "string"
+            },
+            {
+              "const": "INTERNAL",
+              "description": "未归类的内部错误;details 可携带脱敏上下文。",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "IpcError": {
+          "$ref": "#/$defs/IpcError"
+        },
+        "IpcErrorCode": {
+          "$ref": "#/$defs/IpcErrorCode"
+        }
+      },
+      "required": [
+        "IpcErrorCode",
+        "IpcError"
+      ],
+      "type": "object"
+    },
+    "migration": {
+      "$defs": {
+        "DataDirSourceDto": {
+          "description": "数据目录来源。",
+          "oneOf": [
+            {
+              "const": "default",
+              "description": "标准新位置(`~/.shelx`)。",
+              "type": "string"
+            },
+            {
+              "const": "legacy",
+              "description": "历史位置(`~/.agents-plus/shelx`)。",
+              "type": "string"
+            }
+          ]
+        },
+        "DataMigration": {
+          "description": "待执行的数据迁移。",
+          "properties": {
+            "description": {
+              "description": "说明文案。",
+              "type": "string"
+            },
+            "id": {
+              "description": "稳定迁移 id(批准/忽略均回传此值)。",
+              "type": "string"
+            },
+            "items": {
+              "description": "实际存在的内容清单。",
+              "items": {
+                "$ref": "#/$defs/DataMigrationItem"
+              },
+              "type": "array"
+            },
+            "sourceDir": {
+              "description": "迁移源目录(当前旧位置,字符串仅供展示)。",
+              "type": "string"
+            },
+            "targetDir": {
+              "description": "迁移目标目录(标准新位置)。",
+              "type": "string"
+            },
+            "title": {
+              "description": "标题。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "description",
+            "sourceDir",
+            "targetDir",
+            "items"
+          ],
+          "type": "object"
+        },
+        "DataMigrationItem": {
+          "description": "单条待迁移内容。",
+          "properties": {
+            "detail": {
+              "description": "体量说明(如「约 320 KB」);无则省略。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "label": {
+              "description": "条目名称(如「连接与分组配置(SQLite 数据库)」)。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "label"
+          ],
+          "type": "object"
+        },
+        "DataMigrationStatus": {
+          "description": "迁移状态(自动弹窗条件 = `pending` 非空且 `autoPromptSuppressed` 为 false)。",
+          "properties": {
+            "autoPromptSuppressed": {
+              "description": "用户已「暂不」或已批准(待重启执行);自动弹窗应跳过,设置页入口不受影响。",
+              "type": "boolean"
+            },
+            "dataDir": {
+              "description": "本进程实际使用的数据目录。",
+              "type": "string"
+            },
+            "dataDirSource": {
+              "$ref": "#/$defs/DataDirSourceDto",
+              "description": "数据目录来源。"
+            },
+            "pending": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/DataMigration"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "待执行的迁移;无旧数据时为 null。"
+            }
+          },
+          "required": [
+            "dataDir",
+            "dataDirSource",
+            "autoPromptSuppressed"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "DataDirSourceDto": {
+          "$ref": "#/$defs/DataDirSourceDto"
+        },
+        "DataMigration": {
+          "$ref": "#/$defs/DataMigration"
+        },
+        "DataMigrationItem": {
+          "$ref": "#/$defs/DataMigrationItem"
+        },
+        "DataMigrationStatus": {
+          "$ref": "#/$defs/DataMigrationStatus"
+        }
+      },
+      "required": [
+        "DataDirSourceDto",
+        "DataMigrationItem",
+        "DataMigration",
+        "DataMigrationStatus"
+      ],
+      "type": "object"
+    },
+    "monitor": {
+      "$defs": {
+        "DiskInfoDto": {
+          "description": "磁盘挂载点。",
+          "properties": {
+            "mount": {
+              "description": "挂载路径。",
+              "type": "string"
+            },
+            "totalKb": {
+              "description": "总量 KiB。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "usedKb": {
+              "description": "已用 KiB。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "mount",
+            "totalKb",
+            "usedKb"
+          ],
+          "type": "object"
+        },
+        "MetricsSampleDto": {
+          "description": "一次监控样本(Channel 推送载荷)。",
+          "properties": {
+            "cpuCoresPercent": {
+              "description": "每核百分比。",
+              "items": {
+                "format": "double",
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "type": "array"
+            },
+            "cpuPercent": {
+              "description": "总 CPU 百分比;首个样本 null。",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "disks": {
+              "description": "磁盘列表。",
+              "items": {
+                "$ref": "#/$defs/DiskInfoDto"
+              },
+              "type": "array"
+            },
+            "load1": {
+              "description": "load1。",
+              "format": "double",
+              "type": "number"
+            },
+            "load15": {
+              "description": "load15。",
+              "format": "double",
+              "type": "number"
+            },
+            "load5": {
+              "description": "load5。",
+              "format": "double",
+              "type": "number"
+            },
+            "memBuffersKb": {
+              "description": "Buffers KiB。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "memCachedKb": {
+              "description": "Cached KiB。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "memTotalKb": {
+              "description": "内存总量 KiB。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "memUsedKb": {
+              "description": "已用 KiB。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "netRxBps": {
+              "description": "下行 B/s。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "netTxBps": {
+              "description": "上行 B/s。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "swapTotalKb": {
+              "description": "Swap 总量 KiB。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "swapUsedKb": {
+              "description": "Swap 已用 KiB。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "ts": {
+              "description": "时间戳(ms)。",
+              "format": "int64",
+              "type": "integer"
+            },
+            "uptimeSecs": {
+              "description": "运行秒数。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "ts",
+            "cpuPercent",
+            "cpuCoresPercent",
+            "memTotalKb",
+            "memUsedKb",
+            "memBuffersKb",
+            "memCachedKb",
+            "swapTotalKb",
+            "swapUsedKb",
+            "netRxBps",
+            "netTxBps",
+            "disks",
+            "load1",
+            "load5",
+            "load15",
+            "uptimeSecs"
+          ],
+          "type": "object"
+        },
+        "ProcessInfoDto": {
+          "description": "进程列表条目(任务管理器)。",
+          "properties": {
+            "args": {
+              "description": "完整命令行(已截断)。",
+              "type": "string"
+            },
+            "comm": {
+              "description": "可执行名。",
+              "type": "string"
+            },
+            "cpuPercent": {
+              "description": "当前 CPU 占用百分比(100% = 一个核心,多线程可超 100);该周期无前值时 null。",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "cpuTimeSecs": {
+              "description": "累计 CPU 时间(秒)。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "pid": {
+              "description": "进程 ID(IPC 契约统一字符串)。",
+              "type": "string"
+            },
+            "ppid": {
+              "description": "父进程 ID。",
+              "type": "string"
+            },
+            "rssKb": {
+              "description": "常驻内存 KiB(RSS)。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "state": {
+              "description": "进程状态码(ps STAT,如 R/S/D/Z/T)。",
+              "type": "string"
+            },
+            "user": {
+              "description": "属主用户名。",
+              "type": "string"
+            },
+            "vszKb": {
+              "description": "虚拟内存 KiB(VSZ)。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "pid",
+            "ppid",
+            "user",
+            "state",
+            "cpuPercent",
+            "rssKb",
+            "vszKb",
+            "cpuTimeSecs",
+            "comm",
+            "args"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "DiskInfoDto": {
+          "$ref": "#/$defs/DiskInfoDto"
+        },
+        "MetricsSampleDto": {
+          "$ref": "#/$defs/MetricsSampleDto"
+        },
+        "ProcessInfoDto": {
+          "$ref": "#/$defs/ProcessInfoDto"
+        }
+      },
+      "required": [
+        "MetricsSampleDto",
+        "DiskInfoDto",
+        "ProcessInfoDto"
+      ],
+      "type": "object"
+    },
+    "session": {
+      "$defs": {
+        "AuthMethodDto": {
+          "description": "认证方式(snake_case 字符串跨边界)。",
+          "oneOf": [
+            {
+              "const": "password",
+              "description": "账号密码。",
+              "type": "string"
+            },
+            {
+              "const": "private_key",
+              "description": "私钥文件。",
+              "type": "string"
+            },
+            {
+              "const": "keyboard_interactive",
+              "description": "键盘交互(OTP)。",
+              "type": "string"
+            },
+            {
+              "const": "agent",
+              "description": "免密(ssh-agent / 默认密钥)。",
+              "type": "string"
+            }
+          ]
+        },
+        "AuthPromptRequest": {
+          "description": "键盘交互请求的事件载荷(设计文档 §6.4 `auth-prompt`)。",
+          "properties": {
+            "instructions": {
+              "description": "服务端给出的说明,可为空。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "description": "服务端给出的名称(如 \"OTP Authentication\")。",
+              "type": "string"
+            },
+            "prompts": {
+              "description": "逐条 prompt。",
+              "items": {
+                "$ref": "#/$defs/PromptSpec"
+              },
+              "type": "array"
+            },
+            "requestId": {
+              "description": "请求 ID,应答命令凭此送达。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "requestId",
+            "name",
+            "instructions",
+            "prompts"
+          ],
+          "type": "object"
+        },
+        "ConnectSessionRequestDto": {
+          "description": "按已保存连接建连的请求体。",
+          "properties": {
+            "connId": {
+              "description": "连接 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "connId"
+          ],
+          "type": "object"
+        },
+        "HostKeyConfirmRequest": {
+          "description": "首次主机指纹确认请求的事件载荷(设计文档 §6.4 `hostkey-confirm`)。",
+          "properties": {
+            "algorithm": {
+              "description": "公钥算法。",
+              "type": "string"
+            },
+            "fingerprint": {
+              "description": "SHA256 指纹。",
+              "type": "string"
+            },
+            "host": {
+              "description": "主机。",
+              "type": "string"
+            },
+            "port": {
+              "description": "端口。",
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "requestId": {
+              "description": "请求 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "requestId",
+            "host",
+            "port",
+            "algorithm",
+            "fingerprint"
+          ],
+          "type": "object"
+        },
+        "PromptSpec": {
+          "description": "键盘交互的单条 prompt 规格。",
+          "properties": {
+            "echo": {
+              "description": "是否回显输入(密码型为 false)。",
+              "type": "boolean"
+            },
+            "prompt": {
+              "description": "展示文案(如\"请输入动态口令:\")。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "prompt",
+            "echo"
+          ],
+          "type": "object"
+        },
+        "QuickConnectRequestDto": {
+          "description": "快速连接请求体(PRD §6.2:临时直连,可选落库)。",
+          "properties": {
+            "authMethod": {
+              "$ref": "#/$defs/AuthMethodDto",
+              "description": "认证方式。"
+            },
+            "host": {
+              "description": "主机(必填)。",
+              "type": "string"
+            },
+            "name": {
+              "description": "显示名(保存时使用;缺省用主机)。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "passphrase": {
+              "description": "一次性私钥口令。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "password": {
+              "description": "一次性密码(不落库)。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "port": {
+              "description": "端口(1–65535);收宽类型避免 serde 裸拒绝。",
+              "format": "int64",
+              "type": "integer"
+            },
+            "privateKeyPath": {
+              "description": "私钥路径。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "save": {
+              "description": "是否保存为连接记录(密码将入钥匙串)。",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "username": {
+              "description": "用户名(必填)。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "host",
+            "port",
+            "username",
+            "authMethod",
+            "password",
+            "passphrase",
+            "privateKeyPath",
+            "save"
+          ],
+          "type": "object"
+        },
+        "RespondAuthPromptRequestDto": {
+          "description": "键盘交互应答请求体。",
+          "properties": {
+            "answers": {
+              "description": "逐条回答(数量须与 prompt 数一致)。",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "requestId": {
+              "description": "请求 ID(来自 auth-prompt 事件)。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "requestId",
+            "answers"
+          ],
+          "type": "object"
+        },
+        "RespondHostkeyConfirmRequestDto": {
+          "description": "指纹确认应答请求体。",
+          "properties": {
+            "accepted": {
+              "description": "是否信任并继续。",
+              "type": "boolean"
+            },
+            "requestId": {
+              "description": "请求 ID(来自 hostkey-confirm 事件)。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "requestId",
+            "accepted"
+          ],
+          "type": "object"
+        },
+        "ServerInfoDto": {
+          "description": "服务器基础信息(连接后一次性采集)。",
+          "properties": {
+            "arch": {
+              "description": "架构(`uname -m`)。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "bootTime": {
+              "description": "启动时间(UNIX 秒)。",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "cpuCoresLogical": {
+              "description": "逻辑核心数。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "cpuCoresPhysical": {
+              "description": "物理核心数。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "cpuModel": {
+              "description": "CPU 型号(`/proc/cpuinfo` 首条 `model name`)。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "distribution": {
+              "description": "发行版标识(`/etc/os-release::PRETTY_NAME`)。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "hostname": {
+              "description": "主机名。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kernel": {
+              "description": "内核版本(`uname -r`)。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "memTotalBytes": {
+              "description": "内存总容量(字节)。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "os": {
+              "description": "操作系统(`uname -s`)。",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "hostname",
+            "os",
+            "kernel",
+            "arch",
+            "distribution",
+            "cpuModel",
+            "cpuCoresPhysical",
+            "cpuCoresLogical",
+            "memTotalBytes",
+            "bootTime"
+          ],
+          "type": "object"
+        },
+        "SessionInfoDto": {
+          "description": "会话信息。",
+          "properties": {
+            "connId": {
+              "description": "来源连接 ID;临时会话为 null。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "serverInfo": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ServerInfoDto"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "服务器信息(未采集完为 null)。"
+            },
+            "sessionId": {
+              "description": "会话 ID。",
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/$defs/SessionStatus",
+              "description": "状态(connecting / online / disconnected;枚举由领域定义,契约导出同源)。"
+            },
+            "temporary": {
+              "description": "是否快速连接的临时会话。",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "sessionId",
+            "connId",
+            "temporary",
+            "status",
+            "serverInfo"
+          ],
+          "type": "object"
+        },
+        "SessionStatus": {
+          "description": "会话连接状态(PRD §7.3:连接中 / 在线 / 断开)。\n\n合法流转:\n- `Connecting → Online | Disconnected`(认证完成或失败/断连)\n- `Online → Disconnected`(主动关闭、网络故障、服务器断连)\n- `Disconnected → Connecting`(手动重连)\n\n序列化字面量与 [`Self::as_str`] 一致,并由契约导出进入前端类型\n(AGENTS.md §5:枚举取值只有后端一处定义)。",
+          "oneOf": [
+            {
+              "const": "connecting",
+              "description": "TCP/SSH 连接与认证进行中。",
+              "type": "string"
+            },
+            {
+              "const": "online",
+              "description": "认证通过,连接可承载终端/SFTP/监控 channel。",
+              "type": "string"
+            },
+            {
+              "const": "disconnected",
+              "description": "已断开;重连需重新走 Connecting。",
+              "type": "string"
+            }
+          ]
+        },
+        "SessionStatusEvent": {
+          "description": "会话状态变化事件载荷(设计文档 §6.4 `session-status-changed`)。",
+          "properties": {
+            "connId": {
+              "description": "来源连接 ID;快速连接的临时会话为空。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reason": {
+              "description": "断开原因等补充说明。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "sessionId": {
+              "description": "会话 ID。",
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/$defs/SessionStatus",
+              "description": "新状态(connecting / online / disconnected;字面量由 domain::SessionStatus 序列化保证)。"
+            }
+          },
+          "required": [
+            "sessionId",
+            "connId",
+            "status",
+            "reason"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "AuthPromptRequest": {
+          "$ref": "#/$defs/AuthPromptRequest"
+        },
+        "ConnectSessionRequestDto": {
+          "$ref": "#/$defs/ConnectSessionRequestDto"
+        },
+        "HostKeyConfirmRequest": {
+          "$ref": "#/$defs/HostKeyConfirmRequest"
+        },
+        "PromptSpec": {
+          "$ref": "#/$defs/PromptSpec"
+        },
+        "QuickConnectRequestDto": {
+          "$ref": "#/$defs/QuickConnectRequestDto"
+        },
+        "RespondAuthPromptRequestDto": {
+          "$ref": "#/$defs/RespondAuthPromptRequestDto"
+        },
+        "RespondHostkeyConfirmRequestDto": {
+          "$ref": "#/$defs/RespondHostkeyConfirmRequestDto"
+        },
+        "ServerInfoDto": {
+          "$ref": "#/$defs/ServerInfoDto"
+        },
+        "SessionInfoDto": {
+          "$ref": "#/$defs/SessionInfoDto"
+        },
+        "SessionStatusEvent": {
+          "$ref": "#/$defs/SessionStatusEvent"
+        }
+      },
+      "required": [
+        "ServerInfoDto",
+        "SessionInfoDto",
+        "ConnectSessionRequestDto",
+        "QuickConnectRequestDto",
+        "RespondAuthPromptRequestDto",
+        "RespondHostkeyConfirmRequestDto",
+        "SessionStatusEvent",
+        "PromptSpec",
+        "AuthPromptRequest",
+        "HostKeyConfirmRequest"
+      ],
+      "type": "object"
+    },
+    "settings": {
+      "$defs": {
+        "AppSettings": {
+          "description": "应用设置全集(PRD §6.7 分组);默认值 = 各分组默认值的组合。",
+          "properties": {
+            "appearance": {
+              "$ref": "#/$defs/AppearanceSettings",
+              "default": {
+                "language": "zh",
+                "theme": "system"
+              },
+              "description": "外观。"
+            },
+            "connection": {
+              "$ref": "#/$defs/ConnectionSettings",
+              "default": {
+                "defaultAuthMethod": "password",
+                "keepaliveIntervalSecs": 30
+              },
+              "description": "连接。"
+            },
+            "migration": {
+              "$ref": "#/$defs/MigrationSettings",
+              "default": {
+                "dismissedAutoMigrations": [],
+                "pendingMigrationId": null
+              },
+              "description": "数据迁移。"
+            },
+            "monitor": {
+              "$ref": "#/$defs/MonitorSettings",
+              "default": {
+                "defaultIntervalSecs": 5
+              },
+              "description": "监控。"
+            },
+            "terminal": {
+              "$ref": "#/$defs/TerminalSettings",
+              "default": {
+                "colorScheme": "github_light",
+                "confirmCloseTab": true,
+                "copyOnSelect": true,
+                "cursorStyle": "bar",
+                "fontFamily": "Cascadia Mono, Consolas, monospace",
+                "fontSize": 13,
+                "lineHeight": 1.2,
+                "rightClickPaste": true,
+                "scrollback": 5000
+              },
+              "description": "终端。"
+            },
+            "transfer": {
+              "$ref": "#/$defs/TransferSettings",
+              "default": {
+                "chunkSizeKib": 32,
+                "defaultConflictPolicy": "ask",
+                "maxConcurrentTasks": 2,
+                "notifyOnComplete": false
+              },
+              "description": "传输。"
+            },
+            "update": {
+              "$ref": "#/$defs/UpdateSettings",
+              "default": {
+                "autoCheck": true
+              },
+              "description": "更新。"
+            }
+          },
+          "required": [
+            "appearance",
+            "terminal",
+            "connection",
+            "transfer",
+            "monitor",
+            "update",
+            "migration"
+          ],
+          "type": "object"
+        },
+        "AppearanceSettings": {
+          "description": "外观设置。",
+          "properties": {
+            "language": {
+              "$ref": "#/$defs/Language",
+              "default": "zh",
+              "description": "语言。"
+            },
+            "theme": {
+              "$ref": "#/$defs/ThemeMode",
+              "default": "system",
+              "description": "主题。"
+            }
+          },
+          "required": [
+            "theme",
+            "language"
+          ],
+          "type": "object"
+        },
+        "ConflictPolicy": {
+          "description": "传输冲突默认策略(取值与传输契约一致)。",
+          "oneOf": [
+            {
+              "const": "ask",
+              "description": "每次询问(默认)。",
+              "type": "string"
+            },
+            {
+              "const": "overwrite",
+              "description": "覆盖。",
+              "type": "string"
+            },
+            {
+              "const": "skip",
+              "description": "跳过。",
+              "type": "string"
+            },
+            {
+              "const": "rename",
+              "description": "两者都保留(自动重命名)。",
+              "type": "string"
+            }
+          ]
+        },
+        "ConnectionSettings": {
+          "description": "连接默认设置。",
+          "properties": {
+            "defaultAuthMethod": {
+              "$ref": "#/$defs/DefaultAuthMethod",
+              "default": "password",
+              "description": "默认认证方式。"
+            },
+            "keepaliveIntervalSecs": {
+              "default": 30,
+              "description": "keepalive 间隔(秒),0 = 关闭。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "keepaliveIntervalSecs",
+            "defaultAuthMethod"
+          ],
+          "type": "object"
+        },
+        "CursorStyle": {
+          "description": "光标样式。",
+          "oneOf": [
+            {
+              "const": "bar",
+              "description": "竖线(默认)。",
+              "type": "string"
+            },
+            {
+              "const": "block",
+              "description": "块。",
+              "type": "string"
+            },
+            {
+              "const": "underline",
+              "description": "下划线。",
+              "type": "string"
+            }
+          ]
+        },
+        "DefaultAuthMethod": {
+          "description": "默认认证方式(取值与连接契约一致)。",
+          "oneOf": [
+            {
+              "const": "password",
+              "description": "账号密码(默认)。",
+              "type": "string"
+            },
+            {
+              "const": "private_key",
+              "description": "私钥。",
+              "type": "string"
+            },
+            {
+              "const": "keyboard_interactive",
+              "description": "键盘交互。",
+              "type": "string"
+            },
+            {
+              "const": "agent",
+              "description": "免密。",
+              "type": "string"
+            }
+          ]
+        },
+        "Language": {
+          "description": "界面语言。",
+          "oneOf": [
+            {
+              "const": "zh",
+              "description": "简体中文(默认,P0)。",
+              "type": "string"
+            },
+            {
+              "const": "en",
+              "description": "英文(M4)。",
+              "type": "string"
+            }
+          ]
+        },
+        "MigrationSettings": {
+          "description": "数据迁移状态(设计文档 §7.1);由迁移用例与启动流程维护,设置页只读展示。",
+          "properties": {
+            "dismissedAutoMigrations": {
+              "default": [],
+              "description": "用户点「暂不」后不再自动弹窗的迁移 id;设置页手动入口不受此影响。",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "pendingMigrationId": {
+              "default": null,
+              "description": "已批准、待下次启动早期执行的迁移 id;执行成功后由启动流程清除。",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "pendingMigrationId",
+            "dismissedAutoMigrations"
+          ],
+          "type": "object"
+        },
+        "MonitorSettings": {
+          "description": "监控默认设置。",
+          "properties": {
+            "defaultIntervalSecs": {
+              "default": 5,
+              "description": "默认采样间隔(秒)。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "defaultIntervalSecs"
+          ],
+          "type": "object"
+        },
+        "SettingKind": {
+          "description": "设置项类型与取值约束。",
+          "oneOf": [
+            {
+              "description": "整数;`presets` 为界面档位(必须落在 [min,max] 内,由测试保证)。",
+              "properties": {
+                "kind": {
+                  "const": "int",
+                  "type": "string"
+                },
+                "max": {
+                  "description": "最大值(含)。",
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "min": {
+                  "description": "最小值(含)。",
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "presets": {
+                  "description": "界面档位。",
+                  "items": {
+                    "format": "int64",
+                    "type": "integer"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "kind",
+                "min",
+                "max",
+                "presets"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "浮点;`presets` 为界面档位。",
+              "properties": {
+                "kind": {
+                  "const": "float",
+                  "type": "string"
+                },
+                "max": {
+                  "description": "最大值(含)。",
+                  "format": "double",
+                  "type": "number"
+                },
+                "min": {
+                  "description": "最小值(含)。",
+                  "format": "double",
+                  "type": "number"
+                },
+                "presets": {
+                  "description": "界面档位。",
+                  "items": {
+                    "format": "double",
+                    "type": "number"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "kind",
+                "min",
+                "max",
+                "presets"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "枚举,候选值来自 Rust 枚举自身。",
+              "properties": {
+                "kind": {
+                  "const": "enum",
+                  "type": "string"
+                },
+                "options": {
+                  "description": "候选值(serde 字面量,顺序即界面顺序)。",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "kind",
+                "options"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "布尔开关。",
+              "properties": {
+                "kind": {
+                  "const": "bool",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "自由文本(候选项等界面资产由前端提供,后端只约束长度)。",
+              "properties": {
+                "kind": {
+                  "const": "text",
+                  "type": "string"
+                },
+                "maxLen": {
+                  "description": "最大字符数。",
+                  "format": "uint",
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind",
+                "maxLen"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "契约存在但不供设置界面编辑(由应用内部用例维护)。",
+              "properties": {
+                "kind": {
+                  "const": "hidden",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "SettingScalar": {
+          "anyOf": [
+            {
+              "description": "文本(枚举字面量、字体栈、脱敏回显等)。",
+              "type": "string"
+            },
+            {
+              "description": "数值。",
+              "format": "double",
+              "type": "number"
+            },
+            {
+              "description": "布尔开关。",
+              "type": "boolean"
+            },
+            {
+              "description": "字符串列表(仅内部维护项,如已「暂不」的迁移 id)。",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "设置项标量取值:契约里只承载渲染与提示需要的标量,不暴露任意 JSON 结构。"
+        },
+        "SettingSpec": {
+          "description": "单个设置项契约。",
+          "properties": {
+            "default": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SettingScalar"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "默认值(取自 `AppSettings::default()` 的序列化结果,不可能与实现漂移);\n内部维护项为 null。"
+            },
+            "group": {
+              "description": "所属分组(顶层对象名)。",
+              "type": "string"
+            },
+            "kind": {
+              "$ref": "#/$defs/SettingKind",
+              "description": "类型与约束。"
+            },
+            "path": {
+              "description": "完整路径,如 `transfer.chunkSizeKib`;与 serde 产物逐字一致。",
+              "type": "string"
+            },
+            "unit": {
+              "description": "数值单位(用于组装可读提示);非数值项为 None。",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "path",
+            "group",
+            "unit",
+            "kind",
+            "default"
+          ],
+          "type": "object"
+        },
+        "SettingViolation": {
+          "description": "校验违规项(随 IPC `details` 下发,前端据此把错误定位到具体控件)。",
+          "properties": {
+            "max": {
+              "description": "允许上界;非区间类为 None。",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "min": {
+              "description": "允许下界;非区间类为 None。",
+              "format": "double",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "path": {
+              "description": "违规设置项路径。",
+              "type": "string"
+            },
+            "received": {
+              "$ref": "#/$defs/SettingScalar",
+              "description": "实际收到的值(脱敏:字符串只报长度,不回显内容)。"
+            },
+            "unit": {
+              "description": "单位。",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "path",
+            "min",
+            "max",
+            "unit",
+            "received"
+          ],
+          "type": "object"
+        },
+        "TerminalColorScheme": {
+          "description": "终端配色方案(PRD 用户故事 19;GitHub Light 为默认)。",
+          "oneOf": [
+            {
+              "const": "dracula",
+              "description": "Dracula。",
+              "type": "string"
+            },
+            {
+              "const": "tokyo_night",
+              "description": "Tokyo Night。",
+              "type": "string"
+            },
+            {
+              "const": "one_dark",
+              "description": "One Dark。",
+              "type": "string"
+            },
+            {
+              "const": "nord",
+              "description": "Nord。",
+              "type": "string"
+            },
+            {
+              "const": "solarized_dark",
+              "description": "Solarized Dark。",
+              "type": "string"
+            },
+            {
+              "const": "solarized_light",
+              "description": "Solarized Light。",
+              "type": "string"
+            },
+            {
+              "const": "github_light",
+              "description": "GitHub Light(默认);旧配置的 \"default\" 迁移到此方案。",
+              "type": "string"
+            }
+          ]
+        },
+        "TerminalSettings": {
+          "description": "终端默认设置(PRD §6.7)。",
+          "properties": {
+            "colorScheme": {
+              "$ref": "#/$defs/TerminalColorScheme",
+              "default": "github_light",
+              "description": "配色方案。"
+            },
+            "confirmCloseTab": {
+              "default": true,
+              "description": "关闭标签确认。",
+              "type": "boolean"
+            },
+            "copyOnSelect": {
+              "default": true,
+              "description": "选中即复制。",
+              "type": "boolean"
+            },
+            "cursorStyle": {
+              "$ref": "#/$defs/CursorStyle",
+              "default": "bar",
+              "description": "光标样式。"
+            },
+            "fontFamily": {
+              "default": "Cascadia Mono, Consolas, monospace",
+              "description": "字体族。",
+              "type": "string"
+            },
+            "fontSize": {
+              "default": 13,
+              "description": "字号(px)。",
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "lineHeight": {
+              "default": 1.2,
+              "description": "行距倍数(f64:f32 会把 1.2 序列化成交货污染的契约值 1.2000000476837158)。",
+              "format": "double",
+              "type": "number"
+            },
+            "rightClickPaste": {
+              "default": true,
+              "description": "右键粘贴。",
+              "type": "boolean"
+            },
+            "scrollback": {
+              "default": 5000,
+              "description": "回滚缓冲行数。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "fontFamily",
+            "fontSize",
+            "lineHeight",
+            "colorScheme",
+            "cursorStyle",
+            "scrollback",
+            "copyOnSelect",
+            "rightClickPaste",
+            "confirmCloseTab"
+          ],
+          "type": "object"
+        },
+        "ThemeMode": {
+          "description": "主题模式。",
+          "oneOf": [
+            {
+              "const": "system",
+              "description": "跟随系统(默认)。",
+              "type": "string"
+            },
+            {
+              "const": "dark",
+              "description": "深色。",
+              "type": "string"
+            },
+            {
+              "const": "light",
+              "description": "浅色。",
+              "type": "string"
+            }
+          ]
+        },
+        "TransferSettings": {
+          "description": "传输默认设置。",
+          "properties": {
+            "chunkSizeKib": {
+              "default": 32,
+              "description": "单请求分块大小(KiB,高级项)。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "defaultConflictPolicy": {
+              "$ref": "#/$defs/ConflictPolicy",
+              "default": "ask",
+              "description": "冲突默认策略。"
+            },
+            "maxConcurrentTasks": {
+              "default": 2,
+              "description": "全局并发任务数上限。",
+              "format": "uint8",
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "notifyOnComplete": {
+              "default": false,
+              "description": "传输完成通知。",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "maxConcurrentTasks",
+            "chunkSizeKib",
+            "defaultConflictPolicy",
+            "notifyOnComplete"
+          ],
+          "type": "object"
+        },
+        "UpdateSettings": {
+          "description": "更新设置(PRD #66:自动检查更新可关闭)。",
+          "properties": {
+            "autoCheck": {
+              "default": true,
+              "description": "自动检查更新;关闭后后台循环跳过网络请求。",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "autoCheck"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "AppSettings": {
+          "$ref": "#/$defs/AppSettings"
+        },
+        "SettingSpec": {
+          "$ref": "#/$defs/SettingSpec"
+        },
+        "SettingViolation": {
+          "$ref": "#/$defs/SettingViolation"
+        }
+      },
+      "required": [
+        "AppSettings",
+        "SettingSpec",
+        "SettingViolation"
+      ],
+      "type": "object"
+    },
+    "sftp": {
+      "$defs": {
+        "DeleteFailureDto": {
+          "description": "单条删除失败。",
+          "properties": {
+            "message": {
+              "description": "服务端错误消息。",
+              "type": "string"
+            },
+            "path": {
+              "description": "失败路径。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "message"
+          ],
+          "type": "object"
+        },
+        "DeleteRemoteEntriesRequestDto": {
+          "description": "批量删除请求体。",
+          "properties": {
+            "paths": {
+              "description": "待删路径(目录递归)。",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "sessionId": {
+              "description": "会话 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "sessionId",
+            "paths"
+          ],
+          "type": "object"
+        },
+        "DeleteRemoteResultDto": {
+          "description": "删除结果:失败清单(不静默,PRD §6.4)。",
+          "properties": {
+            "failed": {
+              "description": "失败项。",
+              "items": {
+                "$ref": "#/$defs/DeleteFailureDto"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "failed"
+          ],
+          "type": "object"
+        },
+        "FileEntryDto": {
+          "description": "文件条目响应(PRD §6.4 文件列表列形状)。",
+          "properties": {
+            "fileType": {
+              "$ref": "#/$defs/RemoteFileTypeDto",
+              "description": "类型。"
+            },
+            "mode": {
+              "description": "权限位(如 493 = 0o755)。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "mtime": {
+              "description": "修改时间(unix 秒)。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "name": {
+              "description": "文件名。",
+              "type": "string"
+            },
+            "owner": {
+              "description": "属主。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "permissions": {
+              "description": "权限字符串(如 `drwxr-xr-x`),由 mode+类型派生。",
+              "type": "string"
+            },
+            "size": {
+              "description": "字节数;目录为 0。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "name",
+            "fileType",
+            "size",
+            "mtime",
+            "mode",
+            "permissions",
+            "owner"
+          ],
+          "type": "object"
+        },
+        "RemoteFileTypeDto": {
+          "description": "远端文件类型(小写字符串跨边界)。",
+          "oneOf": [
+            {
+              "const": "dir",
+              "description": "目录。",
+              "type": "string"
+            },
+            {
+              "const": "file",
+              "description": "常规文件。",
+              "type": "string"
+            },
+            {
+              "const": "symlink",
+              "description": "符号链接。",
+              "type": "string"
+            },
+            {
+              "const": "other",
+              "description": "其他。",
+              "type": "string"
+            }
+          ]
+        },
+        "RenameRemoteEntryRequestDto": {
+          "description": "重命名请求体(newName 为同级新名,完整路径由后端拼接)。",
+          "properties": {
+            "newName": {
+              "description": "新名字(不含路径)。",
+              "type": "string"
+            },
+            "path": {
+              "description": "旧路径。",
+              "type": "string"
+            },
+            "sessionId": {
+              "description": "会话 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "sessionId",
+            "path",
+            "newName"
+          ],
+          "type": "object"
+        },
+        "SessionOnlyRequestDto": {
+          "description": "会话请求体(取主目录)。",
+          "properties": {
+            "sessionId": {
+              "description": "会话 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "sessionId"
+          ],
+          "type": "object"
+        },
+        "SessionPathRequestDto": {
+          "description": "会话 + 路径请求体。",
+          "properties": {
+            "path": {
+              "description": "目标路径。",
+              "type": "string"
+            },
+            "sessionId": {
+              "description": "会话 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "sessionId",
+            "path"
+          ],
+          "type": "object"
+        },
+        "SetRemotePermissionsRequestDto": {
+          "description": "chmod 请求体。",
+          "properties": {
+            "mode": {
+              "description": "权限位(如 0o755 = 493)。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "path": {
+              "description": "目标路径。",
+              "type": "string"
+            },
+            "sessionId": {
+              "description": "会话 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "sessionId",
+            "path",
+            "mode"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "DeleteFailureDto": {
+          "$ref": "#/$defs/DeleteFailureDto"
+        },
+        "DeleteRemoteEntriesRequestDto": {
+          "$ref": "#/$defs/DeleteRemoteEntriesRequestDto"
+        },
+        "DeleteRemoteResultDto": {
+          "$ref": "#/$defs/DeleteRemoteResultDto"
+        },
+        "FileEntryDto": {
+          "$ref": "#/$defs/FileEntryDto"
+        },
+        "RemoteFileTypeDto": {
+          "$ref": "#/$defs/RemoteFileTypeDto"
+        },
+        "RenameRemoteEntryRequestDto": {
+          "$ref": "#/$defs/RenameRemoteEntryRequestDto"
+        },
+        "SessionOnlyRequestDto": {
+          "$ref": "#/$defs/SessionOnlyRequestDto"
+        },
+        "SessionPathRequestDto": {
+          "$ref": "#/$defs/SessionPathRequestDto"
+        },
+        "SetRemotePermissionsRequestDto": {
+          "$ref": "#/$defs/SetRemotePermissionsRequestDto"
+        }
+      },
+      "required": [
+        "RemoteFileTypeDto",
+        "FileEntryDto",
+        "DeleteFailureDto",
+        "DeleteRemoteResultDto",
+        "SessionPathRequestDto",
+        "SessionOnlyRequestDto",
+        "RenameRemoteEntryRequestDto",
+        "SetRemotePermissionsRequestDto",
+        "DeleteRemoteEntriesRequestDto"
+      ],
+      "type": "object"
+    },
+    "terminal": {
+      "$defs": {
+        "OpenTerminalRequestDto": {
+          "description": "开终端请求体。",
+          "properties": {
+            "cols": {
+              "description": "初始列数(1–1000)。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "rows": {
+              "description": "初始行数(1–1000)。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "sessionId": {
+              "description": "目标会话 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "sessionId",
+            "cols",
+            "rows"
+          ],
+          "type": "object"
+        },
+        "ResizeTerminalRequestDto": {
+          "description": "终端尺寸变化请求体。",
+          "properties": {
+            "cols": {
+              "description": "新列数。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "rows": {
+              "description": "新行数。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "terminalId": {
+              "description": "终端 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "terminalId",
+            "cols",
+            "rows"
+          ],
+          "type": "object"
+        },
+        "TerminalHandleDto": {
+          "description": "开终端响应体。",
+          "properties": {
+            "terminalId": {
+              "description": "终端 ID(输出 Channel 已绑定到该终端)。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "terminalId"
+          ],
+          "type": "object"
+        },
+        "WriteTerminalRequestDto": {
+          "description": "写入终端请求体。",
+          "properties": {
+            "data": {
+              "description": "输入字节(数字数组;前端按连接编码转码后发送)。",
+              "items": {
+                "format": "uint8",
+                "maximum": 255,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "terminalId": {
+              "description": "终端 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "terminalId",
+            "data"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "OpenTerminalRequestDto": {
+          "$ref": "#/$defs/OpenTerminalRequestDto"
+        },
+        "ResizeTerminalRequestDto": {
+          "$ref": "#/$defs/ResizeTerminalRequestDto"
+        },
+        "TerminalHandleDto": {
+          "$ref": "#/$defs/TerminalHandleDto"
+        },
+        "WriteTerminalRequestDto": {
+          "$ref": "#/$defs/WriteTerminalRequestDto"
+        }
+      },
+      "required": [
+        "TerminalHandleDto",
+        "OpenTerminalRequestDto",
+        "WriteTerminalRequestDto",
+        "ResizeTerminalRequestDto"
+      ],
+      "type": "object"
+    },
+    "transfer": {
+      "$defs": {
+        "ClearTransfersRequestDto": {
+          "description": "清理请求体。",
+          "properties": {
+            "finishedOnly": {
+              "description": "仅清理已完成/失败/取消的任务。",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "finishedOnly"
+          ],
+          "type": "object"
+        },
+        "ConflictDecisionDto": {
+          "description": "冲突决策跨边界(respond 用)。",
+          "oneOf": [
+            {
+              "const": "overwrite",
+              "description": "覆盖。",
+              "type": "string"
+            },
+            {
+              "const": "skip",
+              "description": "跳过。",
+              "type": "string"
+            },
+            {
+              "const": "rename",
+              "description": "保留两者。",
+              "type": "string"
+            }
+          ]
+        },
+        "ConflictPolicyDto": {
+          "description": "冲突策略跨边界(小写;rename = 保留两者)。",
+          "oneOf": [
+            {
+              "const": "ask",
+              "description": "每次询问。",
+              "type": "string"
+            },
+            {
+              "const": "overwrite",
+              "description": "覆盖。",
+              "type": "string"
+            },
+            {
+              "const": "skip",
+              "description": "跳过。",
+              "type": "string"
+            },
+            {
+              "const": "rename",
+              "description": "保留两者(自动重命名)。",
+              "type": "string"
+            }
+          ]
+        },
+        "EnqueueDownloadRequestDto": {
+          "description": "入队下载请求体。",
+          "properties": {
+            "conflictPolicy": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ConflictPolicyDto"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "冲突策略。"
+            },
+            "localDir": {
+              "description": "本地目标目录。",
+              "type": "string"
+            },
+            "remotePath": {
+              "description": "远端文件或目录。",
+              "type": "string"
+            },
+            "sessionId": {
+              "description": "会话 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "sessionId",
+            "remotePath",
+            "localDir",
+            "conflictPolicy"
+          ],
+          "type": "object"
+        },
+        "EnqueueResultDto": {
+          "description": "入队结果。",
+          "properties": {
+            "count": {
+              "description": "任务数(目录递归展开为多任务)。",
+              "format": "uint",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "groupId": {
+              "description": "目录组 ID;单文件为 null。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "taskId": {
+              "description": "首个任务 ID(单文件即唯一任务)。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "taskId",
+            "count",
+            "groupId"
+          ],
+          "type": "object"
+        },
+        "EnqueueUploadRequestDto": {
+          "description": "入队上传请求体。",
+          "properties": {
+            "conflictPolicy": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ConflictPolicyDto"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "冲突策略。"
+            },
+            "localPath": {
+              "description": "本地文件或目录。",
+              "type": "string"
+            },
+            "remoteDir": {
+              "description": "远端目标目录。",
+              "type": "string"
+            },
+            "sessionId": {
+              "description": "会话 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "sessionId",
+            "localPath",
+            "remoteDir",
+            "conflictPolicy"
+          ],
+          "type": "object"
+        },
+        "RespondConflictRequestDto": {
+          "description": "冲突应答请求体。",
+          "properties": {
+            "applyToRemaining": {
+              "description": "对同组剩余冲突应用同样选择。",
+              "type": "boolean"
+            },
+            "decision": {
+              "$ref": "#/$defs/ConflictDecisionDto",
+              "description": "决策。"
+            },
+            "taskId": {
+              "description": "任务 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "taskId",
+            "decision",
+            "applyToRemaining"
+          ],
+          "type": "object"
+        },
+        "SessionStatus": {
+          "description": "会话连接状态(PRD §7.3:连接中 / 在线 / 断开)。\n\n合法流转:\n- `Connecting → Online | Disconnected`(认证完成或失败/断连)\n- `Online → Disconnected`(主动关闭、网络故障、服务器断连)\n- `Disconnected → Connecting`(手动重连)\n\n序列化字面量与 [`Self::as_str`] 一致,并由契约导出进入前端类型\n(AGENTS.md §5:枚举取值只有后端一处定义)。",
+          "oneOf": [
+            {
+              "const": "connecting",
+              "description": "TCP/SSH 连接与认证进行中。",
+              "type": "string"
+            },
+            {
+              "const": "online",
+              "description": "认证通过,连接可承载终端/SFTP/监控 channel。",
+              "type": "string"
+            },
+            {
+              "const": "disconnected",
+              "description": "已断开;重连需重新走 Connecting。",
+              "type": "string"
+            }
+          ]
+        },
+        "TransferDirection": {
+          "description": "传输方向。",
+          "oneOf": [
+            {
+              "const": "upload",
+              "description": "上传(本地 → 远端)。",
+              "type": "string"
+            },
+            {
+              "const": "download",
+              "description": "下载(远端 → 本地)。",
+              "type": "string"
+            }
+          ]
+        },
+        "TransferProgressEvent": {
+          "description": "传输进度事件载荷(200ms 节流推送,设计文档 §6.3)。",
+          "properties": {
+            "error": {
+              "description": "失败原因。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "groupId": {
+              "description": "目录组 ID(单文件为 null)。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "speedBps": {
+              "description": "平均速度(字节/秒)。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "status": {
+              "$ref": "#/$defs/TransferStatus",
+              "description": "状态(取值与 `domain::TransferStatus` 序列化字面量一致)。"
+            },
+            "taskId": {
+              "description": "任务 ID。",
+              "type": "string"
+            },
+            "totalBytes": {
+              "description": "总字节。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "transferredBytes": {
+              "description": "已传输字节。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "taskId",
+            "groupId",
+            "status",
+            "transferredBytes",
+            "totalBytes",
+            "speedBps",
+            "error"
+          ],
+          "type": "object"
+        },
+        "TransferStatus": {
+          "description": "SFTP 传输任务状态。\n\n合法流转:\n- `Queued → Preparing | Cancelled`(调度启动或排队期取消)\n- `Preparing → AwaitingConflict | Transferring | Failed | Cancelled`(冲突预检/开句柄)\n- `AwaitingConflict → Transferring | Cancelled | Failed`(用户决策后继续)\n- `Transferring → Completed | Failed | Cancelled`(完成、出错或取消)\n- `Failed → Queued`(自动/手动重试重新入队)\n\n`Completed` 与 `Cancelled` 为终态。\n\n序列化字面量与 [`Self::as_str`] 一致(含 `awaiting_conflict` 等 snake_case),\n并由契约导出进入前端类型(AGENTS.md §5:枚举取值只有后端一处定义)。",
+          "oneOf": [
+            {
+              "const": "queued",
+              "description": "已入队,等待调度(全局并发上限默认 2,PRD §6.4)。",
+              "type": "string"
+            },
+            {
+              "const": "preparing",
+              "description": "准备中:目录展开/冲突预检/句柄打开。",
+              "type": "string"
+            },
+            {
+              "const": "awaiting_conflict",
+              "description": "等待用户冲突决策(覆盖/跳过/保留两者)。",
+              "type": "string"
+            },
+            {
+              "const": "transferring",
+              "description": "正在传输。",
+              "type": "string"
+            },
+            {
+              "const": "completed",
+              "description": "传输完成。",
+              "type": "string"
+            },
+            {
+              "const": "failed",
+              "description": "传输失败;可重试重新入队。",
+              "type": "string"
+            },
+            {
+              "const": "cancelled",
+              "description": "已取消;临时分片保留为 `.shelx-partial`,供 P1 断点续传。",
+              "type": "string"
+            }
+          ]
+        },
+        "TransferTaskDto": {
+          "description": "任务 DTO(传输中心列表)。",
+          "properties": {
+            "direction": {
+              "$ref": "#/$defs/TransferDirection",
+              "description": "方向(upload / download)。"
+            },
+            "error": {
+              "description": "失败/跳过原因。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "fileName": {
+              "description": "文件名。",
+              "type": "string"
+            },
+            "groupId": {
+              "description": "目录组 ID;单文件为 null。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "localPath": {
+              "description": "本地路径。",
+              "type": "string"
+            },
+            "remotePath": {
+              "description": "远端路径。",
+              "type": "string"
+            },
+            "sessionId": {
+              "description": "会话 ID。",
+              "type": "string"
+            },
+            "speedBps": {
+              "description": "平均速度(字节/秒)。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "status": {
+              "$ref": "#/$defs/TransferStatus",
+              "description": "状态(枚举由 `domain::TransferStatus` 定义,契约导出同源)。"
+            },
+            "taskId": {
+              "description": "任务 ID。",
+              "type": "string"
+            },
+            "totalBytes": {
+              "description": "总字节。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "transferredBytes": {
+              "description": "已传输字节。",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "taskId",
+            "groupId",
+            "sessionId",
+            "direction",
+            "fileName",
+            "localPath",
+            "remotePath",
+            "totalBytes",
+            "transferredBytes",
+            "status",
+            "speedBps",
+            "error"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "ClearTransfersRequestDto": {
+          "$ref": "#/$defs/ClearTransfersRequestDto"
+        },
+        "ConflictDecisionDto": {
+          "$ref": "#/$defs/ConflictDecisionDto"
+        },
+        "ConflictPolicyDto": {
+          "$ref": "#/$defs/ConflictPolicyDto"
+        },
+        "EnqueueDownloadRequestDto": {
+          "$ref": "#/$defs/EnqueueDownloadRequestDto"
+        },
+        "EnqueueResultDto": {
+          "$ref": "#/$defs/EnqueueResultDto"
+        },
+        "EnqueueUploadRequestDto": {
+          "$ref": "#/$defs/EnqueueUploadRequestDto"
+        },
+        "RespondConflictRequestDto": {
+          "$ref": "#/$defs/RespondConflictRequestDto"
+        },
+        "SessionStatus": {
+          "$ref": "#/$defs/SessionStatus"
+        },
+        "TransferDirection": {
+          "$ref": "#/$defs/TransferDirection"
+        },
+        "TransferProgressEvent": {
+          "$ref": "#/$defs/TransferProgressEvent"
+        },
+        "TransferStatus": {
+          "$ref": "#/$defs/TransferStatus"
+        },
+        "TransferTaskDto": {
+          "$ref": "#/$defs/TransferTaskDto"
+        }
+      },
+      "required": [
+        "ConflictPolicyDto",
+        "ConflictDecisionDto",
+        "TransferDirection",
+        "TransferStatus",
+        "SessionStatus",
+        "TransferTaskDto",
+        "EnqueueResultDto",
+        "EnqueueUploadRequestDto",
+        "EnqueueDownloadRequestDto",
+        "RespondConflictRequestDto",
+        "ClearTransfersRequestDto",
+        "TransferProgressEvent"
+      ],
+      "type": "object"
+    },
+    "update": {
+      "$defs": {
+        "UpdateNotice": {
+          "description": "可用更新通知(事件载荷与 `get_update_notice` 响应共用,契约单一来源)。",
+          "properties": {
+            "checkedAtMs": {
+              "description": "检查时刻(unix 毫秒;时钟异常时为 0)。",
+              "format": "int64",
+              "type": "integer"
+            },
+            "currentVersion": {
+              "description": "当前应用版本。",
+              "type": "string"
+            },
+            "notes": {
+              "description": "Release notes(Markdown 源);插件未返回或为空白时为 `None`。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "version": {
+              "description": "可用的新版本号(无 `v` 前缀)。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "currentVersion",
+            "version",
+            "notes",
+            "checkedAtMs"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "UpdateNotice": {
+          "$ref": "#/$defs/UpdateNotice"
+        }
+      },
+      "required": [
+        "UpdateNotice"
+      ],
+      "type": "object"
+    }
+  },
+  "version": 1
+}

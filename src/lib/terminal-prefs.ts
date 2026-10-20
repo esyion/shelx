@@ -1,5 +1,8 @@
 /**
- * 终端偏好下拉候选常量:字体/字号/行距(PRD §6.7)。
+ * 终端偏好下拉候选常量:字体族(PRD §6.7)。
+ *
+ * 字号与行距的档位已改由后端设置契约(`get_settings_schema`)提供,
+ * 前端不再复制一份区间/档位表 —— 过去两份常量各改各的,是「设置成假开关」的成因。
  * 纯数据与纯函数,不依赖组件与 IPC。
  */
 
@@ -27,18 +30,8 @@ export const TERMINAL_FONT_FAMILY_OPTIONS: SelectOption[] = [
   { value: "Menlo, Monaco, monospace", label: "Menlo(macOS)" },
 ];
 
-/** 字号下拉候选(px;与后端校验 8–32 对齐)。 */
-export const TERMINAL_FONT_SIZE_OPTIONS: SelectOption[] = [
-  10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32,
-].map((size) => ({ value: String(size), label: String(size) }));
-
-/** 行距下拉候选(倍数;与后端校验 1.0–2.0 对齐)。 */
-export const TERMINAL_LINE_HEIGHT_OPTIONS: SelectOption[] = [
-  1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.75, 2.0,
-].map((height) => ({ value: String(height), label: String(height) }));
-
 /**
- * 保证下拉候选覆盖当前值:已存值不在候选内时(如 Ctrl+滚轮缩放出的字号)
+ * 保证下拉候选覆盖当前值:已存值不在候选内时(如其它入口写入的字体栈)
  * 前插一项展示原值,避免 select 显示空白。
  */
 export function withCurrentValue(

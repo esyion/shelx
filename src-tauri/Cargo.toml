@@ -65,6 +65,12 @@ dirs = "6"
 uuid = { version = "1", features = ["v4"] }
 # --- 应用层 async 端口 trait 对象安全(async fn in trait 的 dyn 形态)---
 async-trait = "0.1"
+# --- IPC 契约代码生成(AGENTS.md §5)---
+# 用途:从 Rust DTO 导出 JSON Schema,前端据此生成 TS 类型,消除手写镜像漂移。
+# 只在契约导出用例与 `get_ipc_schema` 中调用,不参与业务运行时逻辑。
+# 回滚:删除本依赖 + `cargo remove` 后移除各类型的 `schemars::JsonSchema` derive 与
+# src-tauri/contract/ 生成物即可,前端退回手写类型。
+schemars = "1.2.3"
 
 [dev-dependencies]
 tempfile = "3"

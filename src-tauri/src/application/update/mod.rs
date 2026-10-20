@@ -19,7 +19,9 @@ pub const CHECK_INTERVAL: Duration = Duration::from_secs(4 * 3600);
 pub const RETRY_INTERVAL: Duration = Duration::from_secs(5 * 60);
 
 /// 可用更新通知(事件载荷与 `get_update_notice` 响应共用,契约单一来源)。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateNotice {
     /// 当前应用版本。

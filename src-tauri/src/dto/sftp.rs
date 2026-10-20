@@ -6,7 +6,7 @@ use crate::application::ports::RemoteEntry;
 use crate::application::sftp::DeleteFailure;
 
 /// 远端文件类型(小写字符串跨边界)。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum RemoteFileTypeDto {
     /// 目录。
@@ -20,7 +20,7 @@ pub enum RemoteFileTypeDto {
 }
 
 /// 文件条目响应(PRD §6.4 文件列表列形状)。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct FileEntryDto {
     /// 文件名。
@@ -84,7 +84,7 @@ fn permission_string(
 }
 
 /// 会话 + 路径请求体。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionPathRequestDto {
     /// 会话 ID。
@@ -94,7 +94,7 @@ pub struct SessionPathRequestDto {
 }
 
 /// 会话请求体(取主目录)。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionOnlyRequestDto {
     /// 会话 ID。
@@ -102,7 +102,7 @@ pub struct SessionOnlyRequestDto {
 }
 
 /// 重命名请求体(newName 为同级新名,完整路径由后端拼接)。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RenameRemoteEntryRequestDto {
     /// 会话 ID。
@@ -114,7 +114,7 @@ pub struct RenameRemoteEntryRequestDto {
 }
 
 /// chmod 请求体。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SetRemotePermissionsRequestDto {
     /// 会话 ID。
@@ -126,7 +126,7 @@ pub struct SetRemotePermissionsRequestDto {
 }
 
 /// 批量删除请求体。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeleteRemoteEntriesRequestDto {
     /// 会话 ID。
@@ -136,7 +136,7 @@ pub struct DeleteRemoteEntriesRequestDto {
 }
 
 /// 删除结果:失败清单(不静默,PRD §6.4)。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeleteRemoteResultDto {
     /// 失败项。
@@ -144,7 +144,7 @@ pub struct DeleteRemoteResultDto {
 }
 
 /// 单条删除失败。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeleteFailureDto {
     /// 失败路径。

@@ -75,7 +75,7 @@ fn out_of_range_values_are_rejected() {
     let err = svc
         .update(json!({ "terminal": { "scrollback": 999_999_999 } }))
         .unwrap_err();
-    assert!(matches!(err, SettingsError::Invalid(_)));
+    assert!(matches!(err, SettingsError::Invalid { .. }));
     assert_eq!(
         svc.get().unwrap().terminal.scrollback,
         5000,
@@ -83,15 +83,47 @@ fn out_of_range_values_are_rejected() {
     );
 }
 
-/// 未知字段被忽略(向后兼容),类型错误被拒绝。
+/// 契约外字段被拒绝(过去"忽略未知字段"的宽容正是假开关的成因);类型错误同样被拒。
 #[test]
-fn unknown_fields_tolerated_and_type_mismatch_rejected() {
+fn unknown_fields_and_type_mismatch_are_rejected() {
     let svc = service();
-    svc.update(json!({ "futureOption": { "anything": true } }))
-        .unwrap();
+    // 前端历史上把分块大小写成 chunkSizeKiB(大写 B),被 serde 静默丢弃 → 现在必须报错。
+    let err = svc
+        .update(json!({ "transfer": { "chunkSizeKiB": 64 } }))
+        .unwrap_err();
+    assert!(
+        matches!(&err, SettingsError::Invalid { message, .. } if message == "设置项不存在:transfer.chunkSizeKiB")
+    );
+    assert_eq!(
+        svc.get().unwrap().transfer.chunk_size_kib,
+        32,
+        "被拒的补丁不得落盘"
+    );
+
+    assert!(svc
+        .update(json!({ "futureOption": { "anything": true } }))
+        .is_err());
     assert!(svc
         .update(json!({ "terminal": { "fontSize": "大" } }))
         .is_err());
+}
+
+/// 违规错误携带结构化详情,前端可据此把错误定位到具体控件。
+#[test]
+fn violation_error_carries_structured_details() {
+    let svc = service();
+    let err = svc
+        .update(json!({ "transfer": { "chunkSizeKib": 4096 } }))
+        .unwrap_err();
+    let SettingsError::Invalid { details, .. } = err else {
+        panic!("应为 Invalid");
+    };
+    let details = details.expect("越界必须带详情");
+    assert_eq!(details[0]["path"], "transfer.chunkSizeKib");
+    // 区间以 f64 承载(int/float 共用一套违规结构),JSON 里是 4.0 形态。
+    assert_eq!(details[0]["min"], 4.0);
+    assert_eq!(details[0]["max"], 1024.0);
+    assert_eq!(details[0]["unit"], "KiB");
 }
 
 /// 配色方案补丁持久化;未知取值被拒绝且不落盘。

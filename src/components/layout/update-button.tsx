@@ -171,6 +171,12 @@ export function UpdateButton({ collapsed = false }: { collapsed?: boolean }) {
                     ? `当前版本 v${current}`
                     : "正在准备版本信息…"}
             </DialogDescription>
+            {/* 前置条件不等报错才说:自动更新只对通过安装包装好的版本开放。 */}
+            {!isAvailable && !hasError && !isInstalling && (
+              <p className="text-xs text-muted-foreground">
+                自动更新仅在通过安装包装好的 shelx 上可用；如果你是在开发环境或解压目录里运行，这里只会显示当前版本。
+              </p>
+            )}
           </DialogHeader>
           {isInstalling ? (
             // 安装/下载中原位进度区:已知百分比用 Progress 条,

@@ -98,7 +98,7 @@ export function BottomPanel() {
           variant="ghost"
           size="xs"
           className="ml-auto text-muted-foreground hover:bg-accent/60"
-          title="收起 (Ctrl+J)"
+          title="收起面板,可再点标签栏右侧「传输」或按 Ctrl+J 重新打开"
           onClick={toggle}
         >
           <ChevronDown className="size-3.5" />
@@ -171,6 +171,7 @@ function ResizeGrip({
     <button
       type="button"
       aria-label="调整底部面板高度"
+      title="拖拽此处(或聚焦后按上下方向键)调整面板高度"
       onMouseDown={handleResizeStart}
       onKeyDown={(e) => {
         if (e.key === "ArrowUp") {

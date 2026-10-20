@@ -1,13 +1,18 @@
 /**
- * 顶部标签栏(PRD §6.1):状态圆点、关闭按钮。
+ * 顶部标签栏(PRD §6.1):状态圆点、关闭按钮;
+ * 右侧常驻「传输」入口(带进行中/待决策角标),避免传输中心只能靠 Ctrl+J 盲开。
  */
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { summarizeTransferCounts } from "@/lib/transfer-status";
 import { closeTabWithSession, statusDotClass, useTabsStore } from "@/stores/tabs";
 import { useSessionsStore } from "@/stores/sessions";
+import { useTransferStore } from "@/stores/transfer";
+import { useUiStore } from "@/stores/ui";
 
 /** 标签栏。 */
 export function TabBar() {
@@ -15,6 +20,8 @@ export function TabBar() {
   const activeTabId = useTabsStore((s) => s.activeTabId);
   const setActive = useTabsStore((s) => s.setActive);
   const sessionsById = useSessionsStore((s) => s.byId);
+  const byId = useTransferStore((s) => s.byId);
+  const { active, pendingConflicts } = summarizeTransferCounts(Object.values(byId));
 
   return (
     <div
@@ -69,6 +76,35 @@ export function TabBar() {
           </div>
         );
       })}
+
+      {/* 右侧常驻传输入口:进行中/待决策数量角标,点击打开底部传输中心 */}
+      <Button
+        variant="ghost"
+        size="xs"
+        className="ml-auto h-7 shrink-0 gap-1.5 self-end rounded-t rounded-b-none border border-b-0 border-transparent px-2 text-xs font-normal text-muted-foreground hover:bg-background/60 hover:text-foreground"
+        title="打开传输中心(Ctrl+J 切换)"
+        onClick={() => useUiStore.getState().showBottomPanel("transfers")}
+      >
+        传输
+        {pendingConflicts > 0 && (
+          <Badge
+            variant="default"
+            className="h-4 min-w-4 justify-center px-1 text-[10px] bg-amber-500 text-amber-50"
+            title={`${pendingConflicts} 个同名冲突等待你决定处理方式`}
+          >
+            {pendingConflicts}
+          </Badge>
+        )}
+        {active > 0 && (
+          <Badge
+            variant="secondary"
+            className="h-4 min-w-4 justify-center px-1 text-[10px]"
+            title={`${active} 个任务进行中`}
+          >
+            {active}
+          </Badge>
+        )}
+      </Button>
     </div>
   );
 }

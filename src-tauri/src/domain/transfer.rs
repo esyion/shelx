@@ -12,7 +12,11 @@ use super::error::DomainError;
 /// - `Failed → Queued`(自动/手动重试重新入队)
 ///
 /// `Completed` 与 `Cancelled` 为终态。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// 序列化字面量与 [`Self::as_str`] 一致(含 `awaiting_conflict` 等 snake_case),
+/// 并由契约导出进入前端类型(AGENTS.md §5:枚举取值只有后端一处定义)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum TransferStatus {
     /// 已入队,等待调度(全局并发上限默认 2,PRD §6.4)。
     Queued,

@@ -1,47 +1,35 @@
 /**
- * 连接树侧栏内容:树渲染、搜索过滤、右键菜单、双击连接、
- * 拖拽移动(连接↔分组/根级,分组↔根级)(PRD §6.2)。
+ * 连接树侧栏内容:搜索过滤、工具条(新建连接/快速连接/新建分组)、
+ * 树渲染、拖拽移动(连接↔分组/根级,分组↔根级)(PRD §6.2)。
+ *
+ * 新建/编辑统一走 Next.js 文件路由真页面(/connections/new、/connections/edit?id=),
+ * 原内嵌 Dialog 已移除(它挂在常驻 AppShell 之下,会被功能页浮层遮挡,
+ * 且与真页面形成"同一表单两套壳")。
  */
 "use client";
 
 import * as React from "react";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   DndContext,
   DragOverlay,
   PointerSensor,
-  useDraggable,
   useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { ConnectionFormFields } from "@/app/connections/hooks/connection-form-fields";
-import { useConnectionForm } from "@/app/connections/hooks/use-connection-form";
 import { Input } from "@/components/ui/input";
+import { QuickConnectDialog } from "@/app/connections/hooks/quick-connect-dialog";
+import { TreeNode } from "./connection-tree-nodes";
+import type { ConnectionsApi } from "./connection-tree-nodes";
 import {
-  ChevronDown,
-  ChevronRight,
   FolderPlus,
+  Globe,
   GripVertical,
-  Loader2,
   Plus,
   Server,
   Zap,
@@ -51,18 +39,13 @@ import {
   nodeKey,
   useFilteredTree,
 } from "@/stores/connections";
-import type { ConnectionsStore } from "@/stores/connections";
-import { confirmDialog, promptDialog } from "@/components/app-dialogs";
+import { promptDialog } from "@/components/app-dialogs";
 import { cn } from "@/lib/utils";
-import type { ConnectionNodeDto } from "@/types";
-
-/** useConnectionsStore 的返回形状(避免重复声明)。 */
-type ConnectionsApi = ConnectionsStore;
 
 /** droppable 根级容器的固定 ID。 */
 const ROOT_DROPPABLE_ID = "root";
 
-/** 解析 droppable id:分组返回 groupId,根级返回 null。 */
+/** 解析 droppable id:分组返回 groupId,根级返回 null,其它返回 undefined(忽略)。 */
 function resolveTargetGroup(overId: string | null): string | null | undefined {
   if (!overId || overId === ROOT_DROPPABLE_ID) return null;
   if (overId.startsWith("group:")) return overId.slice("group:".length);
@@ -75,40 +58,15 @@ function resolveTargetGroup(overId: string | null): string | null | undefined {
  * @param api useConnections 的返回值
  */
 export function ConnectionTree({ api }: { api: ConnectionsApi }) {
+  const router = useRouter();
   const [keyword, setKeyword] = useState("");
+  const [quickOpen, setQuickOpen] = useState(false);
   const filtered = useFilteredTree(api.tree, keyword);
   const total = countConnections(api.tree);
   const searching = keyword.trim().length > 0;
 
   /** 当前拖拽中的 draggable id(用于 DragOverlay 渲染预览)。 */
   const [activeId, setActiveId] = useState<string | null>(null);
-
-  /** 连接表单弹窗状态:null = 新建模式;string = 编辑该连接。 */
-  const [formOpen, setFormOpen] = useState(false);
-  const [editingConnId, setEditingConnId] = useState<string | null>(null);
-
-  /** 打开新建/编辑弹窗(connId = null 表示新建)。 */
-  const openForm = (connId: string | null) => {
-    setEditingConnId(connId);
-    setFormOpen(true);
-  };
-
-  /** 关闭弹窗。 */
-  const closeForm = () => setFormOpen(false);
-
-  /**
-   * 表单 state 始终存在;关闭时不传 connId,避免 useConnectionForm 空跑回填请求。
-   * 编辑模式下的回填由 hook 内部 useEffect 接管。
-   */
-  const connForm = useConnectionForm({
-    connId: formOpen ? editingConnId ?? undefined : undefined,
-  });
-
-  /** 保存成功 → 关闭弹窗。 */
-  const onSave = async () => {
-    const ok = await connForm.save();
-    if (ok) closeForm();
-  };
 
   /** 5px 阈值避免点击误触发拖拽;@dnd-kit 默认就是 5。 */
   const sensors = useSensors(
@@ -148,9 +106,18 @@ export function ConnectionTree({ api }: { api: ConnectionsApi }) {
           size="icon"
           className="size-8 shrink-0"
           title="新建连接"
-          onClick={() => openForm(null)}
+          onClick={() => router.push("/connections/new")}
         >
           <Plus className="size-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          className="size-8 shrink-0"
+          title="快速连接(临时连一台服务器)"
+          onClick={() => setQuickOpen(true)}
+        >
+          <Globe className="size-4" />
         </Button>
         <Button
           variant="outline"
@@ -184,7 +151,7 @@ export function ConnectionTree({ api }: { api: ConnectionsApi }) {
             {api.error ? (
               <p className="px-2 py-4 text-xs text-red-500">{api.error}</p>
             ) : total === 0 ? (
-              <EmptyTree />
+              <EmptyTree onNew={() => router.push("/connections/new")} />
             ) : (
               <ul className="space-y-0.5 px-1" role="tree">
                 {filtered.map((node) => (
@@ -193,7 +160,6 @@ export function ConnectionTree({ api }: { api: ConnectionsApi }) {
                     node={node}
                     api={api}
                     forceExpand={searching}
-                    onOpenForm={openForm}
                   />
                 ))}
                 {filtered.length === 0 && (
@@ -210,40 +176,7 @@ export function ConnectionTree({ api }: { api: ConnectionsApi }) {
         </DragOverlay>
       </DndContext>
 
-      <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {editingConnId ? "编辑连接" : "新建连接"}
-            </DialogTitle>
-            <DialogDescription>
-              {editingConnId ? "修改现有 SSH 连接配置" : "添加一个 SSH 连接"}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="-mx-4 max-h-[60vh] space-y-3 overflow-y-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <ConnectionFormFields
-              form={connForm.form}
-              set={connForm.set}
-              isEdit={!!editingConnId}
-            />
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={closeForm}
-              disabled={connForm.saving}
-            >
-              取消
-            </Button>
-            <Button
-              onClick={() => void onSave()}
-              disabled={connForm.saving || connForm.loading}
-            >
-              {connForm.saving ? "保存中…" : "保存"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <QuickConnectDialog open={quickOpen} onOpenChange={setQuickOpen} />
     </div>
   );
 }
@@ -264,16 +197,15 @@ function RootDroppable({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** 空态:引导新建第一个连接。 */
-function EmptyTree() {
+/** 空态:引导新建第一个连接(点击直达真页面,和工具条 + 同一入口)。 */
+function EmptyTree({ onNew }: { onNew: () => void }) {
   return (
     <div className="flex flex-col items-center gap-2 px-2 py-8 text-center">
       <Server className="size-8 text-muted-foreground/50" />
-      <p className="text-xs text-muted-foreground">
-        还没有连接
-        <br />
-        点击上方 + 新建第一个连接
-      </p>
+      <p className="text-xs text-muted-foreground">还没有连接</p>
+      <Button size="sm" variant="outline" onClick={onNew}>
+        新建第一个连接
+      </Button>
     </div>
   );
 }
@@ -292,298 +224,6 @@ function DragPreview({ nodeKey: key }: { nodeKey: string }) {
       <span className="text-muted-foreground">
         {isConn ? "连接" : "分组"}
       </span>
-    </div>
-  );
-}
-
-/** 树节点:分组(可折叠,可拖入/拖出)或连接叶子(可拖出)。 */
-function TreeNode({
-  node,
-  api,
-  forceExpand,
-  onOpenForm,
-}: {
-  node: ConnectionNodeDto;
-  api: ConnectionsApi;
-  forceExpand: boolean;
-  onOpenForm: (connId: string | null) => void;
-}) {
-  const openEdit = (connId: string | null) => {
-    onOpenForm(connId);
-  };
-
-  /** 在指定分组下新建子分组(由右键菜单触发)。 */
-  const addChildGroup = async (parentId: string, parentName: string) => {
-    const name = await promptDialog({
-      title: `在「${parentName}」下新建子分组`,
-      label: "子分组名称",
-      placeholder: "请输入子分组名称",
-      confirmText: "创建",
-    });
-    if (!name || !name.trim()) return;
-    await api.addGroup(name.trim(), parentId);
-  };
-
-  /** 重命名分组(由右键菜单触发)。 */
-  const renameGroup = async (groupId: string, currentName: string) => {
-    const next = await promptDialog({
-      title: "重命名分组",
-      label: `将「${currentName}」重命名为`,
-      initialValue: currentName,
-      confirmText: "保存",
-    });
-    if (!next || !next.trim() || next.trim() === currentName) return;
-    await api.renameGroup(groupId, next.trim());
-  };
-
-  /** 删除分组(由右键菜单触发,需二次确认)。 */
-  const deleteGroup = async (groupId: string, groupName: string) => {
-    const ok = await confirmDialog({
-      title: "删除分组",
-      description: `删除分组「${groupName}」?子项会上移到当前父级,连接/子分组不会被删除。`,
-      confirmText: "删除",
-      destructive: true,
-    });
-    if (!ok) return;
-    await api.deleteGroup(groupId);
-  };
-  if (node.kind === "group") {
-    const expanded = forceExpand || !api.collapsed.has(node.id);
-    return (
-      <li role="treeitem">
-        <ContextMenu>
-          <ContextMenuTrigger
-            render={
-              <GroupRow
-                id={node.id}
-                name={node.name}
-                expanded={expanded}
-                onToggle={() => api.toggleGroup(node.id)}
-              />
-            }
-          />
-          <ContextMenuContent>
-            <ContextMenuItem onClick={() => void addChildGroup(node.id, node.name)}>
-              新建子分组
-            </ContextMenuItem>
-            <ContextMenuItem onClick={() => void renameGroup(node.id, node.name)}>
-              重命名…
-            </ContextMenuItem>
-            <ContextMenuSeparator />
-            <ContextMenuItem
-              className="text-red-500"
-              onClick={() => void deleteGroup(node.id, node.name)}
-            >
-              删除分组…
-            </ContextMenuItem>
-          </ContextMenuContent>
-        </ContextMenu>
-        {expanded && node.children.length > 0 && (
-          <ul className="ml-3 space-y-0.5 border-l pl-1" role="group">
-            {node.children.map((child) => (
-              <TreeNode
-                key={nodeKey(child)}
-                node={child}
-                api={api}
-                forceExpand={forceExpand}
-                onOpenForm={onOpenForm}
-              />
-            ))}
-          </ul>
-        )}
-      </li>
-    );
-  }
-
-  const connecting = api.connectingId === node.id;
-  return (
-    <li role="treeitem">
-      <ContextMenu>
-        <ContextMenuTrigger
-          render={
-            <ConnectionRow
-              id={node.id}
-              name={node.name}
-              username={node.username}
-              host={node.host}
-              port={node.port}
-              remark={node.remark ?? null}
-              connecting={connecting}
-              hasStoredPassword={node.hasStoredPassword}
-              hasStoredPassphrase={node.hasStoredPassphrase}
-              onDoubleClick={() =>
-                void api.connect(node.id, node.name, node.encoding)
-              }
-            />
-          }
-        />
-        <ContextMenuContent>
-          <ContextMenuItem
-            onClick={() => void api.connect(node.id, node.name, node.encoding)}
-          >
-            连接
-          </ContextMenuItem>
-          <ContextMenuItem onClick={() => openEdit(node.id)}>编辑…</ContextMenuItem>
-          <ContextMenuItem onClick={() => void api.duplicate(node.id)}>
-            克隆
-          </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem
-            className="text-red-500"
-            onClick={() => {
-              void confirmDialog({
-                title: "删除连接",
-                description: `删除连接「${node.name}」?仅移除配置,已存凭据可在设置中清理。`,
-                confirmText: "删除",
-                destructive: true,
-              }).then((ok) => {
-                if (ok) void api.remove(node.id);
-              });
-            }}
-          >
-            删除…
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
-    </li>
-  );
-}
-
-/** 分组行:既是 draggable 也是 droppable。 */
-function GroupRow({
-  id,
-  name,
-  expanded,
-  onToggle,
-  onContextMenu,
-}: {
-  id: string;
-  name: string;
-  expanded: boolean;
-  onToggle: () => void;
-  /** 由 ContextMenuTrigger 通过 cloneElement 注入,阻止浏览器默认菜单 + 打开自定义菜单。 */
-  onContextMenu?: React.MouseEventHandler<HTMLDivElement>;
-}) {
-  const draggableId = `g:${id}`;
-  const droppableId = `group:${id}`;
-  const {
-    attributes,
-    listeners,
-    setNodeRef: setDragRef,
-    isDragging,
-  } = useDraggable({ id: draggableId });
-  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: droppableId });
-
-  /**
-   * 合并 draggable 和 droppable 的 ref。
-   * dnd-kit 自身支持多个 setNodeRef 调用的合并。
-   */
-  const setRefs = (node: HTMLDivElement | null) => {
-    setDragRef(node);
-    setDropRef(node);
-  };
-
-  return (
-    <div
-      ref={setRefs}
-      onContextMenu={onContextMenu}
-      className={cn(
-        "flex items-center gap-1 rounded px-1 py-0.5 text-xs transition-colors",
-        isOver && "bg-accent ring-1 ring-accent",
-        isDragging && "opacity-40",
-      )}
-    >
-      <button
-        type="button"
-        aria-label="拖动分组"
-        className="cursor-grab text-muted-foreground/60 hover:text-foreground active:cursor-grabbing"
-        {...attributes}
-        {...listeners}
-      >
-        <GripVertical className="size-3" />
-      </button>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-auto flex-1 justify-start gap-1 px-1 py-0.5 text-xs font-medium text-muted-foreground hover:bg-transparent"
-        onClick={onToggle}
-      >
-        {expanded ? (
-          <ChevronDown className="size-3.5" />
-        ) : (
-          <ChevronRight className="size-3.5" />
-        )}
-        <span className="truncate">{name}</span>
-      </Button>
-    </div>
-  );
-}
-
-/** 连接行:draggable,双击触发连接。 */
-function ConnectionRow({
-  id,
-  name,
-  username,
-  host,
-  port,
-  remark,
-  connecting,
-  hasStoredPassword,
-  hasStoredPassphrase,
-  onDoubleClick,
-  onContextMenu,
-}: {
-  id: string;
-  name: string;
-  username: string;
-  host: string;
-  port: number;
-  remark: string | null;
-  connecting: boolean;
-  hasStoredPassword: boolean;
-  hasStoredPassphrase: boolean;
-  onDoubleClick: () => void;
-  /** 由 ContextMenuTrigger 通过 cloneElement 注入,阻止浏览器默认菜单 + 打开自定义菜单。 */
-  onContextMenu?: React.MouseEventHandler<HTMLDivElement>;
-}) {
-  const draggableId = `c:${id}`;
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: draggableId,
-  });
-
-  return (
-    <div
-      ref={setNodeRef}
-      onDoubleClick={onDoubleClick}
-      onContextMenu={onContextMenu}
-      className={cn(
-        "group flex items-center gap-1 rounded px-1 py-0.5 text-xs transition-colors hover:bg-accent",
-        isDragging && "opacity-40",
-      )}
-      title={`${username}@${host}:${port}${remark ? ` · ${remark}` : ""}`}
-    >
-      <button
-        type="button"
-        aria-label="拖动连接"
-        className="cursor-grab text-muted-foreground/60 hover:text-foreground active:cursor-grabbing"
-        {...attributes}
-        {...listeners}
-      >
-        <GripVertical className="size-3" />
-      </button>
-      {connecting ? (
-        <Loader2 className="size-3.5 shrink-0 animate-spin" />
-      ) : (
-        <Zap
-          className={cn(
-            "size-3.5 shrink-0",
-            hasStoredPassword || hasStoredPassphrase
-              ? "text-emerald-500"
-              : "text-muted-foreground/60",
-          )}
-        />
-      )}
-      <span className="flex-1 truncate">{name}</span>
     </div>
   );
 }

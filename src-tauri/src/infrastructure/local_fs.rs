@@ -17,11 +17,96 @@ fn to_native(path: &str) -> PathBuf {
     PathBuf::from(path.replace('/', std::path::MAIN_SEPARATOR_STR))
 }
 
+/// 本地条目元数据快照(文件栏权限列/排序列的真实数据来源)。
+///
+/// 平台差异收敛在本结构的生产逻辑中:
+/// - unix/macOS:mode 取 `PermissionsExt::mode()` 低 12 位,owner 由 uid
+///   尽力解析(优先 `/etc/passwd` 用户名,解析不到回落 uid 十进制字符串);
+/// - Windows 等非 unix 平台:POSIX 权限位与属主不存在,`mode`/`owner` 为
+///   `None` 表达"无该信息",不伪造数值。
+///
+/// 所有字段均为尽力而为:元数据读取失败(条目在列举期间被删除、
+/// 权限不足等)时对应字段为 `None`,不向上抛错。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LocalEntryStat {
+    /// POSIX 权限位(含 setuid/setgid/sticky 低 12 位);Windows 或读取失败为 None。
+    pub mode: Option<u32>,
+    /// 修改时间(unix 秒);平台不支持或时间早于 epoch 为 None。
+    pub mtime: Option<u64>,
+    /// 属主(unix:用户名或 uid 字符串;Windows 为 None)。
+    pub owner: Option<String>,
+}
+
 impl StdLocalFs {
     /// 构造。
     pub fn new() -> Self {
         Self
     }
+
+    /// 读取本地条目的真实元数据(尽力而为,失败字段为 None)。
+    pub fn stat_local_entry(&self, path: &str) -> LocalEntryStat {
+        let Ok(meta) = std::fs::metadata(to_native(path)) else {
+            return LocalEntryStat::default();
+        };
+        LocalEntryStat {
+            mode: native_mode(&meta),
+            mtime: mtime_secs(&meta),
+            owner: native_owner(&meta),
+        }
+    }
+}
+
+/// 修改时间 → unix 秒;读取失败或早于 epoch 返回 None(不 panic)。
+fn mtime_secs(meta: &std::fs::Metadata) -> Option<u64> {
+    meta.modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_secs())
+}
+
+/// unix:真实 POSIX 权限位(低 12 位,过滤文件类型位)。
+#[cfg(unix)]
+fn native_mode(meta: &std::fs::Metadata) -> Option<u32> {
+    use std::os::unix::fs::PermissionsExt;
+    Some(meta.permissions().mode() & 0o7777)
+}
+
+/// 非 unix(Windows 等):无 POSIX 权限概念,如实返回 None。
+#[cfg(not(unix))]
+fn native_mode(_meta: &std::fs::Metadata) -> Option<u32> {
+    None
+}
+
+/// unix:uid → 用户名,解析不到回落 uid 十进制字符串(与 ls 数字属主行为一致)。
+#[cfg(unix)]
+fn native_owner(meta: &std::fs::Metadata) -> Option<String> {
+    use std::os::unix::fs::MetadataExt;
+    let uid = meta.uid();
+    Some(passwd_username(uid).unwrap_or_else(|| uid.to_string()))
+}
+
+/// 非 unix:std 无属主 API,如实返回 None。
+#[cfg(not(unix))]
+fn native_owner(_meta: &std::fs::Metadata) -> Option<String> {
+    None
+}
+
+/// 尽力从 `/etc/passwd` 解析 uid 对应用户名。
+///
+/// 只覆盖本地 passwd 文件(NIS/LDAP/macOS DirectoryService 用户可能 miss),
+/// 由调用方回落 uid 字符串,故可接受。
+#[cfg(unix)]
+fn passwd_username(uid: u32) -> Option<String> {
+    let content = std::fs::read_to_string("/etc/passwd").ok()?;
+    let uid_text = uid.to_string();
+    content.lines().find_map(|line| {
+        let mut fields = line.split(':');
+        let name = fields.next()?;
+        let _passwd = fields.next()?;
+        let id = fields.next()?;
+        (!name.is_empty() && id == uid_text).then(|| name.to_owned())
+    })
 }
 
 impl crate::application::ports::LocalFs for StdLocalFs {
@@ -235,6 +320,57 @@ mod tests {
 
         let listed = fs.list_dir(&format!("{base}/nested/deep")).unwrap();
         assert!(listed.is_empty());
+    }
+
+    /// 本地条目元数据:两平台 mtime 可读;unix 给真实 mode/owner,
+    /// Windows 无 POSIX 概念时 mode/owner 为 None(不伪造)。
+    #[test]
+    fn stat_local_entry_reports_real_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("entry.txt"), b"x").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(
+                dir.path().join("entry.txt"),
+                std::fs::Permissions::from_mode(0o640),
+            )
+            .unwrap();
+        }
+        let base = dir.path().to_string_lossy().replace('\\', "/");
+        let fs = StdLocalFs::new();
+        let stat = fs.stat_local_entry(&format!("{base}/entry.txt"));
+
+        assert!(stat.mtime.is_some(), "新建文件的 mtime 应可读");
+        #[cfg(unix)]
+        {
+            assert_eq!(stat.mode, Some(0o640), "应返回真实权限位而非固定值");
+            assert!(stat.owner.is_some(), "owner 应为用户名或 uid 字符串");
+        }
+        #[cfg(not(unix))]
+        {
+            assert_eq!(stat.mode, None, "Windows 不应伪造 POSIX 权限位");
+            assert_eq!(stat.owner, None);
+        }
+    }
+
+    /// 目录条目的 mtime 同样可读;unix 下目录 mode 为真实值。
+    #[test]
+    fn stat_local_entry_on_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        let base = dir.path().to_string_lossy().replace('\\', "/");
+        let stat = StdLocalFs::new().stat_local_entry(&format!("{base}/sub"));
+        assert!(stat.mtime.is_some());
+        #[cfg(unix)]
+        assert!(stat.mode.is_some_and(|m| m & 0o111 != 0), "目录应带执行位");
+    }
+
+    /// 非法输入:路径不存在时全字段 None(尽力而为,不抛错不伪造)。
+    #[test]
+    fn stat_local_entry_missing_path_is_none() {
+        let stat = StdLocalFs::new().stat_local_entry("does/not/exist/shelx-test-missing-entry");
+        assert_eq!(stat, LocalEntryStat::default());
     }
 
     /// 盘点:数据库(WAL 伴生)与日志、降级凭据按类别聚合;空目录返回空表。

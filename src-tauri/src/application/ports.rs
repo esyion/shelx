@@ -6,6 +6,8 @@
 use crate::domain::connection::{ConnConfig, ConnId, GroupId};
 use crate::domain::group::Group;
 use crate::domain::hostkey::HostKeyRecord;
+use crate::domain::session::SessionStatus;
+use crate::domain::transfer::TransferStatus;
 
 /// 连接/分组持久化端口。
 pub trait ConnectionStore: Send + Sync {
@@ -128,7 +130,7 @@ pub trait HostKeyStore: Send + Sync {
 }
 
 /// 键盘交互的单条 prompt 规格。
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PromptSpec {
     /// 展示文案(如"请输入动态口令:")。
@@ -138,7 +140,7 @@ pub struct PromptSpec {
 }
 
 /// 键盘交互请求的事件载荷(设计文档 §6.4 `auth-prompt`)。
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthPromptRequest {
     /// 请求 ID,应答命令凭此送达。
@@ -152,7 +154,7 @@ pub struct AuthPromptRequest {
 }
 
 /// 首次主机指纹确认请求的事件载荷(设计文档 §6.4 `hostkey-confirm`)。
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct HostKeyConfirmRequest {
     /// 请求 ID。
@@ -295,15 +297,15 @@ pub enum AuthPlan {
 }
 
 /// 会话状态变化事件载荷(设计文档 §6.4 `session-status-changed`)。
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionStatusEvent {
     /// 会话 ID。
     pub session_id: String,
     /// 来源连接 ID;快速连接的临时会话为空。
     pub conn_id: Option<String>,
-    /// 新状态(connecting / online / disconnected)。
-    pub status: String,
+    /// 新状态(connecting / online / disconnected;字面量由 domain::SessionStatus 序列化保证)。
+    pub status: SessionStatus,
     /// 断开原因等补充说明。
     pub reason: Option<String>,
 }
@@ -388,7 +390,8 @@ pub trait SftpChannel: Send + Sync {
 }
 
 /// 传输方向。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
 pub enum TransferDirection {
     /// 上传(本地 → 远端)。
     Upload,
@@ -409,15 +412,15 @@ pub trait TransferStream: Send + Sync {
 }
 
 /// 传输进度事件载荷(200ms 节流推送,设计文档 §6.3)。
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TransferProgressEvent {
     /// 任务 ID。
     pub task_id: String,
     /// 目录组 ID(单文件为 null)。
     pub group_id: Option<String>,
-    /// 状态(queued/preparing/awaiting_conflict/transferring/completed/failed/cancelled)。
-    pub status: String,
+    /// 状态(取值与 `domain::TransferStatus` 序列化字面量一致)。
+    pub status: TransferStatus,
     /// 已传输字节。
     pub transferred_bytes: u64,
     /// 总字节。

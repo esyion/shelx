@@ -2,12 +2,25 @@
  * 设置域的 gateway 封装:命令名与入参形状对齐 Rust commands 层
  * (TECHNICAL_DESIGN §6.2)。失败统一抛 GatewayError。
  */
-import type { AppSettings, AppSettingsPatch, LayoutState } from "@/types";
+import type {
+  AppSettings,
+  AppSettingsPatch,
+  LayoutState,
+  SettingSpec,
+} from "@/types";
 import { invokeUnwrapped } from "./tauri";
 
 /** 读取应用设置(缺省字段自动回填默认值)。 */
 export function getSettings(): Promise<AppSettings> {
   return invokeUnwrapped("get_settings");
+}
+
+/**
+ * 读取设置项契约 schema(路径、类型、区间、档位、候选值、默认值)。
+ * 设置界面据此渲染控件与提交补丁,前端不手写后端字段与取值区间。
+ */
+export function getSettingsSchema(): Promise<SettingSpec[]> {
+  return invokeUnwrapped("get_settings_schema");
 }
 
 /**

@@ -7,7 +7,7 @@ use crate::application::sessions::{QuickConnectSpec, SessionInfo};
 use super::connection::AuthMethodDto;
 
 /// 服务器基础信息(连接后一次性采集)。
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ServerInfoDto {
     /// 主机名。
@@ -50,7 +50,7 @@ impl From<crate::application::sessions::ServerInfo> for ServerInfoDto {
 }
 
 /// 会话信息。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionInfoDto {
     /// 会话 ID。
@@ -59,8 +59,8 @@ pub struct SessionInfoDto {
     pub conn_id: Option<String>,
     /// 是否快速连接的临时会话。
     pub temporary: bool,
-    /// 状态(connecting / online / disconnected)。
-    pub status: String,
+    /// 状态(connecting / online / disconnected;枚举由领域定义,契约导出同源)。
+    pub status: crate::domain::session::SessionStatus,
     /// 服务器信息(未采集完为 null)。
     pub server_info: Option<ServerInfoDto>,
 }
@@ -71,14 +71,14 @@ impl From<SessionInfo> for SessionInfoDto {
             session_id: value.session_id,
             conn_id: value.conn_id,
             temporary: value.temporary,
-            status: value.status.as_str().to_owned(),
+            status: value.status,
             server_info: value.server_info.map(Into::into),
         }
     }
 }
 
 /// 按已保存连接建连的请求体。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectSessionRequestDto {
     /// 连接 ID。
@@ -86,7 +86,7 @@ pub struct ConnectSessionRequestDto {
 }
 
 /// 快速连接请求体(PRD §6.2:临时直连,可选落库)。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct QuickConnectRequestDto {
     /// 显示名(保存时使用;缺省用主机)。
@@ -143,7 +143,7 @@ impl QuickConnectRequestDto {
 }
 
 /// 键盘交互应答请求体。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RespondAuthPromptRequestDto {
     /// 请求 ID(来自 auth-prompt 事件)。
@@ -153,7 +153,7 @@ pub struct RespondAuthPromptRequestDto {
 }
 
 /// 指纹确认应答请求体。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RespondHostkeyConfirmRequestDto {
     /// 请求 ID(来自 hostkey-confirm 事件)。

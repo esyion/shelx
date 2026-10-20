@@ -1,4 +1,7 @@
-//! IPC 错误契约:稳定错误码与结构化错误,与前端 `src/types/ipc.ts` 的 `IpcError` 对齐。
+//! IPC 错误契约:稳定错误码与结构化错误。
+//!
+//! 类型随 `get_ipc_schema` 导出为 JSON Schema,前端类型由生成物提供
+//! (AGENTS.md §5:跨边界契约只有后端一处定义,不再手写 `src/types/ipc.ts` 镜像)。
 
 use serde::Serialize;
 
@@ -6,7 +9,7 @@ use serde::Serialize;
 ///
 /// code 是跨版本稳定的枚举值,前端据此精确分支;
 /// 用户可读文案放在 [`IpcError::message`],与 code 解耦。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum IpcErrorCode {
     /// 请求参数未通过边界校验(空值、超长、非法格式)。
@@ -42,7 +45,7 @@ pub enum IpcErrorCode {
 }
 
 /// IPC 结构化错误,随 `IpcResult::Err` 信封返回给前端。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct IpcError {
     /// 稳定错误码。

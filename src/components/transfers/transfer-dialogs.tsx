@@ -10,6 +10,7 @@ import { useState } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -17,7 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { respondTransferConflict } from "@/app/api";
+import { respondTransferConflict, setRemotePermissions } from "@/app/api";
 import { useTransferStore } from "@/stores/transfer";
 import { useUiStore } from "@/stores/ui";
 import type { ConflictDecision } from "@/types";
@@ -50,6 +51,10 @@ export function TransferConflictDialog() {
       <DialogContent className="max-w-sm">
         <DialogHeader>
           <DialogTitle>目标已存在同名文件</DialogTitle>
+          <DialogDescription>
+            请选择这个文件的处理方式。关闭本窗口不会替你做出选择:任务会保持
+            「等待你决定」,可随时在传输中心点「处理冲突」重新打开。
+          </DialogDescription>
         </DialogHeader>
         <div className="grid gap-2 text-sm">
           {task && (
@@ -65,12 +70,9 @@ export function TransferConflictDialog() {
             对剩余冲突应用同样选择
           </label>
         </div>
-        <DialogFooter className="grid grid-cols-4 gap-1">
-          <Button variant="outline" onClick={() => setConflictTaskId(null)}>
-            取消
-          </Button>
+        <DialogFooter className="grid grid-cols-3 gap-1">
           <Button variant="outline" onClick={() => void answer("skip")}>
-            跳过
+            跳过此文件
           </Button>
           <Button variant="outline" onClick={() => void answer("rename")}>
             保留两者
@@ -109,33 +111,13 @@ export function ChmodDialog({
 }: ChmodDialogProps) {
   const toast = useUiStore((s) => s.toast);
   // 9 位勾选:owner r/w/x, group r/w/x, other r/w/x(高位→低位)
-  const [bits, setBits] = useState<boolean[]>([
-    (mode & 0o400) !== 0,
-    (mode & 0o200) !== 0,
-    (mode & 0o100) !== 0,
-    (mode & 0o040) !== 0,
-    (mode & 0o020) !== 0,
-    (mode & 0o010) !== 0,
-    (mode & 0o004) !== 0,
-    (mode & 0o002) !== 0,
-    (mode & 0o001) !== 0,
-  ]);
+  const [bits, setBits] = useState<boolean[]>(() => bitsFromMode(mode));
 
   // 弹窗打开时重置为当前 mode
   const [prevOpen, setPrevOpen] = useState(false);
   if (open && !prevOpen) {
     setPrevOpen(true);
-    setBits([
-      (mode & 0o400) !== 0,
-      (mode & 0o200) !== 0,
-      (mode & 0o100) !== 0,
-      (mode & 0o040) !== 0,
-      (mode & 0o020) !== 0,
-      (mode & 0o010) !== 0,
-      (mode & 0o004) !== 0,
-      (mode & 0o002) !== 0,
-      (mode & 0o001) !== 0,
-    ]);
+    setBits(bitsFromMode(mode));
   } else if (!open && prevOpen) {
     setPrevOpen(false);
   }
@@ -150,7 +132,6 @@ export function ChmodDialog({
   const apply = async () => {
     if (!path) return;
     try {
-      const { setRemotePermissions } = await import("@/app/api");
       await setRemotePermissions(sessionId, path, computed);
       toast(`权限已修改为 ${octal}`);
       onApplied();
@@ -195,6 +176,23 @@ export function ChmodDialog({
             </div>
           ))}
         </div>
+        {/* 常见组合快捷档位:降低逐格勾选的心智负担 */}
+        <div className="flex items-center justify-center gap-1">
+          <span className="text-xs text-muted-foreground">常用:</span>
+          {CHMOD_PRESETS.map((preset) => (
+            <Button
+              key={preset.mode}
+              type="button"
+              variant="outline"
+              size="xs"
+              className="h-6 px-1.5 text-xs"
+              title={preset.description}
+              onClick={() => setBits(bitsFromMode(preset.mode))}
+            >
+              {preset.label}
+            </Button>
+          ))}
+        </div>
         <p className="text-center font-mono text-sm">
           {permissionString(computed)} ({octal})
         </p>
@@ -206,6 +204,32 @@ export function ChmodDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** chmod 常见组合快捷档位(降低九宫格逐格勾选成本)。 */
+const CHMOD_PRESETS: readonly { mode: number; label: string; description: string }[] = [
+  {
+    mode: 0o755,
+    label: "755",
+    description: "目录 / 可执行脚本:所有者可读写执行,组与其他用户可读、可进入/执行",
+  },
+  {
+    mode: 0o644,
+    label: "644",
+    description: "普通文件:所有者可读写,组与其他用户只读",
+  },
+  {
+    mode: 0o600,
+    label: "600",
+    description: "私密文件(如密钥):仅所有者可读写",
+  },
+] as const;
+
+/** 权限位 → 9 格勾选数组(owner rwx → other rwx,高位在前)。 */
+function bitsFromMode(mode: number): boolean[] {
+  return [0o400, 0o200, 0o100, 0o040, 0o020, 0o010, 0o004, 0o002, 0o001].map(
+    (bit) => (mode & bit) !== 0,
   );
 }
 

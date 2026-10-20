@@ -52,6 +52,9 @@ export const moveGroup = connectionsApi.moveGroup;
 /** 读取应用设置。 */
 export const getSettings = settingsApi.getSettings;
 
+/** 读取设置项契约 schema(界面据此渲染控件)。 */
+export const getSettingsSchema = settingsApi.getSettingsSchema;
+
 /** 部分更新应用设置。 */
 export const updateSettings = settingsApi.updateSettings;
 

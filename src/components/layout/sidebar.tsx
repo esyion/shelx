@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import {
   BarChart3,
   GripHorizontal,
+  LayoutDashboard,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
@@ -196,11 +197,21 @@ function SidebarBody({ children }: { children: ReactNode }) {
   );
 }
 
-/** 底部:设置。 */
+/** 底部:服务器总览 + 设置。 */
 function SidebarFooter() {
   const router = useRouter();
   return (
     <div className="grid shrink-0 gap-1 border-t p-2">
+      <Button
+        size="sm"
+        variant="ghost"
+        className="w-full justify-start text-xs"
+        title="一屏查看全部服务器的运行状态"
+        onClick={() => router.push("/overview")}
+      >
+        <LayoutDashboard className="size-4" />
+        服务器总览
+      </Button>
       <Button
         size="sm"
         variant="ghost"

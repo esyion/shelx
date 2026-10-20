@@ -2,36 +2,32 @@
  * 侧栏紧凑监控(PRD §6.5 衍生):常驻 CPU / 内存 / 交换 / 磁盘 进度条。
  *
  * 采集策略:采集任务随会话常驻(Rust 端),本组件 status===online 时
- * 幂等保活(2s)并订阅样本,卸载仅退订——与监控视图并行不互抢。
- *
- * 系统信息入口:header 右侧 Info 按钮,点击弹窗。
+ * 幂等保活(间隔跟随设置页默认值)并订阅样本,卸载仅退订——与监控视图并行不互抢。
+ * 已知非 Linux 系统时直接说明,不发起注定失败的订阅。
+ * 系统信息弹窗拆至 system-info-dialog.tsx。
  */
 "use client";
 
 import { useEffect, useState } from "react";
-import { Info, Server } from "lucide-react";
+import { Info } from "lucide-react";
 import {
   attachMonitor,
   detachMonitor,
   ensureMonitor,
-  fetchSystemInfo,
 } from "@/app/api";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";import { isGatewayError } from "@/gateway";
-import { formatBytes } from "@/lib/format";import { useSessionsStore } from "@/stores/sessions";
-import { useUiStore } from "@/stores/ui";import type { MetricsSample, ServerInfo } from "@/types";
+} from "@/components/ui/dialog";
+import { isMonitorSupportedOs, resolveMonitorIntervalSecs } from "@/lib/monitor";
+import { formatBytes } from "@/lib/format";
+import { useSessionsStore } from "@/stores/sessions";
+import { useSettingsStore } from "@/stores/settings";
+import type { MetricsSample } from "@/types";
+import { SystemInfoBody } from "./system-info-dialog";
 
-/** 侧栏常驻采样间隔(秒);同 workspace 默认一致,避免与 Alt+2 视图争间隔。 */
-const SIDEBAR_INTERVAL_SECS = 2;
-
-/** 侧栏最多展示的挂载点数;完整挂载列表在监控视图(Alt+2)查看。 */
+/** 侧栏最多展示的挂载点数;完整挂载列表在监控视图查看。 */
 const MAX_SIDEBAR_DISKS = 3;
 
 /** 侧栏监控属性。 */
@@ -59,21 +55,35 @@ export function SidebarMonitor({ sessionId }: SidebarMonitorProps) {
   /** 仅持有「是否已至少有一个样本」,用于切换 Empty 与进度条视图。 */
   const [hasSample, setHasSample] = useState(false);
   const [latest, setLatest] = useState<MetricsSample | null>(null);
+  /** 展示用采样间隔(秒):跟随设置页默认值。 */
+  const [intervalSecs, setIntervalSecs] = useState(() =>
+    resolveMonitorIntervalSecs(useSettingsStore.getState().settings),
+  );
+  /** 已知非 Linux:提前说明,不发起订阅。 */
+  const osUnsupported = !isMonitorSupportedOs(serverInfo?.os);
 
   useEffect(() => {
+    const secs = resolveMonitorIntervalSecs(
+      useSettingsStore.getState().settings,
+    );
+    setIntervalSecs(secs);
     if (!sessionId) {
       setHasSample(false);
       setLatest(null);
       return;
     }
     const current = useSessionsStore.getState().byId[sessionId]?.status;
-    if (current !== "online") return;
+    if (current !== "online" || !isMonitorSupportedOs(
+      useSessionsStore.getState().byId[sessionId]?.serverInfo?.os,
+    )) {
+      return;
+    }
 
     // 采集任务随会话常驻:这里只做幂等保活 + 订阅,卸载仅退订(不停采集)。
     let cancelled = false;
     let subscriptionId: string | null = null;
     void (async () => {
-      await ensureMonitor(sessionId, SIDEBAR_INTERVAL_SECS);
+      await ensureMonitor(sessionId, secs);
       if (cancelled) return;
       subscriptionId = await attachMonitor(sessionId, (sample) => {
         if (cancelled) return;
@@ -102,6 +112,9 @@ export function SidebarMonitor({ sessionId }: SidebarMonitorProps) {
   if (!sessionId) {
     return <Empty hint="未激活会话" />;
   }
+  if (osUnsupported) {
+    return <Empty hint="这台服务器不支持监控采集" sub="目前仅支持 Linux 服务器" />;
+  }
   if (status !== "online") {
     return (
       <Empty
@@ -113,7 +126,7 @@ export function SidebarMonitor({ sessionId }: SidebarMonitorProps) {
     return (
       <Empty
         hint={`${serverInfo?.hostname ?? "目标"} · 暂无数据`}
-        sub="等待首个样本(2s 间隔)"
+        sub={`等待首个样本(约每 ${intervalSecs} 秒采集一次)`}
       />
     );
   }
@@ -161,13 +174,13 @@ export function SidebarMonitor({ sessionId }: SidebarMonitorProps) {
       <MetricBar
         label="内存"
         percent={memUsed}
-        text={`${formatBytes(latest.memUsedKb * 1024)}/${formatBytes(latest.memTotalKb * 1024)}`}
+        text={`${formatBytesText(latest.memUsedKb)}/${formatBytesText(latest.memTotalKb)}`}
       />
 
       <MetricBar
         label="交换"
         percent={latest.swapTotalKb > 0 ? swapUsed : null}
-        text={`${formatBytes(latest.swapUsedKb * 1024)}/${formatBytes(latest.swapTotalKb * 1024)}`}
+        text={`${formatBytesText(latest.swapUsedKb)}/${formatBytesText(latest.swapTotalKb)}`}
       />
 
       {latest.disks.slice(0, MAX_SIDEBAR_DISKS).map((disk) => {
@@ -178,13 +191,18 @@ export function SidebarMonitor({ sessionId }: SidebarMonitorProps) {
             key={disk.mount}
             label={disk.mount === "/" ? "磁盘" : disk.mount}
             percent={percent}
-            text={`${formatBytes(disk.usedKb * 1024)}/${formatBytes(disk.totalKb * 1024)}`}
+            text={`${formatBytesText(disk.usedKb)}/${formatBytesText(disk.totalKb)}`}
             barClassName={diskBarClass(percent)}
           />
         );
       })}
     </div>
   );
+}
+
+/** KiB → 人类可读字节文案。 */
+function formatBytesText(kb: number): string {
+  return formatBytes(kb * 1024);
 }
 
 /** 单指标行:标签 + 进度条 + 文本(无 sparkline)。 */
@@ -240,208 +258,5 @@ function Empty({ hint, sub }: { hint: string; sub?: string }) {
       <span className="text-xs">{hint}</span>
       {sub && <span className="text-[10px] opacity-70">{sub}</span>}
     </div>
-  );
-}
-
-
-/**
- * 系统信息弹窗内容:fetchSystemInfo + 硬件/发行版/系统三段卡片。
- * 复用 Rust 端连接建立时一次性采集的缓存;采集未完成时自动 1s 重试。
- */
-function SystemInfoBody({
-  sessionId,
-  onClose,
-}: {
-  sessionId: string;
-  onClose: () => void;
-}) {
-  const toast = useUiStore((s) => s.toast);
-  const [info, setInfo] = useState<ServerInfo | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    const fetchOnce = (): void => {
-      if (cancelled) return;
-      setLoading(true);
-      void fetchSystemInfo(sessionId)
-        .then((data) => {
-          if (cancelled) return;
-          setInfo(data);
-          setError(null);
-          if (countFilled(data) < 3) {
-            timer = setTimeout(fetchOnce, 1000);
-          }
-        })
-        .catch((err: unknown) => {
-          if (cancelled) return;
-          const message =
-            isGatewayError(err) && err.code === "NOT_FOUND"
-              ? "会话不存在"
-              : err instanceof Error
-                ? err.message
-                : String(err);
-          setError(message);
-          toast(`读取系统信息失败:${message}`, "error");
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
-    };
-
-    fetchOnce();
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, [sessionId, toast]);
-
-  return (
-    <>
-      <DialogHeader>
-        <DialogTitle className="flex items-center gap-2">
-          <Server className="size-4" />
-          系统信息
-        </DialogTitle>
-        <DialogDescription>
-          {info?.hostname ?? "目标主机"} · {info?.os ?? "--"}
-          {info?.kernel ? ` · ${info.kernel}` : ""}
-          {info?.arch ? ` · ${info.arch}` : ""}
-        </DialogDescription>
-      </DialogHeader>
-
-      <div className="max-h-[60vh] space-y-3 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {error ? (
-          <div className="py-6 text-center text-sm text-destructive">{error}</div>
-        ) : (
-          <>
-            <SectionCard title="硬件">
-              <Field label="CPU 型号" value={info?.cpuModel} />
-              <Field
-                label="核心数"
-                value={formatCores(info?.cpuCoresPhysical, info?.cpuCoresLogical)}
-              />
-              <Field label="内存总量" value={formatMemBytes(info?.memTotalBytes ?? null)} />
-            </SectionCard>
-
-            <SectionCard title="发行版">
-              <Field label="发行版" value={info?.distribution} />
-              <Field label="操作系统" value={info?.os} />
-              <Field label="内核" value={info?.kernel} />
-              <Field label="架构" value={info?.arch} />
-            </SectionCard>
-
-            <SectionCard title="系统">
-              <Field label="主机名" value={info?.hostname} />
-              <Field label="启动时间" value={formatBootTime(info?.bootTime ?? null)} />
-              <Field label="运行时间" value={formatUptime(info?.bootTime ?? null)} />
-            </SectionCard>
-
-            {loading && info === null ? (
-              <div className="text-center text-xs text-muted-foreground">
-                正在采集首个样本…
-              </div>
-            ) : null}
-          </>
-        )}
-      </div>
-
-      <DialogFooter>
-        <Button variant="outline" onClick={onClose}>
-          关闭
-        </Button>
-      </DialogFooter>
-    </>
-  );
-}
-
-/** 段卡片。 */
-function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="rounded-md border bg-card p-3">
-      <h3 className="mb-2 text-xs font-medium text-muted-foreground">{title}</h3>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">{children}</dl>
-    </section>
-  );
-}
-
-/** 单字段。 */
-function Field({ label, value }: { label: string; value: string | null | undefined }) {
-  return (
-    <>
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="truncate font-mono" title={value ?? ""}>
-        {value ?? "--"}
-      </dd>
-    </>
-  );
-}
-
-/** 字节数 → 人读(GiB/MiB 二进制单位,与原 page.tsx 一致)。 */
-function formatMemBytes(bytes: number | null): string | null {
-  if (bytes === null || bytes === undefined) return null;
-  if (!Number.isFinite(bytes) || bytes < 0) return null;
-  const gib = bytes / 1024 / 1024 / 1024;
-  if (gib >= 1) return `${gib.toFixed(2)} GiB`;
-  const mib = bytes / 1024 / 1024;
-  return `${mib.toFixed(0)} MiB`;
-}
-
-/** 核心数展示。 */
-function formatCores(
-  phys: number | null | undefined,
-  log: number | null | undefined,
-): string | null {
-  const p = phys ?? null;
-  const l = log ?? null;
-  if (p === null && l === null) return null;
-  if (p === null) return `${l} 逻辑`;
-  if (l === null || p === l) return `${p} 物理`;
-  return `${p} 物理 / ${l} 逻辑`;
-}
-
-/** 启动时间(秒戳 → 本地时间字符串)。 */
-function formatBootTime(boot: number | null): string | null {
-  if (boot === null) return null;
-  if (!Number.isFinite(boot) || boot <= 0) return null;
-  try {
-    return new Date(boot * 1000).toLocaleString("zh-CN", { hour12: false });
-  } catch {
-    return null;
-  }
-}
-
-/** 运行时间(秒戳 → "X天Y小时" 等中文格式)。 */
-function formatUptime(boot: number | null): string | null {
-  if (boot === null) return null;
-  if (!Number.isFinite(boot) || boot <= 0) return null;
-  const now = Math.floor(Date.now() / 1000);
-  if (now < boot) return null;
-  const seconds = now - boot;
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  if (days > 0) return `${days}天${hours}小时`;
-  if (hours > 0) return `${hours}小时${minutes}分`;
-  if (minutes > 0) return `${minutes}分`;
-  return `${seconds}秒`;
-}
-
-/** 统计已采集的非空字段数,用于决定是否 1s 后重试。 */
-function countFilled(info: ServerInfo): number {
-  return (
-    Number(Boolean(info.hostname)) +
-    Number(Boolean(info.os)) +
-    Number(Boolean(info.kernel)) +
-    Number(Boolean(info.arch)) +
-    Number(Boolean(info.distribution)) +
-    Number(Boolean(info.cpuModel)) +
-    Number(info.cpuCoresPhysical !== null) +
-    Number(info.cpuCoresLogical !== null) +
-    Number(info.memTotalBytes !== null) +
-    Number(info.bootTime !== null)
   );
 }

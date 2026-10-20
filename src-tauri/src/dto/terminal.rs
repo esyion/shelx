@@ -7,7 +7,7 @@
 use serde::{Deserialize, Serialize};
 
 /// 开终端请求体。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenTerminalRequestDto {
     /// 目标会话 ID。
@@ -19,7 +19,7 @@ pub struct OpenTerminalRequestDto {
 }
 
 /// 开终端响应体。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalHandleDto {
     /// 终端 ID(输出 Channel 已绑定到该终端)。
@@ -27,7 +27,7 @@ pub struct TerminalHandleDto {
 }
 
 /// 写入终端请求体。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct WriteTerminalRequestDto {
     /// 终端 ID。
@@ -37,7 +37,7 @@ pub struct WriteTerminalRequestDto {
 }
 
 /// 终端尺寸变化请求体。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ResizeTerminalRequestDto {
     /// 终端 ID。

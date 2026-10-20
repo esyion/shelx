@@ -14,23 +14,40 @@ import {
   enqueueUpload,
 } from "@/app/api";
 import { isGatewayError } from "@/gateway";
+import { useSettingsStore } from "@/stores/settings";
 import { useTransferStore } from "@/stores/transfer";
 import { useUiStore } from "@/stores/ui";
+import type { ConflictPolicy } from "@/types";
 
-/** 上传:本地文件/目录 → 远端目录。 */
+/**
+ * 解析冲突策略:显式传入优先;否则读用户设置
+ * `transfer.defaultConflictPolicy`,设置尚未加载时回退 "ask"。
+ */
+function resolveConflictPolicy(explicit?: ConflictPolicy): ConflictPolicy {
+  if (explicit) return explicit;
+  return useSettingsStore.getState().settings?.transfer.defaultConflictPolicy ?? "ask";
+}
+
+/** 上传:本地文件/目录 → 远端目录。conflictPolicy 省略时使用设置的默认策略。 */
 export async function enqueueUploadAndShow(
   sessionId: string,
   localPath: string,
   remoteDir: string,
-  conflictPolicy: "ask" | "overwrite" | "skip" | "rename" = "ask",
+  conflictPolicy?: ConflictPolicy,
 ): Promise<void> {
   try {
-    const result = await enqueueUpload(sessionId, localPath, remoteDir, conflictPolicy, (evt) => {
-      useTransferStore.getState().upsert(evt);
-      if (evt.status === "awaiting_conflict") {
-        useUiStore.getState().setConflictTaskId(evt.taskId);
-      }
-    });
+    const result = await enqueueUpload(
+      sessionId,
+      localPath,
+      remoteDir,
+      resolveConflictPolicy(conflictPolicy),
+      (evt) => {
+        useTransferStore.getState().upsert(evt);
+        if (evt.status === "awaiting_conflict") {
+          useUiStore.getState().setConflictTaskId(evt.taskId);
+        }
+      },
+    );
     const name = basename(localPath);
     useUiStore.getState().toast(`已入队「${name}」(${result.count} 个任务)`);
     useUiStore.getState().showBottomPanel("transfers");
@@ -42,20 +59,26 @@ export async function enqueueUploadAndShow(
   }
 }
 
-/** 下载:远端文件/目录 → 本地目录。 */
+/** 下载:远端文件/目录 → 本地目录。conflictPolicy 省略时使用设置的默认策略。 */
 export async function enqueueDownloadAndShow(
   sessionId: string,
   remotePath: string,
   localDir: string,
-  conflictPolicy: "ask" | "overwrite" | "skip" | "rename" = "ask",
+  conflictPolicy?: ConflictPolicy,
 ): Promise<void> {
   try {
-    const result = await enqueueDownload(sessionId, remotePath, localDir, conflictPolicy, (evt) => {
-      useTransferStore.getState().upsert(evt);
-      if (evt.status === "awaiting_conflict") {
-        useUiStore.getState().setConflictTaskId(evt.taskId);
-      }
-    });
+    const result = await enqueueDownload(
+      sessionId,
+      remotePath,
+      localDir,
+      resolveConflictPolicy(conflictPolicy),
+      (evt) => {
+        useTransferStore.getState().upsert(evt);
+        if (evt.status === "awaiting_conflict") {
+          useUiStore.getState().setConflictTaskId(evt.taskId);
+        }
+      },
+    );
     const name = basename(remotePath);
     useUiStore.getState().toast(`已入队「${name}」(${result.count} 个任务)`);
     useUiStore.getState().showBottomPanel("transfers");

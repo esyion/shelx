@@ -3,32 +3,35 @@
  *
  * 数据流:采集任务随会话常驻(Rust 端环形缓冲,切 tab 不中断)→ 本视图挂载时
  * 恢复历史 + attach 订阅,卸载仅 detach;样本入 useRef 缓冲,按采样间隔重绘。
+ * 图表子组件见 monitor-charts.tsx;默认采样间隔读取用户设置(lib/monitor)。
  */
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  CartesianGrid,
-  Cell,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import { Cpu, HardDrive, type LucideIcon } from "lucide-react";
+import { Cpu, HardDrive } from "lucide-react";
 import { NativeSelect } from "@/components/ui/native-select";
 import { attachMonitor, detachMonitor, ensureMonitor, recentMonitorSamples } from "@/app/api";
 import { formatBytes, formatDuration } from "@/lib/format";
 import { isGatewayError } from "@/gateway";
+import {
+  isMonitorSupportedOs,
+  resolveMonitorIntervalSecs,
+} from "@/lib/monitor";
 import { useSessionsStore } from "@/stores/sessions";
+import { useSettingsStore } from "@/stores/settings";
 import { useUiStore } from "@/stores/ui";
 import type { MetricsSample } from "@/types";
+import {
+  ChartCard,
+  CpuPie,
+  LoadChart,
+  MemoryPie,
+  NetworkChart,
+  loadState,
+} from "./monitor-charts";
+import { CoreBar, DiskBar, SectionHeader } from "./monitor-bars";
 
-/** 样本缓冲上限(1h @ 2s ≈ 1800 点;截断即可)。 */
+/** 样本缓冲上限(1 小时 @ 2 秒 ≈ 1800 点;截断即可)。 */
 const MAX_SAMPLES = 1800;
 
 /** 单条曲线渲染点数上限(超出按步长降采样,保住 Recharts 流畅度)。 */
@@ -59,13 +62,18 @@ export interface MonitorViewProps {
 export function MonitorView({ sessionId }: MonitorViewProps) {
   const samplesRef = useRef<MetricsSample[]>([]);
   const [, forceRender] = useState(0);
-  const [intervalSecs, setIntervalSecs] = useState(2);
+  /** 采样间隔初始值跟随设置页的默认值(避免假开关)。 */
+  const [intervalSecs, setIntervalSecs] = useState(() =>
+    resolveMonitorIntervalSecs(useSettingsStore.getState().settings),
+  );
   /** 曲线时间窗(秒);默认 15 分钟。 */
   const [windowSecs, setWindowSecs] = useState(900);
   const [error, setError] = useState<string | null>(null);
   const status = useSessionsStore((s) => s.byId[sessionId]?.status);
   const serverInfo = useSessionsStore((s) => s.byId[sessionId]?.serverInfo);
   const toast = useUiStore((s) => s.toast);
+  /** 已知非 Linux 系统:提前说明而不是发起注定失败的采集订阅。 */
+  const osUnsupported = !isMonitorSupportedOs(serverInfo?.os);
 
   /** 推入样本并触发重绘(不可变更新:替换数组引用,依赖该引用的 useMemo 才会失效)。 */
   const pushSample = useCallback((sample: MetricsSample) => {
@@ -79,7 +87,7 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
 
   /** 保活采集 + 订阅样本(挂载/间隔变化/重连时;卸载只退订,不停采集、不清历史)。 */
   useEffect(() => {
-    if (status !== "online") return;
+    if (status !== "online" || osUnsupported) return;
     let cancelled = false;
     let subscriptionId: string | null = null;
 
@@ -97,7 +105,7 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
     })().catch((err) => {
       if (cancelled) return;
       if (isGatewayError(err) && err.code === "MONITOR_UNSUPPORTED") {
-        setError("目标系统不支持监控采集(仅支持 Linux)");
+        setError("这台服务器的系统不支持监控采集(仅支持 Linux 服务器)");
       } else {
         setError(err instanceof Error ? err.message : String(err));
         toast(`监控启动失败:${err instanceof Error ? err.message : String(err)}`, "error");
@@ -109,7 +117,7 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
       if (subscriptionId) void detachMonitor(sessionId, subscriptionId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, intervalSecs, status, pushSample]);
+  }, [sessionId, intervalSecs, status, osUnsupported, pushSample]);
 
   const samples = samplesRef.current;
   const latest = samples[samples.length - 1];
@@ -120,6 +128,15 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
     () => sliceVisibleSamples(samples, windowSecs, intervalSecs),
     [samples, windowSecs, intervalSecs],
   );
+
+  if (osUnsupported) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-1 px-6 text-center text-sm text-muted-foreground">
+        <span>这台服务器的系统({serverInfo?.os})不支持监控采集</span>
+        <span className="text-xs">目前仅支持 Linux 服务器,终端和文件功能不受影响</span>
+      </div>
+    );
+  }
 
   if (error) {
     return (
@@ -133,7 +150,7 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground opacity-60">
         <span className="text-sm">采集已暂停,等待重连</span>
-        {/* <span className="text-xs">重连后自动恢复采集</span> */}
+        <span className="text-xs">重连后自动恢复采集</span>
       </div>
     );
   }
@@ -166,14 +183,14 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
         <span className="ml-auto">
           时间窗
           <NativeSelect
-            className="ml-1 inline-block w-16 text-xs"
+            className="ml-1 inline-block w-24 text-xs"
             value={String(windowSecs)}
             onChange={(e) => setWindowSecs(Number(e.target.value))}
             aria-label="曲线时间窗"
           >
             {[5, 15, 30, 60].map((m) => (
               <option key={m} value={m * 60}>
-                {m}m
+                {m} 分钟
               </option>
             ))}
           </NativeSelect>
@@ -181,13 +198,14 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
         <span>
           采样间隔
           <NativeSelect
-            className="ml-1 inline-block w-16 text-xs"
+            className="ml-1 inline-block w-20 text-xs"
             value={String(intervalSecs)}
             onChange={(e) => setIntervalSecs(Number(e.target.value))}
+            aria-label="采样间隔"
           >
             {[2, 5, 10, 30, 60].map((s) => (
               <option key={s} value={s}>
-                {s}s
+                {s} 秒
               </option>
             ))}
           </NativeSelect>
@@ -205,7 +223,7 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
           <MemoryPie latest={latest} />
         </ChartCard>
         <ChartCard
-          title={`网络 ↓${formatBytes(latest.netRxBps)}/s ↑${formatBytes(latest.netTxBps)}/s`}
+          title={`网络 ↓${formatRate(latest.netRxBps)} ↑${formatRate(latest.netTxBps)}`}
         >
           <NetworkChart samples={visibleSamples} />
         </ChartCard>
@@ -213,15 +231,13 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
           title={
             <>
               负载
-              <span
-                className={loadState(latest).className}
-                title="按最近 1 分钟平均负载 ÷ CPU 核心数划分"
-              >
+              <span className={loadState(latest).className}>
                 {loadState(latest).label}
               </span>
             </>
           }
-          extra={`1m ${latest.load1.toFixed(2)} · 5m ${latest.load5.toFixed(2)} · 15m ${latest.load15.toFixed(2)}`}
+          extra={`1 分钟 ${latest.load1.toFixed(2)} · 5 分钟 ${latest.load5.toFixed(2)} · 15 分钟 ${latest.load15.toFixed(2)}`}
+          description="负载是排队等 CPU 的任务数量(已除以核心数):大于 1 说明任务在排队等待"
         >
           <LoadChart samples={visibleSamples} />
         </ChartCard>
@@ -260,330 +276,7 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
   );
 }
 
-/** 图表卡片容器:title 允许内嵌状态词,extra 显示右侧补充说明。 */
-function ChartCard({
-  title,
-  extra,
-  children,
-}: {
-  title: React.ReactNode;
-  extra?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex min-h-36 flex-col rounded-md border p-2">
-      <div className="mb-1 flex items-center gap-1 text-xs font-medium">
-        {title}
-        {extra && (
-          <span
-            className="ml-auto text-[10px] font-normal text-muted-foreground"
-            title="过去 1 / 5 / 15 分钟的平均负载"
-          >
-            {extra}
-          </span>
-        )}
-      </div>
-      <div className="min-h-0 flex-1">{children}</div>
-    </div>
-  );
-}
-
-/**
- * 负载档位:平均负载除以核心数得到"每核排队压力"。
- * ≤0.3 空闲,≤0.7 正常,≤1 繁忙,>1 过载(任务在排队等 CPU)。
- */
-function loadState(latest: MetricsSample): {
-  label: string;
-  className: string;
-} {
-  const cores = Math.max(1, latest.cpuCoresPercent.length);
-  const ratio = latest.load1 / cores;
-  if (ratio <= 0.3) return { label: "空闲", className: "text-emerald-500" };
-  if (ratio <= 0.7) return { label: "正常", className: "text-emerald-500" };
-  if (ratio <= 1.0) return { label: "繁忙", className: "text-orange-500" };
-  return { label: "过载", className: "text-red-500" };
-}
-
-/** 通用时间轴(样本 → 折线图数据;时间窗切片与降采样已在视图层完成)。 */
-function toTimeline(
-  samples: MetricsSample[],
-): { time: string; [key: string]: number | string }[] {
-  return samples.map((s) => ({
-    time: new Date(s.ts).toLocaleTimeString("zh-CN", {
-      hour12: false,
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    }),
-    /** 数据轴是字节/秒;tooltip 用 formatBytes 动态换算单位。 */
-    netRx: s.netRxBps,
-    netTx: s.netTxBps,
-    load1: s.load1,
-    load5: s.load5,
-  }));
-}
-
-/** 占用环形饼图属性。 */
-interface UsagePieProps {
-  /** 扇区数据,依次为占用/剩余。 */
-  segments: { name: string; value: number }[];
-  /** 扇区主题色(CSS 变量,值本身是完整 oklch 颜色,禁止再包 hsl())。 */
-  colors: string[];
-  /** 环心百分比文案。 */
-  centerLabel: string;
-  /** tooltip 数值格式化。 */
-  formatValue: (value: number) => string;
-}
-
-/**
- * 占用环形饼图:首扇区为主题色实色,剩余扇区同色低透明度,
- * 环心显示百分比。颜色直接用 CSS 变量,自动跟随明暗主题。
- */
-function UsagePie({
-  segments,
-  colors,
-  centerLabel,
-  formatValue,
-}: UsagePieProps) {
-  return (
-    <div className="relative size-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
-          <Tooltip
-            contentStyle={{ fontSize: 10 }}
-            formatter={(value, name) =>
-              [formatValue(Number(value)), String(name)] as [string, string]
-            }
-          />
-          <Pie
-            data={segments}
-            dataKey="value"
-            nameKey="name"
-            innerRadius="68%"
-            outerRadius="96%"
-            startAngle={90}
-            endAngle={-270}
-            strokeWidth={0}
-            isAnimationActive={false}
-          >
-            {segments.map((segment, i) => (
-              <Cell
-                key={segment.name}
-                fill={colors[i]}
-                fillOpacity={i === 0 ? 1 : 0.18}
-              />
-            ))}
-          </Pie>
-        </PieChart>
-      </ResponsiveContainer>
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <span className="text-sm font-semibold tabular-nums">
-          {centerLabel}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-/** CPU 占用饼图(已用/空闲)。 */
-function CpuPie({ latest }: { latest: MetricsSample }) {
-  const percent = latest.cpuPercent ?? 0;
-  return (
-    <UsagePie
-      segments={[
-        { name: "已用", value: percent },
-        { name: "空闲", value: Math.max(0, 100 - percent) },
-      ]}
-      colors={["var(--chart-1)", "var(--chart-1)"]}
-      centerLabel={`${percent.toFixed(1)}%`}
-      formatValue={(v) => `${v.toFixed(1)}%`}
-    />
-  );
-}
-
-/** 内存占用饼图(已用/可用)。 */
-function MemoryPie({ latest }: { latest: MetricsSample }) {
-  const usedKb = Math.min(latest.memUsedKb, latest.memTotalKb);
-  const percent =
-    latest.memTotalKb > 0 ? (usedKb / latest.memTotalKb) * 100 : 0;
-  return (
-    <UsagePie
-      segments={[
-        { name: "已用", value: usedKb },
-        { name: "可用", value: Math.max(0, latest.memTotalKb - usedKb) },
-      ]}
-      colors={["var(--chart-2)", "var(--chart-2)"]}
-      centerLabel={`${percent.toFixed(0)}%`}
-      formatValue={(v) => formatBytes(v * 1024)}
-    />
-  );
-}
-
-/** 网络双线图。 */
-function NetworkChart({ samples }: { samples: MetricsSample[] }) {
-  const data = toTimeline(samples);
-  return (
-    <ResponsiveContainer width="100%" height="100%">
-      <LineChart data={data} margin={{ top: 2, right: 4, bottom: 0, left: -8 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-        <XAxis dataKey="time" hide />
-        <YAxis
-          tick={{ fontSize: 9 }}
-          unit="B/s"
-          tickFormatter={(v) => formatAxisBytes(Number(v))}
-        />
-        <Tooltip
-          contentStyle={{ fontSize: 10 }}
-          cursor={{ stroke: "var(--border)" }}
-          formatter={(v, name) =>
-            [`${formatBytes(Number(v))}/s`, String(name)] as [string, string]
-          }
-        />
-        <Line
-          type="monotone"
-          dataKey="netRx"
-          stroke="#3b82f6"
-          strokeWidth={1.5}
-          dot={false}
-          name="下行"
-          isAnimationActive={false}
-        />
-        <Line
-          type="monotone"
-          dataKey="netTx"
-          stroke="#22c55e"
-          strokeWidth={1.5}
-          dot={false}
-          name="上行"
-          isAnimationActive={false}
-        />
-      </LineChart>
-    </ResponsiveContainer>
-  );
-}
-
-/** 网络 Y 轴数字 → 人读(B/KiB/MiB),保留 1 位小数。 */
-function formatAxisBytes(v: number): string {
-  if (!Number.isFinite(v) || v < 0) return "0";
-  if (v >= 1024 * 1024) return `${(v / 1024 / 1024).toFixed(1)}M`;
-  if (v >= 1024) return `${(v / 1024).toFixed(1)}K`;
-  return String(Math.round(v));
-}
-
-/** 负载迷你趋势。 */
-function LoadChart({ samples }: { samples: MetricsSample[] }) {
-  const data = toTimeline(samples);
-  return (
-    <ResponsiveContainer width="100%" height="100%">
-      <LineChart
-        data={data}
-        margin={{ top: 2, right: 4, bottom: 0, left: -20 }}
-      >
-        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-        <XAxis dataKey="time" hide />
-        <YAxis tick={{ fontSize: 9 }} />
-        <Tooltip
-          contentStyle={{ fontSize: 10 }}
-          cursor={{ stroke: "var(--border)" }}
-        />
-        <Line
-          type="monotone"
-          dataKey="load1"
-          stroke="#f59e0b"
-          strokeWidth={1.5}
-          dot={false}
-          name="1m"
-          isAnimationActive={false}
-        />
-        <Line
-          type="monotone"
-          dataKey="load5"
-          stroke="#94a3b8"
-          strokeWidth={1}
-          dot={false}
-          name="5m"
-          isAnimationActive={false}
-        />
-      </LineChart>
-    </ResponsiveContainer>
-  );
-}
-
-/** 底部小节标题:图标 + 名称,右侧放补充说明。 */
-function SectionHeader({
-  icon: Icon,
-  label,
-  hint,
-}: {
-  icon: LucideIcon;
-  label: string;
-  hint?: string;
-}) {
-  return (
-    <header className="flex items-center gap-1.5 text-xs font-medium">
-      <Icon className="size-3 text-muted-foreground" aria-hidden />
-      {label}
-      {hint && (
-        <span className="ml-auto text-[10px] font-normal text-muted-foreground">
-          {hint}
-        </span>
-      )}
-    </header>
-  );
-}
-
-/** 磁盘单行:挂载点 · 占用百分比 · 进度条 · 已用/总量(>85% 橙,>95% 红)。 */
-function DiskBar({
-  disk,
-}: {
-  disk: { mount: string; totalKb: number; usedKb: number };
-}) {
-  const percent = disk.totalKb > 0 ? (disk.usedKb / disk.totalKb) * 100 : 0;
-  const color =
-    percent > 95 ? "bg-red-500" : percent > 85 ? "bg-orange-500" : "bg-primary";
-  return (
-    <div
-      className="flex items-center gap-2 text-xs"
-      title={`${disk.mount} · 已用 ${formatBytes(disk.usedKb * 1024)} / 共 ${formatBytes(disk.totalKb * 1024)}`}
-    >
-      <span
-        className="w-28 shrink-0 truncate font-mono text-muted-foreground"
-        title={disk.mount}
-      >
-        {disk.mount}
-      </span>
-      <span className="w-9 shrink-0 text-right tabular-nums">
-        {percent.toFixed(0)}%
-      </span>
-      <div className="h-1.5 min-w-0 flex-1 rounded bg-muted">
-        <div
-          className={`h-full rounded ${color}`}
-          style={{ width: `${Math.min(100, percent)}%` }}
-        />
-      </div>
-      <span className="w-44 shrink-0 truncate text-right tabular-nums text-muted-foreground">
-        {formatBytes(disk.usedKb * 1024)} / {formatBytes(disk.totalKb * 1024)}
-      </span>
-    </div>
-  );
-}
-
-/** 单核占用行:核号 + 迷你进度条 + 百分比。 */
-function CoreBar({ index, percent }: { index: number; percent: number }) {
-  return (
-    <div className="flex items-center gap-1.5 text-[10px]">
-      <span className="w-8 shrink-0 tabular-nums text-muted-foreground">
-        核{index}
-      </span>
-      <div className="h-1 min-w-0 flex-1 rounded bg-muted">
-        <div
-          className="h-full rounded bg-primary"
-          style={{ width: `${Math.min(100, percent)}%` }}
-        />
-      </div>
-      <span className="w-7 shrink-0 text-right tabular-nums text-muted-foreground">
-        {percent.toFixed(0)}%
-      </span>
-    </div>
-  );
+/** 速率文案:每秒字节数 → 人类可读 + /s。 */
+function formatRate(bytesPerSec: number): string {
+  return `${formatBytes(bytesPerSec)}/s`;
 }

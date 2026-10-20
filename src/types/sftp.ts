@@ -1,31 +1,21 @@
 /**
- * SFTP 文件操作 IPC 契约镜像(与 Rust `dto::sftp` 对齐)。
+ * SFTP 契约类型:字段与取值全部来自 Rust 生成物(`gen/sftp.ts`)。
+ * 本文件只做前端命名别名,禁止手写后端字段(AGENTS.md §5)。
  */
+export type {
+  DeleteRemoteEntriesRequestDto,
+  RemoteFileTypeDto,
+  RenameRemoteEntryRequestDto,
+  SessionOnlyRequestDto,
+  SessionPathRequestDto,
+  SetRemotePermissionsRequestDto,
+} from "./gen/sftp";
 
+/** 远端文件条目。 */
+export type FileEntry = import("./gen/sftp").FileEntryDto;
 /** 远端文件类型。 */
-export type RemoteFileType = "dir" | "file" | "symlink" | "other";
-
-/** 远端文件条目(PRD §6.4 文件列表)。 */
-export interface FileEntry {
-  name: string;
-  fileType: RemoteFileType;
-  size: number;
-  /** 修改时间(unix 秒)。 */
-  mtime: number | null;
-  /** 权限位(如 493 = 0o755)。 */
-  mode: number | null;
-  /** 权限字符串(如 drwxr-xr-x)。 */
-  permissions: string;
-  owner: string | null;
-}
-
+export type RemoteFileType = import("./gen/sftp").RemoteFileTypeDto;
 /** 单条删除失败记录。 */
-export interface DeleteFailure {
-  path: string;
-  message: string;
-}
-
+export type DeleteFailure = import("./gen/sftp").DeleteFailureDto;
 /** 批量删除结果。 */
-export interface DeleteRemoteResult {
-  failed: DeleteFailure[];
-}
+export type DeleteRemoteResult = import("./gen/sftp").DeleteRemoteResultDto;

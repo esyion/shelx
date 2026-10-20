@@ -133,9 +133,9 @@ describe("ProcessView", () => {
     expect(rows[1]).toHaveTextContent("alist");
   });
 
-  it("结束进程:确认弹窗 → 调用接口 → toast 并刷新", async () => {
+  it("结束进程:确认弹窗用人话说明后果 → 调用接口 → toast 并刷新", async () => {
     mocks.listProcesses.mockResolvedValue([
-      proc({ pid: "42", comm: "nginx", args: "nginx: master" }),
+      proc({ pid: "42", comm: "nginx", user: "www-data", args: "nginx: master" }),
     ]);
     mocks.killProcess.mockResolvedValue(undefined);
     // 挂上 ToastHost 以断言用户可见的成功提示。
@@ -147,11 +147,13 @@ describe("ProcessView", () => {
     );
     await screen.findByText("nginx");
 
-    // 点击行内结束按钮 → 弹确认框。
+    // 点击行内结束按钮 → 弹确认框(不得出现 SIGTERM 这类裸术语)。
     fireEvent.click(screen.getByRole("button", { name: /结束进程 nginx/ }));
     expect(
-      await screen.findByText(/发送 SIGTERM 终止信号/),
+      await screen.findByText(/请求进程「nginx」.*正常退出/),
     ).toBeInTheDocument();
+    expect(screen.getByText(/没有响应/)).toBeInTheDocument();
+    expect(screen.queryByText(/SIGTERM/)).not.toBeInTheDocument();
 
     // 确认 → 调用 killProcess(42) → 成功 toast,弹窗关闭。
     fireEvent.click(screen.getByRole("button", { name: "结束进程" }));
@@ -159,13 +161,15 @@ describe("ProcessView", () => {
       expect(mocks.killProcess).toHaveBeenCalledWith(SESSION_ID, "42");
     });
     expect(
-      await screen.findByText(/已结束进程 nginx\(42\)/),
+      await screen.findByText(/已请求退出进程 nginx\(编号 42\)/),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/发送 SIGTERM/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/正常退出/)).not.toBeInTheDocument();
   });
 
   it("结束进程失败展示错误 toast,弹窗保持打开", async () => {
-    mocks.listProcesses.mockResolvedValue([proc({ pid: "42", comm: "nginx" })]);
+    mocks.listProcesses.mockResolvedValue([
+      proc({ pid: "42", comm: "nginx", user: "www-data" }),
+    ]);
     mocks.killProcess.mockRejectedValue(new Error("权限不足"));
     render(
       <>
@@ -178,7 +182,43 @@ describe("ProcessView", () => {
     fireEvent.click(screen.getByRole("button", { name: /结束进程 nginx/ }));
     fireEvent.click(await screen.findByRole("button", { name: "结束进程" }));
     expect(await screen.findByText("权限不足")).toBeInTheDocument();
-    expect(screen.getByText(/发送 SIGTERM 终止信号/)).toBeInTheDocument();
+    expect(screen.getByText(/正常退出/)).toBeInTheDocument();
+  });
+
+  it("root 进程确认框给出额外风险提示,普通进程不给", async () => {
+    mocks.listProcesses.mockResolvedValue([
+      proc({ pid: "42", comm: "sshd", user: "root" }),
+    ]);
+    render(<ProcessView sessionId={SESSION_ID} />);
+    await screen.findByText("sshd");
+
+    fireEvent.click(screen.getByRole("button", { name: /结束进程 sshd/ }));
+    expect(
+      await screen.findByText(/以 root\(系统管理员\)身份运行/),
+    ).toBeInTheDocument();
+  });
+
+  it("PID 1 不允许从界面结束(结束会导致整机崩溃)", async () => {
+    mocks.listProcesses.mockResolvedValue([proc({ pid: "1", comm: "systemd" })]);
+    render(<ProcessView sessionId={SESSION_ID} />);
+    await screen.findByText("systemd");
+
+    const killButton = screen.getByRole("button", { name: /结束进程 systemd/ });
+    expect(killButton).toBeDisabled();
+    expect(String(killButton.getAttribute("title"))).toMatch(/宕机/);
+  });
+
+  it("关键列含义提升为可见说明(不再只藏在悬停提示里)", async () => {
+    mocks.listProcesses.mockResolvedValue([proc({})]);
+    render(<ProcessView sessionId={SESSION_ID} />);
+    await screen.findByText("init");
+
+    expect(
+      screen.getByText(/CPU 100% 表示用满一个核心/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "CPU列说明" }),
+    ).toBeInTheDocument();
   });
 
   it("筛选框按进程名/用户/PID 过滤", async () => {

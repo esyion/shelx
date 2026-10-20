@@ -5,7 +5,7 @@
 use serde::Serialize;
 
 /// 应用版本响应。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AppVersionDto {
     /// 语义化版本字符串,如 `"0.2.0"`。

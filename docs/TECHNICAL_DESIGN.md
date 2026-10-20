@@ -338,6 +338,15 @@ type IpcResult<T> =
 | 命令 | 参数 → 返回 |
 | ------ | ------------- |
 | `get_settings` / `update_settings` | `() → AppSettings` / `Partial<AppSettings> → AppSettings`(即时生效) |
+| `get_settings_schema` | `() → SettingSpec[]`(设置项契约:路径/类型/区间/档位/候选值/单位/默认值;设置界面据此渲染,前端不手写后端字段名与区间) |
+
+> `update_settings` 的补丁先按契约 schema 校验:字段名不在契约内直接返回
+> `INVALID_ARGUMENT`(`details` 为路径列表),取值越界返回
+> `details: SettingViolation[]`(`{path,min,max,unit,received}`,字符串已脱敏)。
+> 此前"忽略未知字段"的宽容正是 `chunkSizeKiB` / `chunkSizeKib` 漂移导致假开关的成因。
+> 类型与取值区间的单一来源、生成流程与门禁见 `docs/IPC_CONTRACT.md`:
+> `cargo test --lib` 导出 `contract/ipc-schema.json` + `contract/settings-contract.json`,
+> `bun run gen:ipc` 生成 `src/types/gen/**` 与设置界面可渲染的区间/档位数据。
 | `get_layout` / `save_layout` | `() → LayoutState` / `LayoutState → void` |
 | `get_data_migration_status` | `() → DataMigrationStatus`(§7.1.1;`pending` 非空且 `autoPromptSuppressed` 为 false 时自动弹窗) |
 | `approve_data_migration` | `{id} → void`(写待执行标记,重启后启动早期原子 rename) |
@@ -564,7 +573,7 @@ tracing 分级 info 默认;不记录密码/口令/密钥内容与完整指纹明
 | `sessions` | `Record<sessionId, SessionInfo>`;由 `session-status-changed` 事件驱动 |
 | `transfers` | `Record<taskId, TransferTask>`;由进度 Channel(200ms)与命令驱动 |
 | `layout` | 侧栏/面板状态;本地即时更新 + 防抖 `save_layout` |
-| `settings` | 启动 `get_settings` 拉取;变更乐观更新 + `update_settings` |
+| `settings` | 启动并行拉取 `get_settings` + `get_settings_schema`;变更乐观更新 + `update_settings`,失败回滚并保留后端错误原文与结构化违规详情 |
 
 终端输出与监控样本不走全局 store:前者直写 xterm;后者在监控视图组件内 `useRef` 缓冲(720 点),采样间隔触发图表更新,避免全局 re-render。
 

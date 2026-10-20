@@ -21,17 +21,19 @@ import {
   closeTerminal,
   openTerminal,
   readClipboardText,
-  reconnectSession,
   resizeTerminal,
   writeClipboardText,
   writeTerminal,
 } from "@/app/api";
 import { encodeInput, initGbkEncoder, StreamDecoder } from "@/lib/codec";
-import { RotateCwIcon, UnplugIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
 import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
+import { SessionStatusOverlay } from "./session-status-overlay";
+import {
+  FONT_SIZE_MAX,
+  FONT_SIZE_MIN,
+  scheduleFontSizePersist,
+} from "./font-size-sync";
 
 /** 终端视图属性。 */
 export interface TerminalViewProps {
@@ -154,14 +156,15 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
     });
     resizeObserver.observe(host);
 
-    // Ctrl+滚轮缩放:即时生效并持久化(节流)。
+    // Ctrl+滚轮缩放:即时生效并持久化(节流)。区间与后端 settings 校验(8–32)
+    // 对齐,避免滚出界后本地已变、保存被拒、重启又跳回旧值。
     const wheelHandler = (event: WheelEvent) => {
       if (!event.ctrlKey) return;
       event.preventDefault();
       const current = terminal.options.fontSize ?? 13;
       const next = Math.min(
-        72,
-        Math.max(6, current + (event.deltaY < 0 ? 1 : -1)),
+        FONT_SIZE_MAX,
+        Math.max(FONT_SIZE_MIN, current + (event.deltaY < 0 ? 1 : -1)),
       );
       terminal.options.fontSize = next;
       try {
@@ -169,7 +172,14 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
       } catch {
         // 忽略隐藏态 fit 失败。
       }
-      scheduleFontSizePersist(next);
+      scheduleFontSizePersist(next, (fallback) => {
+        terminal.options.fontSize = fallback;
+        try {
+          fit.fit();
+        } catch {
+          // 忽略隐藏态 fit 失败。
+        }
+      });
     };
     host.addEventListener("wheel", wheelHandler, {
       passive: false,
@@ -259,66 +269,7 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
         className="h-full w-full px-1 py-0.5 text-[13px] leading-[1.2]"
         aria-label="终端"
       />
-      {status !== "online" && (
-        <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center">
-          <div className="pointer-events-auto flex animate-in fade-in slide-in-from-top-2 items-center gap-2 rounded-full border border-border/60 bg-background/80 py-1 pl-1.5 pr-1.5 shadow-lg shadow-black/5 backdrop-blur-md">
-            {status === "connecting" ? (
-              <>
-                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted">
-                  <Spinner className="size-3 text-muted-foreground" />
-                </span>
-                <span className="pr-1.5 text-xs text-muted-foreground">
-                  连接中…
-                </span>
-              </>
-            ) : (
-              <>
-                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-destructive/10">
-                  <UnplugIcon className="size-3 text-destructive" />
-                </span>
-                <span className="whitespace-nowrap text-xs">
-                  <span className="font-medium">连接已断开</span>
-                  <span className="text-muted-foreground">
-                    {" "}
-                    · 内容保留可复制
-                  </span>
-                </span>
-                <Button
-                  size="xs"
-                  className="ml-0.5 rounded-full"
-                  onClick={() => void reconnectAndSync(sessionId)}
-                >
-                  <RotateCwIcon data-icon="inline-start" />
-                  重新连接
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      <SessionStatusOverlay sessionId={sessionId} status={status} />
     </div>
   );
-}
-
-/** 字号持久化节流句柄。 */
-let fontSizePersistTimer: ReturnType<typeof setTimeout> | null = null;
-
-/** 把字号写回设置(500ms 节流)。 */
-function scheduleFontSizePersist(fontSize: number): void {
-  if (fontSizePersistTimer) clearTimeout(fontSizePersistTimer);
-  fontSizePersistTimer = setTimeout(() => {
-    void useSettingsStore.getState().patch({ terminal: { fontSize } });
-  }, 500);
-}
-
-/** 重连会话并把最新状态同步回 store;失败时 toast 告知,不影响已保留的终端内容。 */
-async function reconnectAndSync(sessionId: string): Promise<void> {
-  try {
-    useSessionsStore.getState().upsert(await reconnectSession(sessionId));
-  } catch (err) {
-    const { useUiStore } = await import("@/stores/ui");
-    useUiStore
-      .getState()
-      .toast(err instanceof Error ? err.message : "重连失败", "error");
-  }
 }

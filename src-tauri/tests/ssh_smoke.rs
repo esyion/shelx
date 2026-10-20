@@ -317,7 +317,10 @@ async fn transfer_upload_download_round_trip() {
     struct Collect(Mutex<Vec<String>>);
     impl shelx_lib::application::ports::TransferProgressSink for Collect {
         fn on_progress(&self, event: &shelx_lib::application::ports::TransferProgressEvent) {
-            self.0.lock().unwrap().push(event.status.clone());
+            self.0
+                .lock()
+                .unwrap()
+                .push(event.status.as_str().to_owned());
         }
     }
     let sink = Arc::new(Collect::default());

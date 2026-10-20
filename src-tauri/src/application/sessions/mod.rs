@@ -200,7 +200,8 @@ impl SessionService {
             .map(|(id, _)| id.clone())
     }
 
-    /// 快速连接:临时会话不落库;`save` 时先创建连接记录再按记录建连。
+    /// 快速连接:临时会话不落库;`save` 时先创建连接记录再按记录建连,
+    /// 建连失败回滚该记录(不留下连不上的幽灵连接)。
     pub async fn connect_quick(
         self: &Arc<Self>,
         spec: QuickConnectSpec,
@@ -227,7 +228,21 @@ impl SessionService {
                 remark: None,
             };
             let config = self.connections.create_connection(draft)?;
-            return self.connect_by_conn(&config.id).await;
+            return match self.connect_by_conn(&config.id).await {
+                Ok(info) => Ok(info),
+                Err(err) => {
+                    // 建连失败要回滚刚落库的记录:否则用户会看到一条自己没打算留、
+                    // 也连不上的"幽灵连接"(勾选保存只代表希望连上后保留)。
+                    if let Err(cleanup_err) = self.connections.delete_connection(&config.id) {
+                        tracing::warn!(
+                            conn_id = %config.id.as_str(),
+                            error = %cleanup_err,
+                            "快速连接失败后回滚连接记录未成功"
+                        );
+                    }
+                    Err(err)
+                }
+            };
         }
         let params = build_params(
             &spec.host,
@@ -512,7 +527,7 @@ impl SessionService {
         self.events.status_changed(&SessionStatusEvent {
             session_id: session_id.to_owned(),
             conn_id,
-            status: status.as_str().to_owned(),
+            status,
             reason,
         });
     }

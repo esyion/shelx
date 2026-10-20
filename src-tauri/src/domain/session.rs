@@ -8,7 +8,11 @@ use super::error::DomainError;
 /// - `Connecting → Online | Disconnected`(认证完成或失败/断连)
 /// - `Online → Disconnected`(主动关闭、网络故障、服务器断连)
 /// - `Disconnected → Connecting`(手动重连)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// 序列化字面量与 [`Self::as_str`] 一致,并由契约导出进入前端类型
+/// (AGENTS.md §5:枚举取值只有后端一处定义)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
 pub enum SessionStatus {
     /// TCP/SSH 连接与认证进行中。
     Connecting,
