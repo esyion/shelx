@@ -7,6 +7,28 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > Versions prior to `0.2.0` were internal iterations before the project
 > was open-sourced; their changes are summarized under "Unreleased / 0.2.0".
 
+## [0.2.25] - 2026-10-20
+
+### Fixed
+
+- **Update dialog no longer re-checks on open** — with an update already
+  detected (sidebar icon lit by the background auto-check), opening the
+  dialog now shows it instantly with zero network requests; a check runs
+  only when the app holds no update information at all (e.g. auto-check
+  disabled or still in its startup delay). Manual refresh stays on the
+  「重新检查」button.
+- **Dialog title covers the checking state** — while a check was in
+  flight the title previously flipped to「已是最新版本」, contradicting
+  the blue sidebar icon and the release notes still on screen; it now
+  reads「正在检查更新…」.
+- **Install obtains the updater handle lazily** — updates found by the
+  background auto-check carry no plugin `Update` object, so「立即更新」
+  now performs a silent check first (shown as「正在获取更新信息…」),
+  refreshes version / release notes when a newer release exists, and
+  falls back to "up-to-date" with a toast when the notice is stale
+  instead of failing silently. Concurrent install clicks and late
+  `app-update-available` events during an install are ignored.
+
 ## [0.2.24] - 2026-10-19
 
 ### Added
