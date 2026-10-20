@@ -2,12 +2,15 @@
  * 侧栏更新按钮 + 更新弹窗(从 sidebar.tsx 抽出,AGENTS.md §8 单文件 300 行约束)。
  *
  *   - 默认灰色图标(opacity-40);检测到新版本时变蓝,
- *     触发途径:Rust 后台自动检查事件或用户打开弹窗检查;
+ *     触发途径:Rust 后台自动检查事件(webview 刷新后经 init 恢复);
+ *   - 弹窗打开纯展示 store 已有数据(零网络请求),仅在毫无已知信息(idle)时
+ *     检查一次;「重新检查」按钮负责手动刷新;
  *   - 弹窗展示当前/最新版本、release notes 与「重新检查」;
- *   - 「立即更新」后弹窗原位展示进度:已知百分比渲染 Progress 条,
- *     服务器未返回总大小时退化为 Spinner 不定态;下载完成切换
- *     「正在安装」等待插件接管安装与重启。安装期间禁止重复检查,
- *     但允许关闭弹窗(后台继续下载,重开可恢复查看)。
+ *   - 「立即更新」后弹窗原位展示进度:更新来自后台通知时先静默补查句柄
+ *     (「正在获取更新信息…」),已知百分比渲染 Progress 条,服务器未返回
+ *     总大小时退化为 Spinner 不定态;下载完成切换「正在安装」等待插件接管
+ *     安装与重启。安装期间禁止重复检查,但允许关闭弹窗
+ *     (后台继续下载,重开可恢复查看)。
  */
 "use client";
 
@@ -77,10 +80,11 @@ export function UpdateButton({ collapsed = false }: { collapsed?: boolean }) {
 
   const [open, setOpen] = useState(false);
 
-  // 打开时强制刷一次,确保看到的是最新数据;安装进行中不检查,
+  // 打开时仅在毫无已知信息(idle)时检查一次;已有数据(含已发现的更新)
+  // 纯展示、零网络请求,手动刷新走「重新检查」。安装进行中不检查,
   // 否则 checkNow 会丢弃正在下载的 Update 对象。
   useEffect(() => {
-    if (open && status !== "checking" && installPhase === "idle") runCheck();
+    if (open && status === "idle" && installPhase === "idle") runCheck();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -95,18 +99,28 @@ export function UpdateButton({ collapsed = false }: { collapsed?: boolean }) {
 
   /** 安装阶段的状态文案;由 installPhase / installProgress 派生。 */
   const installLabel =
-    installPhase === "installing"
-      ? "正在安装更新,完成后应用将自动重启…"
-      : installProgress === null
-        ? "正在下载更新…"
-        : `正在下载更新 ${installProgress}%`;
+    installPhase === "checking"
+      ? "正在获取更新信息…"
+      : installPhase === "installing"
+        ? "正在安装更新,完成后应用将自动重启…"
+        : installProgress === null
+          ? "正在下载更新…"
+          : `正在下载更新 ${installProgress}%`;
 
-  /** 触发安装流程;弹窗保持打开原位展示进度,失败由 store 抛错,此处统一 toast。 */
+  /**
+   * 触发安装流程;弹窗保持打开原位展示进度,失败由 store 抛错,此处统一
+   * toast。返回 false 仅在安装前补查发现通知已过期时出现(store 已落回
+   * up-to-date,弹窗随之切换),补一条提示避免「点了没反应」。
+   */
   const startInstall = () => {
-    installUpdate().catch((err: unknown) => {
-      const msg = err instanceof Error ? err.message : String(err);
-      toast(`更新失败: ${msg}`, "error");
-    });
+    installUpdate()
+      .then((ok) => {
+        if (!ok) toast("更新已不可用,当前已是最新版本", "info");
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast(`更新失败: ${msg}`, "error");
+      });
   };
 
   /** 启动检查:store 内部捕获异常并落到 "error" 状态,UI 据此 toast。 */
@@ -140,7 +154,13 @@ export function UpdateButton({ collapsed = false }: { collapsed?: boolean }) {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              {isAvailable ? "发现新版本" : hasError ? "检查更新失败" : "已是最新版本"}
+              {status === "checking"
+                ? "正在检查更新…"
+                : isAvailable
+                  ? "发现新版本"
+                  : hasError
+                    ? "检查更新失败"
+                    : "已是最新版本"}
             </DialogTitle>
             <DialogDescription>
               {isAvailable && updateVersion

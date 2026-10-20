@@ -5,7 +5,8 @@
  *   - 启动时静默读取当前版本号,并拉取 Rust 后台已发现的更新通知
  *     (自动检查的调度/重试/设置开关都在 Rust 侧,发现新版本经
  *     `app-update-available` 事件推送 applyNotice,仅驱动图标变蓝);
- *   - 用户主动检查走弹窗(打开即查/「重新检查」按钮),结果由 UI toast;
+ *   - 用户主动检查走弹窗(「重新检查」按钮;弹窗打开仅在毫无已知信息时
+ *     查一次,其余情况纯展示 store 数据、零网络请求),结果由 UI toast;
  *   - 检查超时由 `@tauri-apps/plugin-updater` 的 `check({ timeout })` 接管,
  *     不在前端再发任何 GitHub fetch,从根本上规避 CSP / 状态机缺口。
  *
@@ -42,10 +43,12 @@ export type UpdateStatus =
   | "error";
 
 /**
- * 安装流程状态机:idle 未在安装 → downloading 下载中 →
- * installing 下载完成等待插件接管安装重启(桌面端进程随即退出)。
+ * 安装流程状态机:idle 未在安装 → checking 获取更新句柄(更新来自后台
+ * 通知时没有现成的 `Update` 对象,需先静默补查一次)→ downloading 下载中
+ * (百分比经 `installProgress` 暴露)→ installing 下载完成等待插件接管
+ * 安装重启(桌面端进程随即退出)。
  */
-export type InstallPhase = "idle" | "downloading" | "installing";
+export type InstallPhase = "idle" | "checking" | "downloading" | "installing";
 
 export interface UpdateStore {
   /** 当前应用版本号;启动加载前为 null。 */
@@ -73,7 +76,7 @@ export interface UpdateStore {
   init(): Promise<void>;
   /**
    * 写入 Rust 后台自动检查发现的通知(事件推送与 init 拉取共用)。
-   * 手动检查进行中时忽略,以手动检查的结果为准。
+   * 手动检查或安装流程进行中时忽略,避免事件晚到与本地结果互相抖动。
    */
   applyNotice(notice: UpdateNotice): void;
   /**
@@ -83,8 +86,11 @@ export interface UpdateStore {
   checkNow(): Promise<UpdateStatus>;
   /**
    * 下载并安装更新;成功后调用 `relaunchApp` 重启。
+   * 尚无 Update 句柄时(更新来自后台通知)先静默补查一次:补查发现通知
+   * 已过期则复位为 up-to-date 并返回 `false`,由 UI 提示;补查到新句柄时
+   * 同步刷新版本号与 release notes(远端可能已发布更新的版本)。
    * 下载进度经 `installPhase` / `installProgress` 暴露给 UI。
-   * 失败抛 Error 由 UI 捕获 toast,并复位安装状态;无更新对象时返回 `false`。
+   * 失败抛 Error 由 UI 捕获 toast,并复位安装状态。
    */
   installUpdate(): Promise<boolean>;
 }
@@ -94,7 +100,10 @@ export const useUpdateStore = create<UpdateStore>((set, get) => {
   let updateRef: Update | null = null;
   /** 防止并发点击导致多次检查。 */
   let checking = false;
-  /** 防止安装进行中触发新的检查(会 close 正在下载的 Update 对象)。 */
+  /**
+   * 防止安装/下载进行中触发新的检查或重复安装
+   * (checkNow 会 close 正在下载的 Update 对象)。
+   */
   let installing = false;
 
   return {
@@ -127,8 +136,8 @@ export const useUpdateStore = create<UpdateStore>((set, get) => {
     },
 
     applyNotice(notice) {
-      // 手动检查进行中时不覆盖,避免事件晚到与手动结果互相抖动。
-      if (checking) return;
+      // 手动检查或安装进行中不覆盖,避免事件晚到与本地结果互相抖动。
+      if (checking || installing) return;
       set({
         currentVersion: notice.currentVersion,
         updateVersion: notice.version,
@@ -188,11 +197,40 @@ export const useUpdateStore = create<UpdateStore>((set, get) => {
     },
 
     async installUpdate() {
-      const update = updateRef;
-      if (!update) return false;
+      if (installing) return false;
       installing = true;
-      set({ installPhase: "downloading", installProgress: null });
+      // 先置 checking:后台通知路径没有现成句柄,需静默补查一次再下载。
+      set({ installPhase: "checking", installProgress: null });
       try {
+        let update = updateRef;
+        if (!update) {
+          const fresh = await checkForUpdate();
+          if (!fresh) {
+            // 通知已过期(远端清单已回到当前版本):安装流程结束,
+            // 落回 up-to-date 由 UI 提示。
+            set({
+              status: "up-to-date",
+              updateVersion: null,
+              notes: null,
+              errorMessage: null,
+              lastCheckedAt: Date.now(),
+              installPhase: "idle",
+              installProgress: null,
+            });
+            return false;
+          }
+          updateRef = fresh;
+          update = fresh;
+          // 补查可能拿到比通知更新的版本,同步刷新展示字段。
+          set({
+            currentVersion: fresh.currentVersion,
+            updateVersion: fresh.version,
+            notes: fresh.body?.trim() || null,
+            errorMessage: null,
+            lastCheckedAt: Date.now(),
+          });
+        }
+        set({ installPhase: "downloading", installProgress: null });
         await downloadAndInstallUpdate(update, (percent) => {
           // gateway 约定:NaN 表示服务器未返回总大小,无法计算百分比。
           if (Number.isNaN(percent)) {
