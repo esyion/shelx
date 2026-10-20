@@ -1,8 +1,11 @@
 /**
- * IME 输入守卫测试:覆盖组合外 beforeinput 的转发决策,以及 attachImeGuard
- * 在 jsdom 下的挂载、组合期放行、宿主捕获拦截与卸载行为。
- * 对应缺陷:WKWebView 下中文输入法击键碎片化("free -h" → "f rf ree -h",
- * 上游 xtermjs/xterm.js#5887)。
+ * IME 输入守卫测试:覆盖组合外 beforeinput 的转发决策与击键去重,以及
+ * attachImeGuard 在 jsdom 下的挂载、组合期放行、宿主捕获拦截与卸载行为。
+ * 对应缺陷:
+ * - WKWebView 下中文输入法击键碎片化("free -h" → "f rf ree -h",
+ *   上游 xtermjs/xterm.js#5887);
+ * - Caps Lock / Shift 大写字母双发("A" → "AA"),守卫转发 xterm 已由
+ *   keypress 送出的同一字符所致。
  */
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -49,6 +52,33 @@ describe("resolveImeInputAction", () => {
     ).toBeNull();
     expect(resolveImeInputAction(imeInput("insertFromPaste", "x"))).toBeNull();
     expect(resolveImeInputAction(imeInput("insertText", null))).toBeNull();
+  });
+
+  it("本轮 keypress 已送出同字符时放行(大写字母双发回归)", () => {
+    expect(
+      resolveImeInputAction(imeInput("insertText", "A"), { keypressChar: "A" }),
+    ).toBeNull();
+    expect(
+      resolveImeInputAction(imeInput("insertLineBreak", null), {
+        keypressChar: "\r",
+      }),
+    ).toBeNull();
+  });
+
+  it("字符不同或无 keypress 时仍照常转发(不误吞 IME 上屏)", () => {
+    expect(
+      resolveImeInputAction(imeInput("insertText", "ree"), {
+        keypressChar: "A",
+      }),
+    ).toEqual({ send: "ree" });
+    expect(
+      resolveImeInputAction(imeInput("insertText", "免"), { keypressChar: null }),
+    ).toEqual({ send: "免" });
+    expect(
+      resolveImeInputAction(imeInput("deleteContentBackward", null), {
+        keypressChar: "A",
+      }),
+    ).toEqual({ send: "\x7F" });
   });
 });
 
@@ -97,6 +127,29 @@ function fireKeyDown(target: EventTarget, keyCode: number): KeyboardEvent {
   return event;
 }
 
+/** 构造带 charCode 的 keypress 事件(jsdom 下 charCode/which 恒为 0,需覆写)。 */
+function fireKeyPress(
+  target: EventTarget,
+  charCode: number,
+  init: KeyboardEventInit = {},
+): KeyboardEvent {
+  const event = new KeyboardEvent("keypress", { bubbles: true, ...init });
+  Object.defineProperty(event, "charCode", { value: charCode });
+  Object.defineProperty(event, "which", { value: charCode });
+  target.dispatchEvent(event);
+  return event;
+}
+
+/** 派发一次完整的 Caps Lock 大写字母击键:keydown → keypress → 原生插入。 */
+function fireUppercaseStroke(
+  textarea: HTMLTextAreaElement,
+  char: string,
+): Event {
+  fireKeyDown(textarea, char.toUpperCase().charCodeAt(0));
+  fireKeyPress(textarea, char.charCodeAt(0));
+  return fireBeforeInput(textarea, "insertText", char);
+}
+
 describe("attachImeGuard", () => {
   it("组合外的原生插入被转发给终端并阻止落入 textarea", () => {
     const { fake, textarea, terminal } = createFakeTerminal();
@@ -106,6 +159,40 @@ describe("attachImeGuard", () => {
     const event = fireBeforeInput(textarea, "insertText", "f");
     expect(fake.inputCalls).toEqual(["f"]);
     expect(event.defaultPrevented).toBe(true);
+    guard?.dispose();
+  });
+
+  it("Caps Lock 大写字母击键只由 xterm 的 keypress 送出,守卫不再转发", () => {
+    const { fake, textarea, terminal } = createFakeTerminal();
+    const guard = attachImeGuard(terminal);
+
+    const event = fireUppercaseStroke(textarea, "A");
+    expect(fake.inputCalls).toEqual([]);
+    // 放行给浏览器:让 xterm 自己的 input 去重(_keyPressHandled)接管。
+    expect(event.defaultPrevented).toBe(false);
+    guard?.dispose();
+  });
+
+  it("上一击键的 keypress 不会污染下一击键(插入先于 keydown 到达)", () => {
+    const { fake, textarea, terminal } = createFakeTerminal();
+    const guard = attachImeGuard(terminal);
+
+    fireUppercaseStroke(textarea, "A");
+    textarea.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true }));
+    // 229 通路:IME 上屏文本先于 keydown 到达,必须照常转发。
+    fireBeforeInput(textarea, "insertText", "A");
+    expect(fake.inputCalls).toEqual(["A"]);
+    guard?.dispose();
+  });
+
+  it("带 ctrl/alt/meta 的 keypress 不参与去重(xterm 对这类键不发送)", () => {
+    const { fake, textarea, terminal } = createFakeTerminal();
+    const guard = attachImeGuard(terminal);
+
+    fireKeyDown(textarea, 65);
+    fireKeyPress(textarea, 65, { ctrlKey: true });
+    fireBeforeInput(textarea, "insertText", "A");
+    expect(fake.inputCalls).toEqual(["A"]);
     guard?.dispose();
   });
 
