@@ -7,6 +7,98 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > Versions prior to `0.2.0` were internal iterations before the project
 > was open-sourced; their changes are summarized under "Unreleased / 0.2.0".
 
+## [0.2.26] - 2026-10-20
+
+### Added
+
+- **Cross-boundary contract is now generated, not hand-copied** — Rust
+  types are exported as JSON Schema (`cargo test --lib ipc_contract`) and
+  `bun run gen:ipc` compiles them into `src/types/gen/**`; every
+  hand-written mirror type in `src/types/*.ts` was replaced by re-exports
+  and aliases, so a renamed or misspelled field is now a compile error
+  instead of a silently dead setting. Guards: `every_id_field_is_string_typed`,
+  enum wire-literal assertions, `src/types/contract.test.ts` and
+  `bun run check:ipc` (now part of the pre-commit gate list). The
+  procedure itself is specified in docs/IPC_CONTRACT.md.
+- **Settings ranges and presets have one owner** — new
+  `application/settings/schema.rs` defines path / kind / min / max /
+  presets / options / unit / default once, consumed by both `validate()`
+  and the UI; the settings screen renders controls from
+  `get_settings_schema`, so there is no longer a duplicate range table to
+  drift. Adding a setting = register it in Rust, run `bun run gen:ipc`,
+  add copy — the control appears by itself.
+- **Visible entry points for capabilities that existed but were
+  unreachable** — quick connect (temporary session, optional「保存为连接」),
+  chmod via the remote context menu, a persistent「传输」button with
+  active/pending badges in the tab bar, server overview page reachable
+  from the sidebar with real metrics, scrollback rows setting, and a
+  keyboard-shortcut reference section in settings.
+- **Test connection before saving** — the connection form can now verify
+  host / credentials with a throwaway session (released afterwards);
+  failures show the backend reason without discarding what was typed.
+- **File lists show real modification times** — local entries report
+  actual `mtime` and (on unix) real permission bits; a「修改时间」column
+  with sorting was added, and the permission column hides itself when the
+  platform has no POSIX mode instead of showing a made-up value.
+
+### Changed
+
+- **Settings screen no longer punishes input** — numeric settings became
+  preset dropdowns aligned with backend validation; a rejected save keeps
+  the chosen value, shows the backend error text inline and names the
+  current persisted value instead of the old「保存失败,已恢复原值」.
+  Path and free-text fields commit on blur/Enter rather than per
+  keystroke, so browsing a directory no longer flashes list errors.
+- **Connection form validates per field** — required fields and the port
+  range are checked before submitting and focus the first error; invalid
+  ports no longer silently fall back to 22; auth method, private key,
+  credential storage and encoding are described in user terms (with an
+  `~/.ssh` key picker) rather than SSH/OS jargon.
+- **Patch writes reject unknown fields** — `update_settings` now refuses
+  paths outside the registered contract and returns structured
+  `{path,min,max,unit,received}` details for out-of-range values. This is
+  the root fix for the block-size setting: the front end had been sending
+  `chunkSizeKiB` while serde emits `chunkSizeKib`, so every change was
+  silently dropped and the value never took effect.
+- **Status fields are enums again** — session status, transfer status and
+  direction cross the boundary as typed enums (identical wire literals,
+  locked by a regression test), and the transfer list renders Chinese
+  status labels instead of raw enum values.
+
+### Fixed
+
+- **Terminal no longer doubles capital letters** — with Caps Lock or
+  Shift, a letter was sent twice because the IME guard forwarded the same
+  character that xterm had already emitted on `keypress`; the guard now
+  defers to xterm's own dedup.
+- **Font-size zoom persists correctly** — Ctrl+wheel clamps to the
+  backend-allowed 8–32 (previously 6–72, so out-of-range sizes were
+  silently reverted on restart) and a rejected write rolls the terminal
+  back with the reason shown.
+- **Transfer conflicts are no longer a dead end** — dismissing the
+  decision dialog leaves the task visibly「等待你决定」with a
+  「处理冲突」re-entry, the ambiguous「取消」button was replaced by the
+  three real decisions, and the queued-conflict policy setting is now
+  actually honoured (uploads used to hard-code「每次询问」).
+- **Monitors and overview tell the truth up front** — non-Linux targets
+  are explained before a doomed subscribe attempt, disconnection states
+  state the next step, and the overview page no longer renders「M4 接入」
+  placeholders or raw session ids.
+- **Destructive actions describe real consequences** — deleting a
+  connection now states that stored credentials remain in the OS keyring
+  and are not cleaned up by this version; remote deletion says
+  permanently / not recoverable and lists aggregated failures; PID 1
+  cannot be killed from the UI.
+- **Process kill wording matches behaviour** — the confirm dialog no
+  longer implies a force-kill option that the backend does not have.
+
+### Removed
+
+- **Scaffold leftovers** — the Tauri template `greet` command, its DTO
+  and application module were deleted (no caller in the front end); the
+  language switcher was removed rather than left as a disabled control
+  for an unimplemented i18n.
+
 ## [0.2.25] - 2026-10-20
 
 ### Fixed
