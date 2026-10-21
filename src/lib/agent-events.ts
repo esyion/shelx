@@ -20,6 +20,7 @@ import type {
   RunState,
   TargetStatus,
   ThreadDto,
+  ThreadSnapshotDto,
   ToolCategory,
 } from "@/types";
 
@@ -204,6 +205,23 @@ export function emptyFragment(): AgentStreamFragment {
 }
 
 /**
+ * 结算且回答已落进历史时,流式时间线里的回答段交给历史消息呈现。
+ *
+ * 事件流不落库,回答文本会:完成的事件广播时快照里随之出现助手消息,
+ * 若继续渲染流式回答段,同一段回答会出现两份(历史一份、时间线一份)。
+ * 失败与取消的错误说明、部分回答只存在于时间线上,不在此列。
+ */
+export function answerRenderedInHistory(
+  stream: Pick<AgentStreamFragment, "settled" | "lastKind"> | null | undefined,
+  snapshot: Pick<ThreadSnapshotDto, "messages"> | null | undefined,
+): boolean {
+  if (!stream?.settled || stream.lastKind !== "final_response") return false;
+  const messages = snapshot?.messages ?? [];
+  const last = messages[messages.length - 1];
+  return last?.role === "assistant";
+}
+
+/**
  * 把增量接到同类的最后一段上;类别一变就另起一段。
  *
  * 先后关系就靠这个保留:第二次思考不会并进第一次的文本里。
@@ -229,6 +247,25 @@ function replaceLastText(parts: AgentPart[], text: string, seq: number): AgentPa
     return [...parts.slice(0, -1), { ...last, text }];
   }
   return [...parts, { type: "text", id: `p${seq}`, text }];
+}
+
+/**
+ * 结算时把回答收敛成权威单份:丢弃之前的回答段,全文落到最后一段回答的位置
+ * (没有就新开一段)。流式途中网关可能把已流出的回答整段重述多遍,时间线上
+ * 会留下重复副本;落库的历史消息只有权威一份,结算后的视图必须与它一致。
+ */
+function settleAnswerText(parts: AgentPart[], text: string, seq: number): AgentPart[] {
+  let lastTextIndex = -1;
+  for (let index = parts.length - 1; index >= 0; index -= 1) {
+    if (parts[index]?.type === "text") {
+      lastTextIndex = index;
+      break;
+    }
+  }
+  if (lastTextIndex < 0) return [...parts, { type: "text", id: `p${seq}`, text }];
+  return parts
+    .filter((part, index) => part.type !== "text" || index === lastTextIndex)
+    .map((part) => (part.type === "text" ? { ...part, text } : part));
 }
 
 /**
@@ -324,6 +361,12 @@ export function applyEvent(
       next.usage = event.usage ?? next.usage;
       break;
     case "final_response":
+      next.settled = true;
+      // 完成态的全文是权威回答(与落库一致),把流式途中重述出的副本收敛掉;
+      // 失败/取消带的是说明文字,只落最后一段,不抹掉已流出的内容。
+      if (event.text) next.parts = settleAnswerText(next.parts, event.text, event.seq);
+      next.usage = event.usage ?? next.usage;
+      break;
     case "run_failed":
     case "run_cancelled":
       next.settled = true;

@@ -20,6 +20,7 @@ import {
   RUN_STATE_DISPLAY,
   TARGET_STATUS_DISPLAY,
   TOOL_CATEGORY_DISPLAY,
+  answerRenderedInHistory,
   applyEvent,
   describeApprovalTargets,
   emptyFragment,
@@ -278,6 +279,71 @@ describe("时间线合并", () => {
     fragment = applyEvent(fragment, event({ seq: 5, kind: "final_response", text: "答案" }));
     fragment = applyEvent(fragment, event({ seq: 3, kind: "text_delta", text: "迟到" }));
     expect(textOf(fragment)).toBe("答案");
+  });
+
+  it("网关整段重述的回答在结算时收敛成权威一份(实测 glm 把一条回答推成三份)", () => {
+    const answer = "你好!我是 shelx 内置的运维助手。";
+    let fragment = emptyFragment();
+    fragment = applyEvent(fragment, event({ seq: 1, kind: "text_delta", text: answer }));
+    fragment = applyEvent(fragment, event({ seq: 2, kind: "reasoning_delta", text: "The" }));
+    fragment = applyEvent(fragment, event({ seq: 3, kind: "text_delta", text: answer }));
+    fragment = applyEvent(
+      fragment,
+      event({ seq: 4, kind: "reasoning_delta", text: " user just said hi" }),
+    );
+    fragment = applyEvent(fragment, event({ seq: 5, kind: "text_delta", text: answer }));
+    // 结算前流式增量如实呈现:三段回答夹着被劈开的思考。
+    expect(fragment.parts.filter((part) => part.type === "text")).toHaveLength(3);
+    // 结算后与落库历史一致:一份回答,思考段合并回一整段。
+    fragment = applyEvent(fragment, event({ seq: 6, kind: "final_response", text: answer }));
+    expect(textOf(fragment)).toBe(answer);
+    expect(fragment.parts.filter((part) => part.type === "text")).toHaveLength(1);
+    expect(fragment.parts.map((part) => part.type)).toEqual(["reasoning", "reasoning", "text"]);
+    expect(fragment.settled).toBe(true);
+  });
+
+  it("没有回答段时终态全文新开一段", () => {
+    let fragment = emptyFragment();
+    fragment = applyEvent(fragment, event({ seq: 1, kind: "reasoning_delta", text: "想了想" }));
+    fragment = applyEvent(fragment, event({ seq: 2, kind: "final_response", text: "答案" }));
+    expect(fragment.parts.map((part) => part.type)).toEqual(["reasoning", "text"]);
+    expect(textOf(fragment)).toBe("答案");
+  });
+});
+
+describe("结算后回答的呈现位置", () => {
+  /** 构造快照(测试只关心 messages 的角色序列)。 */
+  const snapshotWith = (roles: string[]) =>
+    ({ messages: roles.map((role) => ({ role })) }) as unknown as Parameters<
+      typeof answerRenderedInHistory
+    >[1];
+  const streamOf = (settled: boolean, lastKind: string) =>
+    ({ settled, lastKind }) as unknown as Parameters<typeof answerRenderedInHistory>[0];
+
+  it("完成且回答已落库:时间线不再渲染回答段,否则同一段回答出现两份", () => {
+    expect(
+      answerRenderedInHistory(streamOf(true, "final_response"), snapshotWith(["user", "assistant"])),
+    ).toBe(true);
+  });
+
+  it("失败与取消的错误说明只在时间线上,不交给历史", () => {
+    expect(
+      answerRenderedInHistory(streamOf(true, "run_failed"), snapshotWith(["user", "assistant"])),
+    ).toBe(false);
+    expect(
+      answerRenderedInHistory(streamOf(true, "run_cancelled"), snapshotWith(["user"])),
+    ).toBe(false);
+  });
+
+  it("没结算或快照还没刷新到助手消息时,回答仍走时间线", () => {
+    expect(
+      answerRenderedInHistory(streamOf(false, "final_response"), snapshotWith(["user", "assistant"])),
+    ).toBe(false);
+    expect(
+      answerRenderedInHistory(streamOf(true, "final_response"), snapshotWith(["user"])),
+    ).toBe(false);
+    expect(answerRenderedInHistory(streamOf(true, "final_response"), null)).toBe(false);
+    expect(answerRenderedInHistory(null, snapshotWith(["assistant"]))).toBe(false);
   });
 });
 

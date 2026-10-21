@@ -13,7 +13,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { ArrowDown, Sparkles } from "lucide-react";
 import type { MessageDto } from "@/types";
-import { EVENT_KIND_DISPLAY, MESSAGE_ROLE_DISPLAY } from "@/lib/agent-events";
+import { EVENT_KIND_DISPLAY, MESSAGE_ROLE_DISPLAY, answerRenderedInHistory } from "@/lib/agent-events";
 import { chainSegments } from "@/lib/agent-chain";
 import { resolveAgentTargets } from "@/app/api";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
@@ -156,6 +156,8 @@ export function AgentThread({ threadId }: { threadId: string }) {
   const showReasoning = settings?.agent?.showReasoning ?? true;
   /** 空态判据:这一轮还没有任何回答段。 */
   const hasAnswer = segments.some((segment) => segment.kind === "text");
+  /** 完成且回答已落库时,回答由历史消息呈现,时间线不再重复渲染同一份。 */
+  const answerInHistory = answerRenderedInHistory(stream ?? null, snapshot);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -236,13 +238,17 @@ export function AgentThread({ threadId }: { threadId: string }) {
                       </MessageScrollerItem>
                     );
                   }
-                  return (
-                    <MessageScrollerItem key={segment.id} messageId={segment.id}>
-                      <AgentRow caption={isTail && busy ? "正在回答" : "Agent"}>
-                        <AgentAnswer text={segment.text} streaming={isTail && busy} />
-                      </AgentRow>
-                    </MessageScrollerItem>
-                  );
+                  if (segment.kind === "text") {
+                    if (answerInHistory) return null;
+                    return (
+                      <MessageScrollerItem key={segment.id} messageId={segment.id}>
+                        <AgentRow caption={isTail && busy ? "正在回答" : "Agent"}>
+                          <AgentAnswer text={segment.text} streaming={isTail && busy} />
+                        </AgentRow>
+                      </MessageScrollerItem>
+                    );
+                  }
+                  return null;
                 })}
                 {snapshot?.pending.map((approval) => (
                   <MessageScrollerItem key={approval.requestId}>
