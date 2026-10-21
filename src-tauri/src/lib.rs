@@ -167,7 +167,7 @@ pub fn run() {
             commands::agent_config::list_agent_memories,
             commands::agent_config::upsert_agent_memory,
             commands::agent_config::delete_agent_memory,
-            commands::agent_config::list_agent_memory_scopes,
+            commands::agent_config::list_agent_enums,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

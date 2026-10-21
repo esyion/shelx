@@ -137,8 +137,12 @@ pub struct AuditDto {
     pub args_json: String,
     /// 状态。
     pub status: TargetStatus,
-    /// 批准决策。
+    /// 批准决策;按档位自动放行的只读操作为 null(没有人批准过)。
     pub approval: Option<ApprovalDecision>,
+    /// 输出摘要(截断后);未执行或无输出为 null。
+    pub output_excerpt: Option<String>,
+    /// 该台主机上的执行耗时(毫秒);未开始执行(拒绝/取消)为 null。
+    pub duration_ms: Option<i64>,
 }
 
 impl From<ToolCallRecord> for AuditDto {
@@ -153,6 +157,8 @@ impl From<ToolCallRecord> for AuditDto {
             args_json: value.args_json,
             status: value.status,
             approval: value.approval,
+            output_excerpt: value.output_excerpt,
+            duration_ms: value.duration_ms,
         }
     }
 }
@@ -347,6 +353,26 @@ pub struct SendAcceptedDto {
     pub thread_id: String,
     /// 起始事件序号。
     pub started_seq: i64,
+    /// 本次 `on_event` Channel 的订阅 ID。
+    ///
+    /// 受理时这条 Channel 已经是该线程的 sink,前端必须拿它的 ID 去退订;
+    /// 若前端再单独 `attach_agent_thread`,同一批增量会被投两遍。
+    pub subscription_id: String,
+}
+
+/// 界面候选枚举的单点来源(AGENTS.md §5:前端禁止自己抄一份取值)。
+///
+/// 一次取回三类候选,避免抽屉每次打开都发多条 IPC;审批模式档位不在这里,
+/// 它由设置契约 `agent.approvalMode` 提供(校验与界面档位同源)。
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentEnumsDto {
+    /// 可用协议(只有两种新协议)。
+    pub protocols: Vec<ProtocolKind>,
+    /// 逐台批准的可选决策。
+    pub approval_decisions: Vec<ApprovalDecision>,
+    /// 共享记忆作用域。
+    pub memory_scopes: Vec<MemoryScope>,
 }
 
 /// 协议探测结果。
@@ -594,10 +620,68 @@ mod tests {
             args_json: "{}".into(),
             status: TargetStatus::Ok,
             approval: Some(ApprovalDecision::AllowedOnce),
+            output_excerpt: Some("up 3 days".into()),
+            duration_ms: Some(120),
         });
         let json = serde_json::to_value(&audit).unwrap();
         assert_eq!(json["toolName"], "exec");
         assert_eq!(json["status"], "ok");
         assert_eq!(json["approval"], "allowed_once");
+        assert_eq!(json["outputExcerpt"], "up 3 days");
+        assert_eq!(json["durationMs"], 120);
+    }
+
+    /// 自动放行的只读操作没有用户批准,审计里 approval 必须是 null 而不是假值。
+    #[test]
+    fn audit_keeps_absent_decision_as_null() {
+        let json = serde_json::to_value(AuditDto::from(tool_call_without_decision())).unwrap();
+        assert!(json["approval"].is_null());
+        assert!(json["durationMs"].is_null());
+    }
+
+    /// 界面候选枚举必须与领域 `ALL` 逐项一致且按 serde 字面量落盘。
+    /// 前端直接渲染这份返回值,任何缺项都会变成界面上选不到的能力。
+    #[test]
+    fn enums_mirror_domain_all_lists() {
+        use crate::domain::agent::{ApprovalDecision as Decision, MemoryScope, ProtocolKind};
+        let json = serde_json::to_value(AgentEnumsDto {
+            protocols: ProtocolKind::ALL.to_vec(),
+            approval_decisions: Decision::ALL.to_vec(),
+            memory_scopes: MemoryScope::ALL.to_vec(),
+        })
+        .unwrap();
+        assert_eq!(
+            json["protocols"],
+            serde_json::json!(["openai_responses", "anthropic_messages"])
+        );
+        assert_eq!(
+            json["approvalDecisions"],
+            serde_json::json!(["denied", "allowed_once", "allowed_always"])
+        );
+        assert_eq!(
+            json["memoryScopes"],
+            serde_json::json!(["global", "connection"])
+        );
+        assert_eq!(
+            json["approvalDecisions"].as_array().unwrap().len(),
+            Decision::ALL.len()
+        );
+    }
+
+    /// 无人批准、未执行的审计行(拒绝路径)。
+    fn tool_call_without_decision() -> ToolCallRecord {
+        ToolCallRecord {
+            id: crate::domain::agent::CallId::new("c2").unwrap(),
+            thread_id: crate::domain::agent::ThreadId::new("t1").unwrap(),
+            run_id: crate::domain::agent::RunId::new("r1").unwrap(),
+            tool_name: "read_file".into(),
+            category: ToolCategory::ReadOnly,
+            conn_id: Some("k1".into()),
+            args_json: "{\"path\":\"/etc/hosts\"}".into(),
+            status: TargetStatus::Ok,
+            approval: None,
+            output_excerpt: None,
+            duration_ms: None,
+        }
     }
 }

@@ -177,7 +177,8 @@ pub async fn send_agent_message(
     match accepted {
         Ok(accepted) => {
             // 订阅必须先于后续增量,否则首包可能丢;由 service 统一持有 sink。
-            state.agent.attach(
+            // 这条 Channel 就是本轮唯一的 sink,订阅号回给前端用于退订 —— 前端不得再 attach 第二条。
+            let subscription_id = state.agent.attach(
                 &accepted.thread_id,
                 Arc::new(ChannelEventSink(on_event)),
                 accepted.started_seq,
@@ -186,6 +187,7 @@ pub async fn send_agent_message(
                 run_id: accepted.run_id,
                 thread_id: accepted.thread_id,
                 started_seq: accepted.started_seq,
+                subscription_id,
             }))
         }
         Err(err) => Ok(IpcResult::err(to_ipc_error(err))),

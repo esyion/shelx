@@ -261,6 +261,11 @@ pub enum ApprovalDecision {
     Denied,
 }
 
+impl ApprovalDecision {
+    /// 全部取值(供契约与界面候选,前端不得自己抄一份)。
+    pub const ALL: [Self; 3] = [Self::Denied, Self::AllowedOnce, Self::AllowedAlways];
+}
+
 /// 批量目标选择方式。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", tag = "mode")]
@@ -492,8 +497,12 @@ pub struct ToolCallRecord {
     pub args_json: String,
     /// 状态。
     pub status: TargetStatus,
-    /// 批准决策。
+    /// 批准决策;系统按档位自动放行的只读操作为 `None`(没有人批准过它)。
     pub approval: Option<ApprovalDecision>,
+    /// 输出摘要(已按 `EXCERPT_CHARS` 截断);未执行或无输出为 `None`。
+    pub output_excerpt: Option<String>,
+    /// 该台主机上的执行耗时(毫秒);未取得执行许可就被拒绝/取消为 `None`。
+    pub duration_ms: Option<i64>,
 }
 
 #[cfg(test)]

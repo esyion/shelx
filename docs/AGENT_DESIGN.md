@@ -1,7 +1,7 @@
 # shelx AI Agent 技术方案(M5)
 
 > 分支:`feat/agent-rig`(基线 `2c38c7a` / v0.2.26)
-> 状态:**4 项决策已定(见 §18),待放行进入实现**;批准后 `docs/TODO.md` 追加 M5 里程碑。
+> 状态:**已实现(M5-A → M5-E,分支 `feat/agent-rig`);决策见 §18,与本文的偏差集中在 §18.3,未完成项见 §18.4**。面板形态已由"独立整页"改为右抽屉(§12.1、§18.3 偏差 8)。
 
 ## 0. 文档说明与证据标记
 
@@ -266,7 +266,7 @@ on_dispatch(tool_call) ─┬─ 分类=只读 → Proceed
 
 ### 7.3 审批 UI 复用现成范式
 
-事件驱动弹窗已有实现:`src/components/connection/session-prompt-dialogs.tsx`(hostkey 与 auth-prompt),审批弹窗照此形态,不新造机制。
+事件驱动弹窗已有实现:`src/components/connection/session-prompt-dialogs.tsx`(hostkey 与 auth-prompt)。审批**不用弹窗**:待批准是常驻在对话流里的一段提示(shadcn 口径:`Trace` 之外,每台一个 `Item` + `ItemActions`),因为多批待批准要能同时看见,且弹窗会打断"边看终端边决定";只有会话级 hostkey/口令提示仍走既有弹窗形态。
 
 ## 8. 流式与多轮
 
@@ -328,7 +328,8 @@ on_dispatch(tool_call) ─┬─ 分类=只读 → Proceed
 
 ## 10. 存储设计
 
-`src-tauri/migrations/0002_agent.sql`(`PRAGMA user_version = 2`,与 `0001_init.sql:60` 同风格):
+`src-tauri/migrations/0002_agent.sql`(`PRAGMA user_version = 2`,与 `0001_init.sql:60` 同风格)。
+实施中追加 `0003_agent_audit_detail.sql`(`user_version = 3`):`agent_tool_calls` 补 `output_excerpt`/`duration_ms` 两列,并把 `args_json` 真正写进去(0002 落地时审计行一直写入空串,输出与耗时根本没存 —— 界面要按 shadcn 口径如实展示"跑了什么、拿到什么、多久"就必须有这一层)。历史行保持 NULL,界面按"无信息"留空而不回填假值。
 
 ```sql
 CREATE TABLE agent_threads (id TEXT PRIMARY KEY, title TEXT NOT NULL,
@@ -367,14 +368,15 @@ CREATE TABLE agent_memories (id TEXT PRIMARY KEY, scope TEXT NOT NULL
 | --- | --- | --- |
 | `list_agent_threads` / `get_agent_thread` | 列表与详情(分页 + 历史) | — |
 | `create_agent_thread` / `rename_agent_thread` / `delete_agent_thread` | 线程生命周期 | — |
-| `send_agent_message` | 发起一轮 | `on_event: Channel<AgentEventDto>` |
-| `attach_agent_thread` / `detach_agent_thread` | 进出页面时重挂/退订事件流(§12.2;attach 返回订阅 ID) | `on_event: Channel<AgentEventDto>` |
+| `send_agent_message` | 发起一轮;受理时这条 Channel 即成为该线程唯一订阅,订阅号随 `SendAcceptedDto.subscriptionId` 回给前端用于退订 | `on_event: Channel<AgentEventDto>` |
+| `attach_agent_thread` / `detach_agent_thread` | 重开抽屉/切线程时续接与退订(§12.2;attach 返回订阅 ID)。**同一线程同时只允许一条 sink**,否则增量会被投两遍 | `on_event: Channel<AgentEventDto>` |
 | `cancel_agent_run` | 取消(§8.3) | — |
 | `respond_tool_approval` | 批准/拒绝,入参是**逐台** `decisions[]`(§7.2) | — |
 | `resolve_agent_targets` | 把 `{mode, ids}` 解析成主机列表并回显人数(批准弹窗与前端选择器共用,防止"模型幻觉主机名"和"界面人数与实际不一致") | — |
 | `list_agent_tool_calls` | 审计视图(每台一行) | — |
 | `list_agent_memories` / `upsert_agent_memory` / `delete_agent_memory` | L3 记忆管理 | — |
 | `list_agent_model_profiles` / `upsert_agent_model_profile` / `delete_agent_model_profile` | provider 与模型档位管理(§4.3) | — |
+| `list_agent_enums` | 界面候选枚举的单点来源:协议、逐台批准决策、记忆作用域(AGENTS.md §5;取代早期只有作用域的 `list_agent_memory_scopes`) | — |
 | `test_agent_model_profile` | 「测试连接」:真发一次最小 Responses/Messages 请求,回协议探测结论 + token 用量(§4.3、§12.4) | — |
 
 ### 11.2 事件 DTO(判别联合,`kind` 为 snake_case 字面量,中文映射在前端一处)
@@ -396,38 +398,65 @@ CREATE TABLE agent_memories (id TEXT PRIMARY KEY, scope TEXT NOT NULL
 
 ## 12. 前端设计
 
-### 12.1 形态(决策 D3 已定:独立整页 `/agent`)
+### 12.1 形态(实施中改定:右抽屉,不占路由)
 
-落点与既有约束兼容:工作区 UI 常驻在根 layout 的 `<AppShell>`(`src/app/layout.tsx:240-241`),功能页以 `fixed inset-0 z-50` 浮层覆盖在其上(`:244-253`),因此进入 `/agent` **不会**卸载 TerminalView、不会断 pty —— 这正是 `src/app/page.tsx:3-7` 注释里定的架构纪律,整页形态天然合规。
+**定稿形态**:AI 助手是挂在根布局上的右侧抽屉(shadcn `Drawer`,Base UI 原语,`swipeDirection="right"` + `modal={false}` + `disablePointerDismissal`),由 `useUiStore.agentOpen` 驱动;侧栏 footer 的「AI 助手」按钮只切换这个开关。非模态是刻意的:抽屉开着时终端与文件列表照样能点能滚,助手既不抢焦点也不挡操作。
 
-1. 路由目录 `src/app/agent/`:`page.tsx`(线程列表 + 对话区 + 右侧上下文栏)、`api.ts`(只经 gateway)、`hooks/`、`types.ts`(AGENTS.md §4.1 的 feature 内聚要求;单文件 ≤300 行)。
-2. 入口:侧栏 footer 追加一项,与既有两项同形(`src/components/layout/sidebar.tsx:201` `SidebarFooter`,现有 `:210` `/overview`、`:219` `/settings`)。
-3. **作用域可见且可选**:页头必须有「本次可操作主机」说明与筛选(`全部已配置 N 台` / 按分组 / 按在线状态),不能让用户以为 Agent 只能操作当前终端那台。筛选维度只能来自真实存在的字段(§6.5)。
-4. **可选绑定当前会话**:上下文栏提供「绑定到已激活会话」下拉(数据源 = 在线会话集合),选中则把该 `sessionId`、serverInfo、终端最近输出摘要作为上下文注入;不选则 Agent 只按配置列表自行取证。**绑定必须是用户手动动作**,不做"自动跟随当前标签"(避免切标签时上下文被静默改写)。
-5. 终端页保留跳转入口(带当前 `sessionId` 预填第 4 项),让"看着日志问 Agent"这条主路径不用手动找。
+落点与既有约束兼容:工作区 UI 常驻在根 layout 的 `<AppShell>`,抽屉是覆盖层且带自己的滚动容器,左边的终端/SFTP/监控继续活着 —— 既不会卸载 TerminalView,也不会断 pty,更不会像整页那样把用户从"正在看的那台机器"上拽走。抽屉与 `<TransferConflictDialog />` 同级常驻挂载(`src/app/layout.tsx`)。
 
-被放弃的方案留档:工作区第 5 视图(`src/stores/tabs.ts:9` 扩 `WorkspaceView` + `src/components/layout/workspace.tsx:17` 扩 `VIEWS` + Alt+5)会话贴身,但批量跨主机场景下"对话属于某个标签"的模型反而别扭,且历史检索没有落脚点。
+1. 组件落点 `src/components/agent/`:`agent-drawer.tsx`(抽屉宿主 + 四个页签 + 跨对话待批准横幅)、`agent-thread.tsx`(消息流)、`thread-header.tsx`(作用域/状态/三个选择器/用量)、`thread-composer.tsx`(输入区)、`approval-card.tsx`、`audit-list.tsx`、`memory-panel.tsx`、`profile-panel.tsx`(列表与编排)+ `profile-form.tsx`(草稿表单)、`answer.tsx`。IPC 出口仍走 `src/app/api.ts` → `src/gateway/agent.ts`。抽屉跨路由常驻,属于"跨业务复用的宿主壳",因此不放 `src/app/<feature>/`;单文件 ≤300 行(本轮拆分后最大 `agent-thread.tsx` 294 行)。
+2. 入口:侧栏 footer 追加一项,与既有两项同形(`src/components/layout/sidebar.tsx` `SidebarFooter` 的 `/overview`、`/settings`),并带待批准角标 —— 关掉抽屉也不会丢掉"等你决定"这件事。
+3. **作用域可见且可选**:抽屉头部常驻「可操作服务器 N 台」「在线会话 N 个」,数值来自后端 `resolve_agent_targets({mode:"allConfigured"})`,与工具侧同源,不能让用户以为 Agent 只能操作当前终端那台。
+4. **可选绑定当前会话**:对话区提供「绑定会话」下拉(数据源 = 在线会话集合),选中则把该 `sessionId`、serverInfo、终端最近输出摘要作为上下文注入;不选则 Agent 只按配置列表自行取证。**绑定必须是用户手动动作**,不做"自动跟随当前标签"(避免切标签时上下文被静默改写)。
+5. 宽度 `min(58rem,100vw)`:够放对话与工具折叠块,又不吃掉整个工作区;页签为 对话 / 操作记录 / 共享记忆 / 模型接入点。
+6. "看着这台机器的日志顺手问一句"这条主路径由抽屉形态本身成立:侧栏按钮常驻,点开不离开终端,再在对话区把「绑定会话」选成这台机器即可 —— 不需要额外做"从终端跳一页并预填"的入口。
+
+被放弃的方案留档:
+- **独立整页 `/agent`**(本节最初定稿,D3):用户 2026-10-21 反馈"点 AI 助手不要打开新页面"后撤回 —— 整页会冲掉当前工作区焦点,运维场景的主路径是"看着这台机器的日志顺手问一句",不是切走。见 §18.3 偏差 8。
+- **工作区第 5 视图**(`src/stores/tabs.ts` 扩 `WorkspaceView` + Alt+5):会话贴身,但批量跨主机场景下"对话属于某个标签"的模型反而别扭,且历史检索没有落脚点。
 
 ### 12.2 数据流
 
 ```
-send_agent_message(request, onEvent)            // src/app/agent/api.ts → src/gateway/agent.ts(new Channel)
-   → useAgentStore.apply(event)                 // src/stores/agent.ts(照 src/stores/transfer.ts:50-65 做增量合并)
-   → <AgentThread/> 订阅 byThread               // src/app/agent/agent-thread.tsx(页面内组件,不跨路由复用)
+send_agent_message(request, onEvent)            // src/app/api.ts → src/gateway/agent.ts(new Channel)
+   → useAgentStore.applyEvent(event)            // src/stores/agent.ts(照 src/stores/transfer.ts:50-65 做增量合并)
+   → <AgentThread/> 订阅 byThread               // src/components/agent/agent-thread.tsx(抽屉内组件)
 ```
 
-组件放在路由目录内(AGENTS.md §4.1:业务能力按 `src/app/<feature>/` 内聚),只有确实跨路由复用的纯 UI 才下沉 `src/components/`。
+抽屉宿主 `src/components/agent/agent-drawer.tsx` 常驻根布局;`src/app/api.ts` 只做 gateway 再导出,组件不得直接 `invoke`(AGENTS.md §4.1)。
 
-**整页形态带来的一个必须处理的机制**:离开 `/agent` 会卸载组件,但 **run 不能因此取消** —— Agent 循环跑在 Rust 后台任务里(§8.2)。所以事件订阅要能重挂:
+**抽屉关闭会卸载对话组件,但 run 不能因此取消** —— Agent 循环跑在 Rust 后台任务里(§8.2)。所以事件订阅要能重挂:
 
-1. 进入页面时先 `get_agent_thread` 拿快照(消息 + 当前 run 状态),再对 `state='running'|'awaiting_approval'` 的线程调 `attach_agent_thread(threadId, onEvent)` 拿订阅 ID;离开页面 `detach_agent_thread`。
+1. 打开线程时先 `get_agent_thread` 拿快照(消息 + 当前 run 状态 + 待批准),再对 `running` 非空的线程调 `attach_agent_thread(threadId, sinceSeq, onEvent)` 拿订阅 ID;关闭抽屉或切走线程时 `detach_agent_thread`。
 2. 这套 attach/detach 形状项目里已有先例:`src/gateway/monitor.ts:30-53`(attach 返回订阅 ID,detach 退订),照抄语义,不自创机制。
-3. store 是全局的:历史要跨路由存活并在再次进入时立即呈现,不等后端回包(项目里只有传输链路走过这条路,`src/stores/transfer.ts:50-65`)。
+3. store 是全局的:历史与待批准要跨抽屉开关存活,重开时立即呈现,不等后端回包(项目里只有传输链路走过这条路,`src/stores/transfer.ts:50-65`)。
 4. 事件一律带 `seq`;重挂后按 `seq` 去重合并,避免快照与增量交错导致消息重复或乱序。
 
-### 12.3 组件选型(全部已入库,不新增依赖)
+### 12.3 组件选型(全部 shadcn/ui Base UI,不新增自造控件)
 
-`message.tsx`、`message-scroller.tsx`(自动滚动 + 回到底部)、`bubble.tsx`、`marker.tsx`(思考中/调用中状态行)、`collapsible.tsx`(工具调用参数与结果)、`attachment.tsx`(工具结果附件)、`textarea.tsx` + `button.tsx`(输入区)、`alert-dialog.tsx`(批准)。这些同类件目前除 `collapsible` 外**尚无业务消费方**,Agent 页是首个真实使用,需在 M5-E 记录一次手工验证。
+**原语只有一种。** `components.json` 是 `style: base-nova` + `base: base`(`@base-ui/react` + `@shadcn/react`),`package.json` 里 Radix 直接依赖零命中。AI Elements 有两个来源,本项目只用前者:
+
+- ✅ `ui.shadcn.com/r/styles/base-nova/<name>.json`(`bunx --bun shadcn@latest add <name>`)—— shadcn 官方把 AI Elements 收编成 **pattern**(文档页里的 composition)+ 少量新组件(`trace`、`code-block`)。实测 `r/styles/base-nova/message.json` 的 `dependencies` 只有 `["cn"]`,源码 import 只有 `react`/`cn`:**不带 `ai`、不带 Radix、不带 `useChat`**。
+- ❌ `elements.ai-sdk.dev/api/registry/<name>.json` —— Vercel 那份 default/Radix 变体:`conversation` 要 `use-stick-to-bottom`、`prompt-input` 要 `nanoid` + 7 个 registry 件、`reasoning`/`chain-of-thought` 直接 import `@radix-ui/react-use-controllable-state`、`context` 要 `tokenlens`,12 个件 `import type` 自 `ai`(48 个件的源码里 `useChat` 零命中,耦合确实只是类型)。与「只能有一种原语」和 §14 体积预算冲突,已排除。
+
+对话面的落地映射(按 shadcn `rules/chat.md` 与 `ai-elements/base/*`):
+
+| 界面事物 | 用的件 | 备注 |
+| --- | --- | --- |
+| 线程与流式贴底 | `MessageScrollerProvider` + `MessageScroller/Viewport/Content/Item/Button` | 用户轮次标 `scrollAnchor`;「回到底部」给中文 `sr-only`,不用默认英文标签 |
+| 回合外壳 | `Message` + `MessageAvatar`/`MessageContent`/`MessageHeader` | 人的回合套 `Bubble`,Agent 答案直接进 `MessageContent`(chat.md 明确区分) |
+| 推理过程 | `Trace` + `TraceCollapsible` + `TraceLine status="running"` | 不再用 `Marker` 顶替活动行 |
+| 本轮进度 / 逐台状态 | `TraceLine`(标题由 `traceLine()` 出中文时态,`TraceDescription` 放主机与统计) | `status` 只允许 `running|error|pending`,由 `TargetStatus` 映射,**不透传内部枚举** |
+| 命令、入参、输出摘要 | `CodeBlock` + `CodeBlockHeader/Title/Content`(`size="sm" wrap max-h-64`) | 手写 `<pre>` 清零;失败输出用 `variant="destructive"` |
+| 待批准 | `Trace` **之外**的 `Card` + 每台一个 `Item`,`ItemActions` 里 `ToggleGroup`(拒绝 / 允许这一次 / 本对话内一直允许) | 默认全拒;`allowed_always` 只在本对话该主机该工具生效 |
+| 输入区 | `InputGroup` + `InputGroupTextarea` + `InputGroupAddon align="block-end"` + `Button` | 提示与「取消/发送」都在 addon 行里,禁用态来自后端 run |
+| 选择器(接入点 / 批准档位 / 绑定会话) | `DropdownMenu` + `DropdownMenuGroup` + `DropdownMenuLabel` + `DropdownMenuRadioGroup` | Model Selector pattern;长标签不适合塞 ToggleGroup |
+| 上下文用量 | `HoverCard` + `Progress`(`ProgressLabel`/`ProgressValue`) | 分母取设置里的 `agent.tokenBudget`,不前端猜模型上限 |
+| 空态示例 | `Empty` + `Button`(点一下直接发这句话) | Suggestion pattern |
+| 跨对话待批准 / 审计 / 记忆 / 接入点列表 | `ItemGroup` + `Item`/`ItemContent`/`ItemTitle`/`ItemDescription`/`ItemActions` | |
+| 抽屉壳 / 页签 / 表单 / 错误 / 加载 | `Drawer`(`modal={false}` + `disablePointerDismissal`,宽度走行内 `--drawer-content-width`)、`Tabs`、`FieldGroup`+`Field`+`FieldLabel`+`FieldDescription`、`Alert`、`Skeleton`、`Badge`、`Marker`(只留分隔与系统提示)、`Switch`、`Input`、`Card`、`Avatar` | 批准不用 `alert-dialog`(弹窗会打断"边看终端边决定",且多批无法同时可见) |
+
+**`src/components/ui/` 由 shadcn CLI 写入,禁止手改**(该目录自带这条约束)。本轮 CLI 落地 `trace.tsx`、`code-block.tsx`、`hooks/use-highlighted-code.ts`、`lib/highlighter.tsx`,并把 `shiki` 从 `@streamdown/code` 的传递依赖提升为一级依赖 —— 版本刻意钉在 `^3.23.0`(与 streamdown 同一份;实测 shiki 3.23 已有 `codeToTokens({ grammarState })` 与 `getLastGrammarState`,不需要 4.x,bun.lock 里 shiki 只剩一个条目,不新增包)。
 
 Markdown:`<Streamdown mode="streaming">`,现有唯一用例是 `mode="static"`(`src/components/layout/update-button.tsx:201-202`),流式模式要实测首屏抖动与代码块高亮开销。
 
@@ -435,10 +464,10 @@ Markdown:`<Streamdown mode="streaming">`,现有唯一用例是 `mode="static"`(`
 
 | 红线 | 本方案落法 |
 | --- | --- |
-| 内部术语不进正文 | `tool_call`/`reasoning_delta`/`gpt-*` 等只做中文映射,集中在 `src/lib/agent-events.ts`(照 `src/lib/transfer-status.ts:22` 的做法);provider 名在界面显示为「OpenAI 官方 / Anthropic 官方 / 自建网关」 |
-| 结构化手写改选择器 | 模型是档位下拉(来自 `list_agent_model_profiles`),不手写模型名;`max_turns`、输出上限、记忆条数全部走 `presets` 档位;API Key 为 text 输入但永不回显已有值 |
+| 内部术语不进正文 | `tool_call`/`reasoning_delta`/`gpt-*` 等只做中文映射,集中在 `src/lib/agent-events.ts`(照 `src/lib/transfer-status.ts:22` 的做法);后端工具名(`exec`/`tail_log`…)经 `toolActionLabel()` 翻成"执行命令""查看日志末尾",英文原名只留在审计展开行的"技术名称"里;provider 名在界面显示为「OpenAI Responses / Anthropic Messages」;轨迹行措辞由 `traceLine()` 统一给(「正在执行命令」「执行命令完成」「写入文件失败」「未执行：…」),`TraceLine` 的 `status` 只允许 `running|error|pending`,内部枚举不透传 |
+| 结构化手写改选择器 | 候选清单一律来自后端:协议与批准决策与记忆作用域来自 `list_agent_enums`,审批档位来自设置契约 `agent.approvalMode`,接入点来自 `list_agent_profiles`,绑定会话来自在线会话集合,记忆的主机来自连接树(`listConnectionLeaves`)——不手写 `connId`,前端也不抄任何候选数组;`max_turns`、输出上限、记忆条数全部走 `presets` 档位;API Key 为 text 输入但永不回显已有值 |
 | 即时保存不吞输入 | 设置沿用草稿态提交 + 前端同区间校验 + 失败保留(既有机制 `src/app/settings/setting-control.tsx`) |
-| 不许死状态 | 待批准常驻可见(侧栏入口角标 + 页头横幅),重启后 `agent_runs.state='awaiting_approval'` 恢复 |
+| 不许死状态 | 待批准常驻可见(侧栏入口角标 + 抽屉头角标 + 对话流内卡片 + 跨对话横幅),重启后 `agent_runs.state` 由 `expire_unfinished_runs` 收敛为可见失败原因 |
 | 后端有能力必须有入口 | 注册了 `cancel_agent_run`/`respond_tool_approval`/记忆 CRUD 就必须有对应控件,不放假开关 |
 | 破坏性操作说清后果 | 批准弹窗必须显示:完整命令、目标主机名、是否新建连接、**已发出的命令无法回滚**;与 §7.2 真实行为一致 |
 | 批量不可一次放行 | 整批批准必须逐台摊开主机名与命令;禁止"一次点击放行 N 台"而不显示清单(§7.2、§6.5) |
@@ -466,6 +495,7 @@ Markdown:`<Streamdown mode="streaming">`,现有唯一用例是 `mode="static"`(`
 | 首字延迟 | < 1.5 s(不含建连) | 手工记录一次真机测量 |
 | IPC 事件频率 | ≤ 32 条/s/线程 | 聚合参数 32ms/2KiB 实测调 |
 | 冷启动 | 不新增启动阻塞 | provider 懒构建(首次发送消息才 `build_client`) |
+| 前端产物增量 | 只允许把已在树里的 `shiki` 提升为一级依赖,不新增包 | `bun run build` 后比 `out/` 体积;`grep '"shiki@' bun.lock` 必须只有一个版本命中(shiki 4.x 会把 `@streamdown/code` 的 3.23 变成第二份,故钉 `^3.23.0`) |
 
 ## 15. 里程碑切片
 
@@ -475,7 +505,7 @@ Markdown:`<Streamdown mode="streaming">`,现有唯一用例是 `mode="static"`(`
 | **M5-B 只读单轮流式** | 只读工具集 + `exec_once`/SFTP 映射 + `send_agent_message` Channel + 取消;假 provider 测试 | 一条真实 prompt 走完「流式文本 + 2 次只读工具」;取消后无残留通道 |
 | **M5-C 多轮 + 逐台批准 + 批量** | `max_turns` 循环、`DispatchAction` 闸门、`AgentRun` 挂起/恢复、`resolve_agent_targets`、per-target 状态机与并发上限、批准 UI(整批/勾选/全拒) | 写操作被拦 → 逐台批准 → 执行 → 结果按主机分列;单台失败不阻断其余;拒绝后模型不重试同一命令 |
 | **M5-D 记忆** | `agent_*` 迁移 0002、自实现 `Store`、L3 记忆 CRUD、压缩档位 | 关掉应用再打开,线程历史与待批准状态完整 |
-| **M5-E 整页打磨** | `/agent` 路由(线程列表 + 对话 + 上下文栏)、作用域筛选、会话绑定下拉、终端页跳转入口、审计列表、设置项、成本显示、文档与 AGENTS.md 补条目 | 界面红线逐条自检 + 三平台手工验证记录 |
+| **M5-E 抽屉打磨** | AI 助手右抽屉(线程切换 + 对话 + 操作记录 + 共享记忆 + 模型接入点四个页签)、作用域显示、会话绑定下拉、审计列表、设置项、成本显示、文档与 AGENTS.md 补条目 | 界面红线逐条自检 + 三平台手工验证记录 |
 
 每个切片结束都要过 §16 全部门禁,不允许攒到最后。
 
@@ -502,9 +532,9 @@ cargo test  --manifest-path src-tauri/Cargo.toml
 | 取消 | `infrastructure/agent/run_task.rs` | drop+abort 后通道关闭、无孤儿任务 |
 | DTO 校验 | `commands/agent.rs` 测试 | 未知字段拒绝、越界值带 `details` |
 | 契约不过期 | `bun run check:ipc` | `gen:ipc` 逐字节比对 |
-| 前端行为 | `src/app/agent/*.test.tsx`(co-located,`vitest.config.ts:14`) | 只 mock 路由 `api.ts`;断言可见文本与 role;覆盖 loading/empty/error/retry |
+| 前端行为 | `src/components/agent/*.test.tsx`(co-located,`vitest.config.ts` include `src/**/*.test.tsx`) | 只 mock 路由 `api.ts`;断言可见文本与 role;覆盖 loading/empty/error/retry |
 | 事件重挂与去重 | `src/stores/agent.test.ts` | 快照与增量按 `seq` 合并不重复不丢;离开页面后 run 状态仍可见 |
-| 批准粒度 | `src/app/agent/approval-dialog.test.tsx` | 逐台勾选结果与请求 `decisions[]` 一致;整批批准必须显示台数 |
+| 批准粒度 | `src/stores/agent.test.ts`(逐台决策 → `respond_tool_approval` 请求体) | 勾选结果与请求 `decisions[]` 一致;批准卡逐台摊开主机名与台数 |
 | 文案覆盖 | `src/app/settings/settings-copy.test.ts` | 枚举候选全命中 CJK |
 
 ## 17. 风险登记
@@ -530,7 +560,7 @@ cargo test  --manifest-path src-tauri/Cargo.toml
 | --- | --- | --- | --- |
 | **D1** | TLS 路线 | **native-tls** | 依赖图无 aws-lc-rs;CI 需 `libssl-dev`;Linux 引入 openssl-sys(§3.1、§3.2) |
 | **D2** | 只支持 `/chat/completions` 的兼容网关 | **保存即拒 + `/responses` 探测** | 第一期此类网关不可用;必须有 profile CRUD 与测试连接入口(§4.3、§11.1) |
-| **D3** | 面板形态 | **独立整页 `/agent`**;作用域 = 全部配置连接;用户可**手动绑定**某个已激活会话作上下文 | 整页 + 侧栏入口 + 作用域筛选 + 绑定下拉 + 终端页跳转入口(§12.1) |
+| **D3** | 面板形态 | ~~独立整页 `/agent`~~ → **右抽屉(shadcn `Drawer` 非模态,不占路由)**;作用域 = 全部配置连接;用户可**手动绑定**某个已激活会话作上下文 | 侧栏入口切换 `agentOpen` + 抽屉内作用域显示 + 绑定下拉(§12.1、§18.3 偏差 8/13) |
 | **D4** | 写操作与批量 | **第一期即开写,且支持跨主机批量** | 逐台批准、per-target 状态机、批量与并发档位、审计每台一行、取消不回滚已发出命令(§6.5、§7.2、§13.8) |
 
 ### 18.1 实施首日(M5-A)必须收口的待实测项
@@ -547,7 +577,11 @@ cargo test  --manifest-path src-tauri/Cargo.toml
 
 ### 18.2 实施结果(2026-10-21,分支 `feat/agent-rig`)
 
-M5-A → M5-E 的代码与测试已全部落地,门禁全绿:`cargo test` 243 通过、`bun run test` 117 通过、`bun run build`、`bun run check:ipc`、`cargo clippy --all-targets --all-features -- -D warnings`、`cargo fmt --check`。`aws-lc-sys` 在激活依赖图中零命中(native-tls 定案成立)。
+M5-A → M5-E 的代码与测试已全部落地,门禁全绿:`cargo test` 245 通过、`bun run test` 130 通过、`bun run build`、`bun run check:ipc`、`cargo clippy --all-targets --all-features -- -D warnings`、`cargo fmt --check`。`aws-lc-sys` 在激活依赖图中零命中(native-tls 定案成立)。
+
+2026-10-21 追加两轮返工:①形态按偏差 8 改为右抽屉;②界面按偏差 10/11 全部换成 shadcn Base UI 的 AI Elements pattern(对话面 + 抬头选择器 + 逐台进度的 Trace 口径),并按偏差 11 给后端补了审计输出与耗时。前端测试 117 → 130(抽屉入口回归 3 条、pattern 回归 4 条、映射与增量合并 6 条),`cargo test` 243 → 245(审计字段往返与 null 语义各一条)。
+
+2026-10-21 追加:界面形态按偏差 8 改为右抽屉并做了一遍 shadcn 收口,前端门禁复跑全绿(123 测试含 `agent-drawer.test.tsx` 三条入口回归)。
 
 ### 18.3 与原方案的偏差(都是实测逼出来的,不是随意改动)
 
@@ -560,10 +594,18 @@ M5-A → M5-E 的代码与测试已全部落地,门禁全绿:`cargo test` 243 �
 | 5 | 未提及 | Anthropic Messages 必须带 `max_tokens`,否则请求在编码阶段即失败(rig 原文 `` `max_tokens` must be set for Anthropic ``) | 网关统一给 `MAX_OUTPUT_TOKENS = 8192` |
 | 6 | §11.2 事件表无 `thread_title`/`tool_started` 区分 | 实现为 11 类事件,`approval_required` + `target_state` 承担"正在执行"与"等你批准";终态事件由应用层 `finish_run` 唯一广播 | 避免网关与收尾两处各发一次终态 |
 | 7 | 未提及 | 契约导出改为按键字典序落盘(新增回归测试 `contract_document_keys_are_sorted`) | 实测发现 schemars 产出的 `$defs`/`properties` 顺序随进程变化,同一份代码每次 `gen:ipc` 都会重排生成物字段,`check:ipc` 存在偶红风险;详见 `docs/IPC_CONTRACT.md` §1 |
+| 8 | 决策 D3:独立整页 `/agent` | 改为右侧 `Sheet` 抽屉(壳后又被偏差 13 换成 `Drawer`),组件从 `src/app/agent/` 移到 `src/components/agent/`,路由 `/agent` 删除;顺带把界面全部换成 shadcn 件(`message-scroller`/`bubble`/`marker`/`item`/`alert`/`field`/`empty`/`textarea` 等),手写 `<textarea>`、手写滚动容器与散落的 `bg-amber-500` 清零 | 用户 2026-10-21 反馈"点击 AI 助手不要打开新页面":整页把用户从正在看的终端上拽走,抽屉是覆盖层、工作区继续活着。回归测试 `src/components/agent/agent-drawer.test.tsx` 锁住"点击只改 `agentOpen`、不触发 `router.push`" |
+| 9 | §12.1 第 5 条:终端页跳转入口 | 不做深链,改由「绑定会话」下拉承担 | 抽屉常驻后主路径本就成立,加一个跳转入口等于把用户再推去一次路由切换 |
+| 10 | §12.3 只写了"用已入库的 shadcn 件",推理行用 `Marker`、审计行用 `Item`+`Collapsible`、命令与输出用 `<pre>`、输入区用 `Textarea`+`Button`、批准档位用 `NativeSelect` | 全部换成 shadcn 官方 Base UI 的 AI Elements pattern:推理与进度 `Trace`/`TraceLine`/`TraceCollapsible`、命令与输出 `CodeBlock`、待批准 `Trace` 外的 `Item` + `ItemActions`(`ToggleGroup` 三档)、输入区 `InputGroup`、选择器 `DropdownMenu` + `DropdownMenuRadioGroup`、用量 `HoverCard` + `Progress`、空态示例可点 | 用户 2026-10-21 要求「只能有一种原语(Base UI),要换就全部换」。实测两条安装路径差异:`ui.shadcn.com/r/styles/base-nova/*` 依赖只有 `cn`(无 `ai`/无 Radix/无 `useChat`),而 `elements.ai-sdk.dev` 那份要 `use-stick-to-bottom`/`nanoid`/`tokenlens`/`@radix-ui/react-use-controllable-state`;`conversation` 与已装的 `MessageScroller` 功能重叠,故走 pattern 而非整包搬。回归见 `src/components/agent/agent-patterns.test.tsx` |
+| 11 | §10 的 `agent_tool_calls` 没有输出与耗时列(且实施时 `args_json` 一直写成空串);§7 的批准决策在只读自动放行时被写成 `allowed_once` | 迁移 `0003_agent_audit_detail.sql` 补 `output_excerpt`/`duration_ms` 两列(历史行留 NULL,界面按"无信息"不回填),`args_json` 改为真写;自动放行的只读操作 `approval` 记 NULL,只有用户真决定过才记值;耗时只计执行本身,排队等并发许可不计入 | `CodeBlock`/逐台进度要如实回答"跑了什么、拿到什么、多久、谁批准的";把自动放行写成"用户允许过一次"属于伪造审计,违反 §13.6 与 AGENTS.md §4.1.1 |
+| 12 | §14 未约束前端产物 | `shiki` 从 `@streamdown/code` 的传递依赖提升为一级依赖并钉 `^3.23.0`;`src/lib/highlighter.tsx` 与 `src/hooks/use-highlighted-code.ts` 保持 CLI 落地版本(3.23 已提供 `grammarState`/`getLastGrammarState`,不需要 4.x) | 装 `code-block` 时 CLI 默认拉 shiki 4,会与 streamdown 的 3.23 变成两份副本;实测 `bunx tsc --noEmit` 在 3.23 下零错误,故回钉版本而不是升级上游 |
+| 13 | §12.1 定稿写的是 `Sheet` | 换成 shadcn `Drawer`:`swipeDirection="right"` + `modal={false}` + `disablePointerDismissal`,宽度走行内 `--drawer-content-width`(类名里的同名变量会被内置 `sm:` 断点压过),关闭按钮用 `DrawerClose` | 用户 2026-10-21 指定。`Sheet` 是模态 Dialog,抽屉开着时终端点不了 —— 与"边看终端边问"的初衷冲突;非模态 `Drawer` 不渲染 Backdrop,页面其余部分保持可交互。回归测试断言无 `[data-slot=drawer-overlay]` 且 viewport 带 `data-modal="false"` |
+| 14 | §12.2 只写了"重挂时按 `seq` 补发",没约束同一时刻的订阅条数 | 修三处:①`send_agent_message` 把受理时的 Channel 订阅号回给前端(`SendAcceptedDto.subscriptionId`),前端不再补第二条订阅;②`applyEvent` 的去重条件去掉 `&& next.settled`,序号不前进一律丢弃;③受理后立刻刷一次快照 | 真机反馈"消息不立刻显示、切页签才有、输出重复错乱"。根因是命令侧已把 Channel 注册成 sink,前端又 `attach_agent_thread` 一次 → 同一线程两条 sink,每段增量投两遍;而旧去重条件在未结算时不生效,于是表格行被重复拼接。回归:`agent-events.test.ts` 的"同一序号重复投递不重复累加"与 `agent.test.ts` 的"发送只保留受理那条订阅" |
+| 15 | §11.1 只登记了 `list_agent_memory_scopes`(仅作用域一类) | 扩成 `list_agent_enums`(协议 + 批准决策 + 记忆作用域),并删除原命令;`ProtocolKind::ALL` / `ApprovalDecision::ALL` / `MemoryScope::ALL` 成为唯一取值来源,store 随 `load()` 一次拉齐存进 `enums` | 自查 AGENTS.md §5 时发现 `profile-form.tsx` 用 `Object.keys(PROTOCOL_DISPLAY)`、`approval-card.tsx` 用 `const CHOICES = ["denied","allowed_once","allowed_always"]` 各自抄了一份候选清单 —— 后端加一档界面不会跟着出现,属于镜像。边界判断:**类型化的单个取值**(默认档 `fallback = decisions[0]`、批量档 `"allowed_once"`)不算镜像,它是生成契约 `ApprovalDecision` 闭集里的值,后端改名会编译失败;算镜像的是**候选集合** |
 
 ### 18.4 尚未完成(不假装可用)
 
-1. **真机手工验证**:`bun run tauri dev` 下的三平台构建、安装包体积增量实测、Windows Schannel 实连、macOS/Linux 钥匙串存取、`Streamdown` 流式观感与自动滚动 —— 需要你在有桌面会话与真实密钥时过一遍(AGENTS.md §9 要求平台手工验证记录)。
+1. **真机手工验证**:`bun run tauri dev` 下的三平台构建、安装包体积增量实测(含 `out/` 前端产物)、Windows Schannel 实连、macOS/Linux 钥匙串存取、`Streamdown` 流式观感、抽屉宽度与 `MessageScroller` 自动贴底/「回到底部」观感、`TraceCollapsible` 折叠手感与 `CodeBlock` 高亮(长输出 wrap + 限高是否好读) —— 需要你在有桌面会话与真实密钥时过一遍(AGENTS.md §9 要求平台手工验证记录;jsdom 不测布局)。
 2. **端到端联调**:本轮验证到"契约 + 单元/组件行为 + 编译期守卫"这一层,没有真实模型密钥可用,未跑过真模型的多轮工具回环。
 3. **能力边界**:`agent_readonly` 之外的"分组级永久允许"、审计导出、失败重放(从某个 tool result 续跑)未做。
 

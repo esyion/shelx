@@ -22,6 +22,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { TONE_BADGE } from "@/lib/agent-events";
 import { SidebarMonitor } from "@/components/monitor/sidebar-monitor";
 import { UpdateButton } from "@/components/layout/update-button";
 import { useAgentStore } from "@/stores/agent";
@@ -203,6 +204,7 @@ function SidebarBody({ children }: { children: ReactNode }) {
 /** 底部:AI 助手 + 服务器总览 + 设置。 */
 function SidebarFooter() {
   const router = useRouter();
+  const toggleAgent = useUiStore((state) => state.toggleAgent);
   const snapshots = useAgentStore((state) => state.snapshots);
   const pendingCount = Object.values(snapshots).reduce(
     (total, snapshot) => total + (snapshot?.pending.length ?? 0),
@@ -214,13 +216,16 @@ function SidebarFooter() {
         size="sm"
         variant="ghost"
         className="w-full justify-start text-xs"
-        title="让 Agent 帮你排查和处理服务器"
-        onClick={() => router.push("/agent")}
+        title="让 Agent 帮你排查和处理服务器(右抽屉,不打断当前终端)"
+        onClick={() => toggleAgent()}
       >
         <Sparkles className="size-4" />
         AI 助手
         {pendingCount > 0 && (
-          <Badge variant="default" className="ml-auto bg-amber-500 text-amber-50">
+          <Badge
+            variant={TONE_BADGE.warning.variant}
+            className={cn("ml-auto", TONE_BADGE.warning.className)}
+          >
             {`${pendingCount} 项待批准`}
           </Badge>
         )}

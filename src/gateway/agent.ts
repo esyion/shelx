@@ -6,6 +6,7 @@
  */
 import { Channel } from "@tauri-apps/api/core";
 import type {
+  AgentEnumsDto,
   AgentEvent,
   AgentEventHandler,
   AgentMemoryEntry,
@@ -18,7 +19,6 @@ import type {
   SendAcceptedDto,
   TargetDto,
   TargetScope,
-  MemoryScope,
   ThreadSnapshotDto,
   UpsertMemoryRequestDto,
   UpsertProfileRequestDto,
@@ -174,9 +174,9 @@ export function testAgentProfile(id: string): Promise<ProbeDto> {
   return invokeUnwrapped("test_agent_profile", { request: { id } });
 }
 
-/** 记忆作用域候选(取值来自后端)。 */
-export function listAgentMemoryScopes(): Promise<MemoryScope[]> {
-  return invokeUnwrapped("list_agent_memory_scopes");
+/** 界面候选枚举(协议、批准决策、记忆作用域),取值全部来自后端。 */
+export function listAgentEnums(): Promise<AgentEnumsDto> {
+  return invokeUnwrapped("list_agent_enums");
 }
 
 /** 解析目标作用域(界面显示"这次打到哪些机器")。 */

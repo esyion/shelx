@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   listAgentThreads: vi.fn(),
   listAgentProfiles: vi.fn(),
   listAgentMemories: vi.fn(),
+  listAgentEnums: vi.fn(),
   getAgentThread: vi.fn(),
   createAgentThread: vi.fn(),
   updateAgentThread: vi.fn(),
@@ -126,9 +127,13 @@ describe("发起一轮", () => {
     let onEvent: ((event: AgentEvent) => void) | undefined;
     api.sendAgentMessage.mockImplementation((_request, callback) => {
       onEvent = callback;
-      return Promise.resolve({ runId: "r1", threadId: "t1", startedSeq: 0 });
+      return Promise.resolve({
+        runId: "r1",
+        threadId: "t1",
+        startedSeq: 0,
+        subscriptionId: "sub-send",
+      });
     });
-    api.attachAgentThread.mockResolvedValue("sub-1");
     await useAgentStore.getState().openThread("t1");
     await useAgentStore.getState().send("为什么慢");
 
@@ -136,12 +141,37 @@ describe("发起一轮", () => {
     onEvent?.(event({ seq: 2, kind: "text_delta", text: "磁盘满" }));
     expect(useAgentStore.getState().streams.t1?.text).toBe("因为磁盘满");
 
+    // 受理后立刻刷一次快照:用户那一轮要马上可见,不能等切走再切回。
+    await vi.waitFor(() => {
+      expect(api.getAgentThread).toHaveBeenCalledTimes(2);
+    });
+
     api.getAgentThread.mockResolvedValue(
       snapshot({ messages: [{ id: "m1", role: "user", content: "为什么慢", createdAt: 2 }] }),
     );
     onEvent?.(event({ seq: 3, kind: "final_response", text: "磁盘满" }));
     await vi.waitFor(() => {
-      expect(api.getAgentThread).toHaveBeenCalledTimes(2);
+      expect(api.getAgentThread).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  it("发送只保留后端受理时那条订阅,不再补第二条(否则增量会被投两遍)", async () => {
+    api.getAgentThread.mockResolvedValue(snapshot());
+    api.sendAgentMessage.mockResolvedValue({
+      runId: "r1",
+      threadId: "t1",
+      startedSeq: 4,
+      subscriptionId: "sub-send",
+    });
+    await useAgentStore.getState().openThread("t1");
+    await useAgentStore.getState().send("为什么慢");
+    expect(api.attachAgentThread).not.toHaveBeenCalled();
+
+    // 关闭时退订的必须是受理返回的订阅号。
+    api.detachAgentThread.mockResolvedValue(undefined);
+    useAgentStore.getState().closeThread();
+    await vi.waitFor(() => {
+      expect(api.detachAgentThread).toHaveBeenCalledWith("t1", "sub-send");
     });
   });
 

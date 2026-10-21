@@ -2,10 +2,10 @@
 
 use tauri::State;
 
-use crate::domain::agent::MemoryScope;
+use crate::domain::agent::{ApprovalDecision, MemoryScope, ProtocolKind};
 use crate::dto::agent::{
-    AgentIdRequestDto, MemoryDto, ProbeDto, ProfileDto, ResolveTargetsRequestDto, TargetDto,
-    UpsertMemoryRequestDto, UpsertProfileRequestDto,
+    AgentEnumsDto, AgentIdRequestDto, MemoryDto, ProbeDto, ProfileDto, ResolveTargetsRequestDto,
+    TargetDto, UpsertMemoryRequestDto, UpsertProfileRequestDto,
 };
 use crate::dto::common::IpcResult;
 use crate::shared::error::{IpcError, IpcErrorCode};
@@ -148,10 +148,14 @@ pub fn delete_agent_memory(state: State<AppState>, request: AgentIdRequestDto) -
     map_err(state.agent.delete_memory(&request.id))
 }
 
-/// 记忆作用域候选(界面下拉直接用,避免前端抄一份枚举)。
+/// 界面候选枚举(协议、批准决策、记忆作用域)一次取回,避免前端抄一份取值(AGENTS.md §5)。
 #[tauri::command]
-pub fn list_agent_memory_scopes() -> IpcResult<Vec<MemoryScope>> {
-    IpcResult::ok(MemoryScope::ALL.to_vec())
+pub fn list_agent_enums() -> IpcResult<AgentEnumsDto> {
+    IpcResult::ok(AgentEnumsDto {
+        protocols: ProtocolKind::ALL.to_vec(),
+        approval_decisions: ApprovalDecision::ALL.to_vec(),
+        memory_scopes: MemoryScope::ALL.to_vec(),
+    })
 }
 
 /// provider 构造/探测失败的包装:借道应用层错误,保持错误码单一口径。

@@ -68,6 +68,7 @@ export type {
   DataMigrationStatus,
 } from "./migration";
 export type {
+  AgentEnumsDto,
   AgentEvent,
   AgentEventKind,
   AgentEventHandler,

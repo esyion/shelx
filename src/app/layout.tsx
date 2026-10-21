@@ -30,6 +30,7 @@ import {
   HostKeyConfirmDialog,
 } from "@/components/connection/session-prompt-dialogs";
 import { AppDialogs } from "@/components/app-dialogs";
+import { AgentDrawer } from "@/components/agent/agent-drawer";
 import { TransferConflictDialog } from "@/components/transfers/transfer-dialogs";
 import { ToastHost } from "@/components/layout/toast-host";
 import { AppShell } from "@/components/layout/app-shell";
@@ -255,6 +256,7 @@ export default function RootLayout({
           <HostKeyConfirmDialog />
           <AuthPromptDialog />
           <TransferConflictDialog />
+          <AgentDrawer />
           <AppDialogs />
           <ToastHost />
         </ThemeProvider>

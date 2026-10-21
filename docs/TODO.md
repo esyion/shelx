@@ -179,10 +179,18 @@
 
 ### 前端
 
-- [x] M5-E2 `/agent` 整页:线程列表 + 对话 + 操作记录 + 共享记忆 + 模型接入点四个页签;侧栏 footer 入口带待批准角标 ✅ 2026-10-21
+- [x] M5-E2 AI 助手右抽屉(shadcn `Sheet`,不占路由):对话 + 操作记录 + 共享记忆 + 模型接入点四个页签;侧栏 footer 入口带待批准角标 ✅ 2026-10-21
+- [x] M5-E2b 形态返工:按"点 AI 助手不要打开新页面"撤回独立整页,`src/app/agent/` → `src/components/agent/`,删除 `/agent` 路由;新增回归测试 `agent-drawer.test.tsx`(点击只改 `agentOpen`,不触发 `router.push`)✅ 2026-10-21
+- [x] M5-E2c 界面 shadcn 收口:手写 `<textarea>`→`Textarea`、手写滚动容器+`scrollIntoView`→`MessageScroller*`、消息卡→`Message`/`Bubble`、状态行→`Marker`、列表行→`Item`、错误框→`Alert`、开关行→`Field`、空态→`Empty`;审批选项改用 `NativeSelectOption`,琥珀色角标统一取 `TONE_BADGE`;审计与批准卡把后端工具名翻成中文动作(`toolActionLabel`),记忆绑定的主机从服务器列表选而不是手写 ID ✅ 2026-10-21
+- [x] M5-E2d 原语收敛为单一 Base UI + 全换 AI Elements pattern(见 `docs/AGENT_DESIGN.md` §18.3 偏差 10):推理与逐台进度改 `Trace`/`TraceLine`/`TraceCollapsible`,命令与输出改 `CodeBlock`(手写 `<pre>` 清零),待批准改为 `Trace` 之外的 `Item` + `ItemActions`(`ToggleGroup` 三档,默认拒绝),输入区改 `InputGroup` + `InputGroupTextarea` + `InputGroupAddon`,抬头三个选择器改 `DropdownMenu` + `DropdownMenuRadioGroup`,用量改 `HoverCard` + `Progress`(分母取设置里的 `agent.tokenBudget`),空态示例做成可点 `Button`;`space-y-*` 清零 ✅ 2026-10-21
+- [x] M5-E2e 安装来源纪律:只用 `bunx --bun shadcn@latest add trace code-block`(base-nova,实测依赖只有 `cn`),**禁止** `elements.ai-sdk.dev`(那份要 `use-stick-to-bottom`/`nanoid`/`tokenlens`/Radix hook + `ai` 类型);`shiki` 提升为一级依赖但钉 `^3.23.0`,与 `@streamdown/code` 共用一份(bun.lock 内只剩一个 shiki 版本),`highlighter.tsx` 在 3.23 下 `tsc` 零错 ✅ 2026-10-21
+- [x] M5-C6 审计补真实数据(偏差 11):迁移 `0003_agent_audit_detail.sql` 给 `agent_tool_calls` 加 `output_excerpt`/`duration_ms`,`args_json` 改为真写入(此前恒为空串);只读自动放行的 `approval` 记 NULL 而不是伪造成 `allowed_once`;耗时只计执行不含排队;新增 2 条 Rust 回归(字段往返 + null 不谎报 0) ✅ 2026-10-21
 - [x] M5-E3 `stores/agent.ts`(快照 + 流式增量 + 待批准 + 失败可见可重试)、`lib/agent-events.ts`(枚举中文映射集中一处)、`gateway/agent.ts`(Channel 封装) ✅ 2026-10-21
-- [x] M5-E4 跨对话待批准轮询:后台运行在别的线程等批准时,本页横幅常驻可见并可一键跳过去做决定 ✅ 2026-10-21
-- [x] M5-E5 测试:`cargo test` 243 通过、`bun run test` 117 通过、`bun run build`、`bun run check:ipc`、`cargo clippy -D warnings`、`cargo fmt --check` 全绿 ✅ 2026-10-21
+- [x] M5-E4 跨对话待批准轮询:后台运行在别的线程等批准时,抽屉头角标 + 横幅常驻可见,点「去做决定」切到对话页签 ✅ 2026-10-21
+- [x] M5-E2f 抽屉壳换非模态 `Drawer`(`swipeDirection="right"` + `modal={false}` + `disablePointerDismissal`,宽度走行内 `--drawer-content-width`):抽屉开着时终端与文件列表仍可点击滚动,关闭按钮改 `DrawerClose`;回归断言无 drawer-overlay 且 viewport `data-modal="false"` ✅ 2026-10-21
+- [x] M5-FIX1 修流式重复与用户消息不显示(真机反馈,见 `docs/AGENT_DESIGN.md` §18.3 偏差 14):①`send_agent_message` 回 `subscriptionId`,前端不再补第二条订阅(旧写法两条 sink → 每段增量投两遍,表格行重复);②`applyEvent` 去掉 `&& next.settled`,序号不前进一律丢弃;③受理后立刻刷快照让用户那一轮马上可见。补 3 条回归(重复投递不累加、发送只保留受理订阅、发送后刷新快照) ✅ 2026-10-21
+- [x] M5-E2g 枚举候选收归后端(AGENTS.md §5 自查):新增 `list_agent_enums`(协议 / 批准决策 / 记忆作用域),删除只有作用域一类的前身 `list_agent_memory_scopes`;`ProtocolKind::ALL`、新增 `ApprovalDecision::ALL` 成为唯一取值来源,store 随 `load()` 拉齐存 `enums`;`profile-form` 不再 `Object.keys(PROTOCOL_DISPLAY)`、`approval-card` 不再抄 `CHOICES` 数组;记忆面板候选取不到时给可读错误 + 重试而不是空下拉。补 Rust 序列化测试 `enums_mirror_domain_all_lists` ✅ 2026-10-21
+- [x] M5-E5 测试:`cargo test` 245 通过、`bun run test` 130 通过(含 `agent-drawer.test.tsx` 3 条入口回归、`agent-patterns.test.tsx` 4 条 pattern 回归)、`bun run build`、`bun run check:ipc`、`cargo clippy -D warnings`、`cargo fmt --check` 全绿 ✅ 2026-10-21
 - [ ] M5-E6 手工验证(需 `bun run tauri dev` + 真实密钥):三平台安装包构建与体积增量、xterm/流式观感、Windows Schannel 实连、macOS/Linux 钥匙串路径 —— 见 `docs/AGENT_DESIGN.md` §18.3
 
 ---

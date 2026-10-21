@@ -2,6 +2,38 @@
   "modules": {
     "agent": {
       "$defs": {
+        "AgentEnumsDto": {
+          "description": "界面候选枚举的单点来源(AGENTS.md §5:前端禁止自己抄一份取值)。\n\n一次取回三类候选,避免抽屉每次打开都发多条 IPC;审批模式档位不在这里,\n它由设置契约 `agent.approvalMode` 提供(校验与界面档位同源)。",
+          "properties": {
+            "approvalDecisions": {
+              "description": "逐台批准的可选决策。",
+              "items": {
+                "$ref": "#/$defs/ApprovalDecision"
+              },
+              "type": "array"
+            },
+            "memoryScopes": {
+              "description": "共享记忆作用域。",
+              "items": {
+                "$ref": "#/$defs/MemoryScope"
+              },
+              "type": "array"
+            },
+            "protocols": {
+              "description": "可用协议(只有两种新协议)。",
+              "items": {
+                "$ref": "#/$defs/ProtocolKind"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "protocols",
+            "approvalDecisions",
+            "memoryScopes"
+          ],
+          "type": "object"
+        },
         "AgentEvent": {
           "description": "一条对外事件。",
           "properties": {
@@ -354,7 +386,7 @@
                   "type": "null"
                 }
               ],
-              "description": "批准决策。"
+              "description": "批准决策;按档位自动放行的只读操作为 null(没有人批准过)。"
             },
             "argsJson": {
               "description": "入参原文。",
@@ -371,9 +403,24 @@
                 "null"
               ]
             },
+            "durationMs": {
+              "description": "该台主机上的执行耗时(毫秒);未开始执行(拒绝/取消)为 null。",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "id": {
               "description": "ID。",
               "type": "string"
+            },
+            "outputExcerpt": {
+              "description": "输出摘要(截断后);未执行或无输出为 null。",
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "runId": {
               "description": "运行 ID。",
@@ -396,7 +443,9 @@
             "connId",
             "argsJson",
             "status",
-            "approval"
+            "approval",
+            "outputExcerpt",
+            "durationMs"
           ],
           "type": "object"
         },
@@ -819,6 +868,10 @@
               "format": "int64",
               "type": "integer"
             },
+            "subscriptionId": {
+              "description": "本次 `on_event` Channel 的订阅 ID。\n\n受理时这条 Channel 已经是该线程的 sink,前端必须拿它的 ID 去退订;\n若前端再单独 `attach_agent_thread`,同一批增量会被投两遍。",
+              "type": "string"
+            },
             "threadId": {
               "description": "线程 ID。",
               "type": "string"
@@ -827,7 +880,8 @@
           "required": [
             "runId",
             "threadId",
-            "startedSeq"
+            "startedSeq",
+            "subscriptionId"
           ],
           "type": "object"
         },
@@ -1318,6 +1372,9 @@
       },
       "additionalProperties": false,
       "properties": {
+        "AgentEnumsDto": {
+          "$ref": "#/$defs/AgentEnumsDto"
+        },
         "AgentEvent": {
           "$ref": "#/$defs/AgentEvent"
         },
@@ -1428,6 +1485,7 @@
         "ProtocolKind",
         "ApprovalMode",
         "ApprovalDecision",
+        "AgentEnumsDto",
         "RunState",
         "TargetStatus",
         "ToolCategory",

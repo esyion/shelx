@@ -9,17 +9,18 @@ import { cjk } from "@streamdown/cjk";
 import { code } from "@streamdown/code";
 import { Streamdown } from "streamdown";
 import { openExternalUrl } from "@/app/api";
+import { Button } from "@/components/ui/button";
 
-/** 链接改写为系统浏览器跳转。 */
+/** 链接改写为系统浏览器跳转(shadcn Button 的 link 变体,不手写 `<button>`)。 */
 const components = {
   a: ({ href, children }: ComponentProps<"a">) => (
-    <button
-      type="button"
-      className="text-primary underline underline-offset-2"
+    <Button
+      variant="link"
+      className="h-auto p-0 text-sm leading-inherit"
       onClick={() => href && void openExternalUrl(href).catch(() => undefined)}
     >
       {children}
-    </button>
+    </Button>
   ),
 };
 

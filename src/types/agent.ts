@@ -3,6 +3,7 @@
  * 本文件仅做再导出与前端别名(AGENTS.md §5:禁止手写后端镜像类型)。
  */
 export type {
+  AgentEnumsDto,
   AgentEvent,
   AgentEventKind,
   AgentIdRequestDto,
@@ -42,11 +43,13 @@ export type {
 
 import type {
   AgentEvent,
+  AgentEventKind,
   ApprovalDecision,
   MemoryDto,
   MessageDto,
   ProfileDto,
   TargetDto,
+  TargetStatus,
   ThreadDto,
 } from "./gen/agent";
 
@@ -79,8 +82,22 @@ export type AgentStreamFragment = {
   reasoning: string;
   /** 已并入的最大事件序号(重挂时按此续接)。 */
   seq: number;
+  /** 最近一条事件类别(界面用它显示"现在在做什么",不显示英文原值)。 */
+  lastKind?: AgentEventKind;
+  /** 本轮每台主机的进度,键为连接 ID(无 ID 时用显示名),来自 `target_state` 事件。 */
+  targets?: Record<string, AgentTargetProgress>;
   /** 本轮用量。 */
   usage?: AgentEvent["usage"];
   /** 是否已收到终态事件。 */
   settled: boolean;
+};
+
+/** 单台主机在本轮里的进度(对话区实时轨迹用,落库后以审计行为准)。 */
+export type AgentTargetProgress = {
+  /** 用户起的连接名。 */
+  connName: string;
+  /** 工具名(后端原值,展示时翻成中文动作)。 */
+  toolName: string;
+  /** 状态。 */
+  status: TargetStatus;
 };

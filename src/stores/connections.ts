@@ -240,6 +240,24 @@ export function countConnections(nodes: ConnectionNodeDto[]): number {
   );
 }
 
+/**
+ * 摊平连接树,只取主机叶子并按连接名排序(选择器用,避免让用户手写 ID)。
+ *
+ * @param nodes 连接树
+ * @returns 主机节点列表
+ */
+export function listConnectionLeaves(nodes: ConnectionNodeDto[]): ConnectionNodeDto[] {
+  const leaves: ConnectionNodeDto[] = [];
+  const walk = (items: ConnectionNodeDto[]): void => {
+    for (const node of items) {
+      if (node.kind === "group") walk(node.children);
+      else leaves.push(node);
+    }
+  };
+  walk(nodes);
+  return leaves.sort((left, right) => left.name.localeCompare(right.name, "zh-Hans-CN"));
+}
+
 /** 稳定的树节点 key。 */
 export function nodeKey(node: ConnectionNodeDto): string {
   return node.kind === "group" ? `g:${node.id}` : `c:${node.id}`;

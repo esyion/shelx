@@ -162,6 +162,10 @@ fn document_uncanonical() -> Value {
                 ("ProtocolKind", refer::<crate::domain::agent::ProtocolKind>),
                 ("ApprovalMode", refer::<crate::domain::agent::ApprovalMode>),
                 ("ApprovalDecision", refer::<crate::domain::agent::ApprovalDecision>),
+                (
+                    "AgentEnumsDto",
+                    refer::<crate::dto::agent::AgentEnumsDto>,
+                ),
                 ("RunState", refer::<crate::domain::agent::RunState>),
                 ("TargetStatus", refer::<crate::domain::agent::TargetStatus>),
                 ("ToolCategory", refer::<crate::domain::agent::ToolCategory>),

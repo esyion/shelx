@@ -6,6 +6,10 @@ use rusqlite::Connection;
 const MIGRATIONS: &[(i64, &str)] = &[
     (1, include_str!("../../../migrations/0001_init.sql")),
     (2, include_str!("../../../migrations/0002_agent.sql")),
+    (
+        3,
+        include_str!("../../../migrations/0003_agent_audit_detail.sql"),
+    ),
 ];
 
 /// 将数据库迁移到最新版本;已是最新时为空操作。

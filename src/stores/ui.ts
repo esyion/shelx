@@ -41,6 +41,8 @@ export interface UiStore {
   toasts: ToastItem[];
   /** 待决策的传输冲突任务 ID；null = 无冲突弹窗（引擎 awaiting_conflict → 弹框，PRD §6.4）。 */
   conflictTaskId: string | null;
+  /** AI 助手右抽屉是否打开（跨路由存活，与 conflictTaskId 同一类瞬时 UI 态，不落布局）。 */
+  agentOpen: boolean;
   /** 启动时从后端恢复布局（幂等）。 */
   restoreLayout(): Promise<void>;
   /** 折叠/展开侧栏。 */
@@ -59,6 +61,10 @@ export interface UiStore {
   toast(message: string, variant?: ToastItem["variant"]): void;
   /** 设置待决策冲突任务（null 关闭冲突弹窗）。 */
   setConflictTaskId(taskId: string | null): void;
+  /** 打开/关闭 AI 助手右抽屉。 */
+  setAgentOpen(open: boolean): void;
+  /** 切换 AI 助手右抽屉。 */
+  toggleAgent(): void;
 }
 
 let toastSeq = 0;
@@ -86,6 +92,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
   bottomPanelHeight: null,
   toasts: [],
   conflictTaskId: null,
+  agentOpen: false,
 
   async restoreLayout() {
     try {
@@ -175,5 +182,13 @@ export const useUiStore = create<UiStore>((set, get) => ({
 
   setConflictTaskId(taskId) {
     set({ conflictTaskId: taskId });
+  },
+
+  setAgentOpen(open) {
+    set({ agentOpen: open });
+  },
+
+  toggleAgent() {
+    set((state) => ({ agentOpen: !state.agentOpen }));
   },
 }));

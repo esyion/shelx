@@ -43,7 +43,7 @@ impl SqliteAgentStore {
     /// 打开内存库(测试用)。
     ///
     /// # Errors
-    /// 迁移失败。
+    /// 迁移失败。/*  */
     pub fn open_in_memory() -> Result<Self, StoreFault> {
         let conn = super::open_in_memory().map_err(fault)?;
         Ok(Self {
@@ -305,8 +305,8 @@ impl AgentStore for SqliteAgentStore {
         self.with_conn(|conn| {
             conn.execute(
                 "INSERT INTO agent_tool_calls
-                   (id,thread_id,run_id,tool_name,category,conn_id,args_json,status,approval,created_at)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10) ON CONFLICT(id) DO NOTHING",
+                   (id,thread_id,run_id,tool_name,category,conn_id,args_json,status,approval,output_excerpt,duration_ms,created_at)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12) ON CONFLICT(id) DO NOTHING",
                 params![
                     record.id.as_str(),
                     record.thread_id.as_str(),
@@ -317,6 +317,8 @@ impl AgentStore for SqliteAgentStore {
                     record.args_json,
                     status,
                     approval,
+                    record.output_excerpt,
+                    record.duration_ms,
                     now()
                 ],
             )
@@ -328,7 +330,7 @@ impl AgentStore for SqliteAgentStore {
         let thread = ThreadId::new(thread_id).map_err(|err| StoreFault(err.to_string()))?;
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT id,run_id,tool_name,category,conn_id,args_json,status,approval
+                "SELECT id,run_id,tool_name,category,conn_id,args_json,status,approval,output_excerpt,duration_ms
                  FROM agent_tool_calls WHERE thread_id = ?1 ORDER BY created_at ASC",
             )?;
             let rows = stmt.query_map(params![thread_id], |row| {
@@ -351,6 +353,8 @@ impl AgentStore for SqliteAgentStore {
                         .map(|value| wire::<ApprovalDecision>(&value))
                         .transpose()
                         .map_err(row_fault)?,
+                    output_excerpt: row.get(8)?,
+                    duration_ms: row.get(9)?,
                 })
             })?;
             rows.collect()
@@ -591,6 +595,23 @@ mod tests {
         }
     }
 
+    /// 一条已批准并执行过的审计记录(输出与耗时都有值)。
+    fn audit_record(id: &str) -> ToolCallRecord {
+        ToolCallRecord {
+            id: CallId::new(id).unwrap(),
+            thread_id: ThreadId::new("t1").unwrap(),
+            run_id: crate::domain::agent::RunId::new("r1").unwrap(),
+            tool_name: "exec".into(),
+            category: crate::domain::agent::ToolCategory::Mutating,
+            conn_id: Some("k1".into()),
+            args_json: "{\"argv\":[\"uptime\"]}".into(),
+            status: TargetStatus::Ok,
+            approval: Some(ApprovalDecision::AllowedOnce),
+            output_excerpt: Some("up 3 days".into()),
+            duration_ms: Some(120),
+        }
+    }
+
     /// profile 记录。
     fn profile(id: &str) -> ProfileRecord {
         ProfileRecord {
@@ -729,21 +750,29 @@ mod tests {
     fn audit_roundtrip() {
         let store = SqliteAgentStore::open_in_memory().unwrap();
         store.upsert_thread(&thread("t1")).unwrap();
-        let record = ToolCallRecord {
-            id: CallId::new("c1").unwrap(),
-            thread_id: ThreadId::new("t1").unwrap(),
-            run_id: crate::domain::agent::RunId::new("r1").unwrap(),
-            tool_name: "exec".into(),
-            category: crate::domain::agent::ToolCategory::Mutating,
-            conn_id: Some("k1".into()),
-            args_json: "{\"argv\":[\"uptime\"]}".into(),
-            status: TargetStatus::Denied,
-            approval: Some(ApprovalDecision::Denied),
-        };
+        let record = audit_record("c1");
         store.insert_tool_call(&record).unwrap();
         let loaded = store.tool_calls("t1").unwrap();
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0], record);
+        assert_eq!(loaded[0].output_excerpt.as_deref(), Some("up 3 days"));
+        assert_eq!(loaded[0].duration_ms, Some(120));
+    }
+
+    /// 未执行的主机:输出与耗时按 NULL 存,读回也是 None(0 会被界面读成"秒回")。
+    #[test]
+    fn audit_keeps_missing_output_and_duration_null() {
+        let store = SqliteAgentStore::open_in_memory().unwrap();
+        store.upsert_thread(&thread("t1")).unwrap();
+        let mut record = audit_record("c2");
+        record.output_excerpt = None;
+        record.duration_ms = None;
+        store.insert_tool_call(&record).unwrap();
+        let loaded = store.tool_calls("t1").unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0], record);
+        assert!(loaded[0].output_excerpt.is_none());
+        assert!(loaded[0].duration_ms.is_none());
     }
 
     /// 批准决策按 (请求, 主机) 唯一,重复应答覆盖而不新增。

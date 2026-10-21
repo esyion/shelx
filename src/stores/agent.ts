@@ -1,12 +1,13 @@
 /**
  * Agent store:线程、快照、流式增量与批准状态的全局形态。
  *
- * 为什么要 store(而不只是组件 state):离开 `/agent` 会卸载组件,但后台运行继续,
- * 重新进入必须立刻看到历史与进行中的状态(AGENTS.md §4.1.1「不许死状态」)。
+ * 为什么要 store(而不只是组件 state):抽屉关闭会卸载对话组件,但后台运行继续,
+ * 重新打开必须立刻看到历史与进行中的状态(AGENTS.md §4.1.1「不许死状态」)。
  * 事件按 `seq` 合并去重;失败保留可见并可重试,不吞后端原文。
  */
 import { create } from "zustand";
 import type {
+  AgentEnumsDto,
   AgentEvent,
   AgentProfile,
   AgentStreamFragment,
@@ -35,6 +36,8 @@ export interface AgentStore {
   profiles: AgentProfile[];
   /** 共享记忆。 */
   memories: MemoryDto[];
+  /** 界面候选枚举(协议、批准决策、记忆作用域),一次随列表拉取。 */
+  enums: AgentEnumsDto;
   /** 当前打开的线程。 */
   activeThreadId: string | null;
   /** 线程快照。 */
@@ -68,8 +71,8 @@ export interface AgentStore {
   cancel(runId: string): Promise<void>;
   /** 逐台批准。 */
   approve(requestId: string, choices: ApprovalChoice[]): Promise<void>;
-  /** 保存模型接入点。 */
-  saveProfile(request: Parameters<typeof api.upsertAgentProfile>[0]): Promise<boolean>;
+  /** 保存模型接入点(成功返回保存后的配置,供新建后立刻探测)。 */
+  saveProfile(request: Parameters<typeof api.upsertAgentProfile>[0]): Promise<AgentProfile | null>;
   /** 删除模型接入点。 */
   removeProfile(id: string): Promise<void>;
   /** 测试接入点协议。 */
@@ -80,6 +83,8 @@ export interface AgentStore {
   removeMemory(id: string): Promise<void>;
   /** 清除错误提示。 */
   dismissError(): void;
+  /** 写一条用户可见的错误提示(界面不再直接改 store)。 */
+  setError(message: string): void;
   /** 合并一条流式事件(订阅回调使用)。 */
   applyEvent(event: AgentEvent): void;
 }
@@ -111,6 +116,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   threads: [],
   profiles: [],
   memories: [],
+  enums: { protocols: [], approvalDecisions: [], memoryScopes: [] },
   activeThreadId: null,
   snapshots: {},
   streams: {},
@@ -120,12 +126,13 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   async load() {
     set({ loading: true, error: null });
     try {
-      const [threads, profiles, memories] = await Promise.all([
+      const [threads, profiles, memories, enums] = await Promise.all([
         api.listAgentThreads(),
         api.listAgentProfiles(),
         api.listAgentMemories(),
+        api.listAgentEnums(),
       ]);
-      set({ threads, profiles, memories, loading: false });
+      set({ threads, profiles, memories, enums, loading: false });
     } catch (error) {
       set({ loading: false, error: messageOf(error) });
     }
@@ -217,16 +224,15 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       error: null,
     });
     try {
+      // 受理时后端已把这条 Channel 注册成本轮唯一订阅,不能再 attach 第二条:
+      // 两条 sink 会把同一批增量各投一次,表格与段落会被拼成重复内容。
       const accepted = await api.sendAgentMessage(
         { threadId, prompt },
         (event) => get().applyEvent(event),
       );
-      const subscriptionId = await api.attachAgentThread(
-        threadId,
-        accepted.startedSeq,
-        (event) => get().applyEvent(event),
-      );
-      subscriptions.set(threadId, subscriptionId);
+      subscriptions.set(threadId, accepted.subscriptionId);
+      // 用户消息在受理前已落库,立刻刷一次快照,否则要等切走再切回才看得见。
+      await refreshSnapshot(threadId, set, get);
     } catch (error) {
       set({ error: messageOf(error) });
       await refreshSnapshot(threadId, set, get);
@@ -274,10 +280,10 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       const others = get().profiles.filter((profile) => profile.id !== saved.id);
       set({ profiles: [...others, saved] });
       useUiStore.getState().toast(`已保存模型接入点：${saved.label}`);
-      return true;
+      return saved;
     } catch (error) {
       set({ error: messageOf(error) });
-      return false;
+      return null;
     }
   },
 
@@ -330,6 +336,10 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
 
   dismissError() {
     set({ error: null });
+  },
+
+  setError(message) {
+    set({ error: message });
   },
 }));
 

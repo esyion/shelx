@@ -124,10 +124,14 @@ impl ToolHost for SshToolHost {
             .cloned()
             .collect();
 
-        let decisions: Vec<(String, ApprovalDecision)> = if pending.is_empty() {
+        // 审计的 approval 列只记"用户真决定过"的值:自动放行的只读操作记 null,
+        // 命中"本对话内一直允许"的记 AllowedAlways(AGENTS.md §4.1.1 不伪造)。
+        let decisions: Vec<(String, Option<ApprovalDecision>)> = if !needs_approval {
+            targets.iter().map(|(id, _)| (id.clone(), None)).collect()
+        } else if pending.is_empty() {
             targets
                 .iter()
-                .map(|(id, _)| (id.clone(), ApprovalDecision::AllowedOnce))
+                .map(|(id, _)| (id.clone(), Some(ApprovalDecision::AllowedAlways)))
                 .collect()
         } else {
             let request_id = uuid::Uuid::new_v4().to_string();
@@ -166,11 +170,14 @@ impl ToolHost for SshToolHost {
                 .collect();
             self.record_approvals(&context, name, &request_id, &resolved);
             resolved
+                .into_iter()
+                .map(|(id, decision)| (id, Some(decision)))
+                .collect()
         };
 
         let denied_ids: HashSet<String> = decisions
             .iter()
-            .filter(|(_, decision)| *decision == ApprovalDecision::Denied)
+            .filter(|(_, decision)| *decision == Some(ApprovalDecision::Denied))
             .map(|(id, _)| id.clone())
             .collect();
         let allowed: Vec<(String, String)> = targets
@@ -195,15 +202,20 @@ impl ToolHost for SshToolHost {
             let argv = argv.clone();
             tasks.push(tokio::spawn(async move {
                 let Ok(_guard) = permits.acquire_owned().await else {
-                    return ToolTargetOutcome {
-                        conn_id,
-                        conn_name,
-                        status: TargetStatus::Cancelled,
-                        output: None,
-                        error: Some("并发许可获取失败".into()),
-                    };
+                    return (
+                        ToolTargetOutcome {
+                            conn_id,
+                            conn_name,
+                            status: TargetStatus::Cancelled,
+                            output: None,
+                            error: Some("并发许可获取失败".into()),
+                        },
+                        None,
+                    );
                 };
-                super::tool_ops::run_on_target(
+                // 耗时只计执行本身:排队等并发许可的时间不算进去(审计里"慢"要能被区分)。
+                let started = std::time::Instant::now();
+                let outcome = super::tool_ops::run_on_target(
                     &connections,
                     &sessions,
                     &sftp,
@@ -214,43 +226,56 @@ impl ToolHost for SshToolHost {
                     &arguments,
                     &argv,
                 )
-                .await
+                .await;
+                (
+                    outcome,
+                    Some(i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX)),
+                )
             }));
         }
 
-        let mut results: Vec<ToolTargetOutcome> = denied_ids
+        // 未批准的主机没有执行过,耗时列留 null(而不是 0,0 会被读成"秒回")。
+        let mut results: Vec<(ToolTargetOutcome, Option<i64>)> = denied_ids
             .iter()
             .filter_map(|id| {
                 targets
                     .iter()
                     .find(|(conn_id, _)| conn_id == id)
-                    .map(|(_, conn_name)| ToolTargetOutcome {
-                        conn_id: id.clone(),
-                        conn_name: conn_name.clone(),
-                        status: TargetStatus::Denied,
-                        output: None,
-                        error: Some("用户未批准该主机上的操作".into()),
+                    .map(|(_, conn_name)| {
+                        (
+                            ToolTargetOutcome {
+                                conn_id: id.clone(),
+                                conn_name: conn_name.clone(),
+                                status: TargetStatus::Denied,
+                                output: None,
+                                error: Some("用户未批准该主机上的操作".into()),
+                            },
+                            None,
+                        )
                     })
             })
             .collect();
 
         for task in tasks {
             match task.await {
-                Ok(outcome) => results.push(outcome),
+                Ok(pair) => results.push(pair),
                 Err(err) => {
                     tracing::error!("工具任务异常退出: {err}");
-                    results.push(ToolTargetOutcome {
-                        conn_id: "unknown".into(),
-                        conn_name: "未知主机".into(),
-                        status: TargetStatus::Failed,
-                        output: None,
-                        error: Some("执行任务异常终止".into()),
-                    });
+                    results.push((
+                        ToolTargetOutcome {
+                            conn_id: "unknown".into(),
+                            conn_name: "未知主机".into(),
+                            status: TargetStatus::Failed,
+                            output: None,
+                            error: Some("执行任务异常终止".into()),
+                        },
+                        None,
+                    ));
                 }
             }
         }
 
-        for outcome in &results {
+        for (outcome, duration_ms) in &results {
             let mut event = self.event(&context, AgentEventKind::TargetState);
             event.tool_name = Some(name.to_owned());
             event.category = Some(category);
@@ -260,12 +285,24 @@ impl ToolHost for SshToolHost {
             event.output_excerpt = outcome.output.clone();
             event.text = outcome.error.clone();
             self.publish(&context, event);
-            self.audit(&context, name, category, outcome);
+            let approval = decisions
+                .iter()
+                .find(|(id, _)| *id == outcome.conn_id)
+                .and_then(|(_, decision)| *decision);
+            self.audit(
+                &context,
+                name,
+                category,
+                &args_json,
+                approval,
+                outcome,
+                *duration_ms,
+            );
         }
 
         let ok_count = results
             .iter()
-            .filter(|item| item.status == TargetStatus::Ok)
+            .filter(|(item, _)| item.status == TargetStatus::Ok)
             .count();
         let summary = format!(
             "{name} 在 {} 台主机上执行,成功 {ok_count} 台",
@@ -275,15 +312,15 @@ impl ToolHost for SshToolHost {
             ok: ok_count == results.len() && !results.is_empty(),
             needs_user: results
                 .iter()
-                .any(|item| item.status == TargetStatus::Denied)
+                .any(|(item, _)| item.status == TargetStatus::Denied)
                 && ok_count == 0,
             summary,
-            truncated: results.iter().any(|item| {
+            truncated: results.iter().any(|(item, _)| {
                 item.output
                     .as_deref()
                     .is_some_and(|text| text.chars().count() >= EXCERPT_CHARS)
             }),
-            targets: results,
+            targets: results.into_iter().map(|(item, _)| item).collect(),
         };
         if outcome
             .targets
@@ -428,12 +465,18 @@ impl SshToolHost {
     }
 
     /// 每台一行审计(含被拒绝的),界面审计视图与事后追溯的数据源。
+    ///
+    /// 入参、输出摘要、耗时、真实批准决策一并落库:审计视图要能如实回答"跑了什么、拿到什么、多久、谁批准的"。
+    #[allow(clippy::too_many_arguments)]
     fn audit(
         &self,
         context: &RunContext,
         tool: &str,
         category: ToolCategory,
+        args_json: &str,
+        approval: Option<ApprovalDecision>,
         outcome: &ToolTargetOutcome,
+        duration_ms: Option<i64>,
     ) {
         let (Ok(id), Ok(thread_id), Ok(run_id)) = (
             CallId::new(uuid::Uuid::new_v4().to_string()),
@@ -450,13 +493,11 @@ impl SshToolHost {
             tool_name: tool.to_owned(),
             category,
             conn_id: Some(outcome.conn_id.clone()),
-            args_json: String::new(),
+            args_json: args_json.to_owned(),
             status: outcome.status,
-            approval: Some(if outcome.status == TargetStatus::Denied {
-                ApprovalDecision::Denied
-            } else {
-                ApprovalDecision::AllowedOnce
-            }),
+            approval,
+            output_excerpt: outcome.output.clone().or_else(|| outcome.error.clone()),
+            duration_ms,
         };
         if let Err(err) = self.store.insert_tool_call(&record) {
             tracing::warn!("工具审计写入失败: {err}");

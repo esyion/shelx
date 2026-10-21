@@ -2,6 +2,22 @@
    来源是 Rust 边界类型(serde 属性决定字段名与枚举字面量);改完 Rust 重新生成。 */
 
 /**
+ * 单次工具调用的批准决策(粒度到"一台主机",见 docs/AGENT_DESIGN.md §7.2)。
+ */
+export type ApprovalDecision = "allowed_once" | "allowed_always" | "denied";
+/**
+ * 共享记忆条目的作用域。
+ */
+export type MemoryScope = "global" | "connection";
+/**
+ * Provider 协议种类。
+ *
+ * 取值即协议本身:OpenAI 侧只允许 Responses API(`POST /responses`),
+ * Anthropic 侧只允许 Messages API(`POST /v1/messages`)。Chat Completions
+ * 不存在于本枚举中 —— 旧协议在领域层就没有表达位置(AGENTS.md §13)。
+ */
+export type ProtocolKind = "openai_responses" | "anthropic_messages";
+/**
  * 工具调用对世界的影响类别。
  */
 export type ToolCategory = "read_only" | "mutating" | "connect";
@@ -26,29 +42,13 @@ export type AgentEventKind =
 export type TargetStatus =
   "pending" | "connecting" | "running" | "ok" | "failed" | "denied" | "cancelled" | "awaiting_approval";
 /**
- * 单次工具调用的批准决策(粒度到"一台主机",见 docs/AGENT_DESIGN.md §7.2)。
- */
-export type ApprovalDecision = "allowed_once" | "allowed_always" | "denied";
-/**
  * 审批模式(枚举带行为,不做自由文本,AGENTS.md §13)。
  */
 export type ApprovalMode = "read_only_auto" | "all_confirm" | "read_only_only";
 /**
- * 共享记忆条目的作用域。
- */
-export type MemoryScope = "global" | "connection";
-/**
  * 消息角色。
  */
 export type MessageRole = "user" | "assistant" | "tool" | "system";
-/**
- * Provider 协议种类。
- *
- * 取值即协议本身:OpenAI 侧只允许 Responses API(`POST /responses`),
- * Anthropic 侧只允许 Messages API(`POST /v1/messages`)。Chat Completions
- * 不存在于本枚举中 —— 旧协议在领域层就没有表达位置(AGENTS.md §13)。
- */
-export type ProtocolKind = "openai_responses" | "anthropic_messages";
 /**
  * 批量目标选择方式。
  */
@@ -84,6 +84,26 @@ export type TargetScope =
  */
 export type RunState = "running" | "awaiting_approval" | "completed" | "failed" | "cancelled";
 
+/**
+ * 界面候选枚举的单点来源(AGENTS.md §5:前端禁止自己抄一份取值)。
+ *
+ * 一次取回三类候选,避免抽屉每次打开都发多条 IPC;审批模式档位不在这里,
+ * 它由设置契约 `agent.approvalMode` 提供(校验与界面档位同源)。
+ */
+export interface AgentEnumsDto {
+  /**
+   * 逐台批准的可选决策。
+   */
+  approvalDecisions: ApprovalDecision[];
+  /**
+   * 共享记忆作用域。
+   */
+  memoryScopes: MemoryScope[];
+  /**
+   * 可用协议(只有两种新协议)。
+   */
+  protocols: ProtocolKind[];
+}
 /**
  * 一条对外事件。
  */
@@ -250,7 +270,7 @@ export interface TargetDto {
  */
 export interface AuditDto {
   /**
-   * 批准决策。
+   * 批准决策;按档位自动放行的只读操作为 null(没有人批准过)。
    */
   approval: ApprovalDecision | null;
   /**
@@ -263,9 +283,17 @@ export interface AuditDto {
    */
   connId: string | null;
   /**
+   * 该台主机上的执行耗时(毫秒);未开始执行(拒绝/取消)为 null。
+   */
+  durationMs: number | null;
+  /**
    * ID。
    */
   id: string;
+  /**
+   * 输出摘要(截断后);未执行或无输出为 null。
+   */
+  outputExcerpt: string | null;
   /**
    * 运行 ID。
    */
@@ -479,6 +507,13 @@ export interface SendAcceptedDto {
    * 起始事件序号。
    */
   startedSeq: number;
+  /**
+   * 本次 `on_event` Channel 的订阅 ID。
+   *
+   * 受理时这条 Channel 已经是该线程的 sink,前端必须拿它的 ID 去退订;
+   * 若前端再单独 `attach_agent_thread`,同一批增量会被投两遍。
+   */
+  subscriptionId: string;
   /**
    * 线程 ID。
    */

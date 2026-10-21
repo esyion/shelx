@@ -79,6 +79,10 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
     const { fit } = loadBaseAddons(terminal);
     fitRef.current = fit;
     terminal.open(host);
+    // 内边距必须加在 xterm 自建元素上,不能加在宿主 div:fit 只从父容器尺寸里
+    // 减去该元素自身的 padding,主题底色也由该元素内绝对定位的 viewport 铺满
+    // padding box,故边距带保持终端配色,且点击边距区仍能定位光标。
+    terminal.element?.classList.add("px-3", "py-2");
 
     // IME 输入守卫:修复 WKWebView 下中文输入法击键碎片化(见模块注释)。
     const imeGuard = attachImeGuard(terminal);
@@ -266,7 +270,7 @@ export function TerminalView({ sessionId, encoding }: TerminalViewProps) {
     <div className="relative h-full w-full bg-background">
       <div
         ref={hostRef}
-        className="h-full w-full px-1 py-0.5 text-[13px] leading-[1.2]"
+        className="h-full w-full text-[13px] leading-[1.2]"
         aria-label="终端"
       />
       <SessionStatusOverlay sessionId={sessionId} status={status} />

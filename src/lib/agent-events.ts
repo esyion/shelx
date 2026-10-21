@@ -123,6 +123,32 @@ export const MEMORY_SCOPE_DISPLAY: Record<MemoryScope, AgentDisplay> = {
   connection: { label: "指定主机", description: "只在提到这台主机时参考", tone: "neutral" },
 };
 
+/** 工具名 → 中文动作名(未登记的直接显示后端原名,不伪造翻译)。 */
+const TOOL_ACTION_DISPLAY: Record<string, string> = {
+  list_connections: "查看服务器列表",
+  connection_detail: "查看服务器详情",
+  ensure_session: "建立连接",
+  server_info: "读取服务器信息",
+  exec: "执行命令",
+  read_file: "读取文件",
+  list_dir: "列出目录",
+  tail_log: "查看日志末尾",
+  write_file: "写入文件",
+  remove_path: "删除文件或目录",
+  rename_path: "重命名或移动",
+  set_permissions: "修改权限",
+  remember: "记住这条事实",
+};
+
+/**
+ * 工具名的人话显示(内部工具名只作次要说明,主文案说"做了什么")。
+ *
+ * @param toolName 后端工具名。
+ */
+export function toolActionLabel(toolName: string): string {
+  return TOOL_ACTION_DISPLAY[toolName] ?? toolName;
+}
+
 /** 消息角色 → 中文。 */
 export const MESSAGE_ROLE_DISPLAY: Record<MessageRole, AgentDisplay> = {
   user: { label: "你", description: "你的提问", tone: "neutral" },
@@ -141,6 +167,9 @@ export const APPROVAL_DECISION_DISPLAY: Record<ApprovalDecision, AgentDisplay> =
   },
   denied: { label: "拒绝", description: "不执行任何操作", tone: "danger" },
 };
+
+/** 待批准类警示卡的统一外观(界面不再各写一份琥珀色)。 */
+export const WARNING_CARD_CLASS = "border-amber-500/40 bg-amber-500/5";
 
 /** 语义色 → Tailwind 文本色令牌(界面统一取这里,不散落十六进制)。 */
 export const TONE_CLASS: Record<AgentTone, string> = {
@@ -182,8 +211,11 @@ export function applyEvent(
   event: AgentEvent,
 ): AgentStreamFragment {
   const next: AgentStreamFragment = { ...fragment };
-  if (event.seq <= next.seq && next.settled) return next;
-  next.seq = Math.max(next.seq, event.seq);
+  // 序号不前进的一律丢弃:同一批增量可能被两条订阅各投一次(重挂补发也算),
+  // 未结算时也必须丢,否则文本会被累加成重复片段。
+  if (event.seq <= next.seq) return next;
+  next.seq = event.seq;
+  next.lastKind = event.kind;
   switch (event.kind) {
     case "text_delta":
       next.text += event.text ?? "";
@@ -194,6 +226,20 @@ export function applyEvent(
     case "usage":
       next.usage = event.usage ?? next.usage;
       break;
+    case "target_state": {
+      // 键用 connId(连接名可能重名),没有 connId 时才退回显示名。
+      const key = event.connId ?? event.connName;
+      if (!key) break;
+      next.targets = {
+        ...next.targets,
+        [key]: {
+          connName: event.connName ?? key,
+          toolName: event.toolName ?? "",
+          status: event.targetStatus ?? "pending",
+        },
+      };
+      break;
+    }
     case "final_response":
     case "run_failed":
     case "run_cancelled":
@@ -260,6 +306,49 @@ export function describeApprovalTargets(approval: ApprovalDto): string {
   if (names.length === 0) return "不涉及具体主机";
   if (names.length === 1) return `目标主机：${names[0]}`;
   return `共 ${names.length} 台：${names.slice(0, 3).join("、")}${names.length > 3 ? " 等" : ""}`;
+}
+
+/**
+ * 轨迹行文案与状态(shadcn `Trace` 的口径:一行说一件事,时态用词必须一致)。
+ *
+ * `TraceLine` 只有 running/error/pending 三档,终态不带 status 而把话说完;
+ * 内部枚举原值(如 `awaiting_approval`)绝不进文案 —— AGENTS.md §4.1.1。
+ *
+ * @param action 工具动作的人话名(见 `toolActionLabel`)。
+ * @param status 该台主机的终态。
+ */
+export function traceLine(
+  action: string,
+  status: TargetStatus,
+): { title: string; status?: "running" | "error" | "pending" } {
+  switch (status) {
+    case "pending":
+      return { title: `排队中：${action}`, status: "pending" };
+    case "connecting":
+      return { title: `正在连接并${action}`, status: "running" };
+    case "running":
+    case "awaiting_approval":
+      return { title: `正在${action}`, status: "running" };
+    case "ok":
+      return { title: `${action}完成` };
+    case "failed":
+      return { title: `${action}失败`, status: "error" };
+    case "denied":
+      return { title: `未执行：${action}` };
+    case "cancelled":
+      return { title: `已阻止：${action}` };
+  }
+}
+
+/**
+ * 耗时文案;未执行的主机没有耗时,返回空串而不是 0(0 会被读成"秒回")。
+ *
+ * @param millis 后端耗时(毫秒)或 null。
+ */
+export function formatDuration(millis: number | null | undefined): string {
+  if (millis == null) return "";
+  if (millis < 1000) return `${millis} 毫秒`;
+  return `${(millis / 1000).toFixed(1)} 秒`;
 }
 
 /**

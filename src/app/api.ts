@@ -237,7 +237,7 @@ export const testAgentProfile = agentApi.testAgentProfile;
 /** 解析目标主机集合。 */
 export const resolveAgentTargets = agentApi.resolveAgentTargets;
 /** 记忆作用域候选(取值来自后端枚举)。 */
-export const listAgentMemoryScopes = agentApi.listAgentMemoryScopes;
+export const listAgentEnums = agentApi.listAgentEnums;
 /** 共享记忆列表。 */
 export const listAgentMemories = agentApi.listAgentMemories;
 /** 保存共享记忆。 */
