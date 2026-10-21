@@ -5,6 +5,7 @@
 //!
 //! 监控样本(MetricsSample)等纯数据形状属于跨边界契约,放在 dto 层而非此处。
 
+pub mod agent;
 pub mod connection;
 pub mod error;
 pub mod group;

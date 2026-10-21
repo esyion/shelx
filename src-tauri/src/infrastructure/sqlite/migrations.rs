@@ -3,7 +3,10 @@
 use rusqlite::Connection;
 
 /// (目标版本, SQL) 有序清单;新增迁移只允许追加,不得修改历史条目。
-const MIGRATIONS: &[(i64, &str)] = &[(1, include_str!("../../../migrations/0001_init.sql"))];
+const MIGRATIONS: &[(i64, &str)] = &[
+    (1, include_str!("../../../migrations/0001_init.sql")),
+    (2, include_str!("../../../migrations/0002_agent.sql")),
+];
 
 /// 将数据库迁移到最新版本;已是最新时为空操作。
 ///
@@ -45,5 +48,17 @@ mod tests {
             )
             .unwrap();
         assert_eq!(tables, 4);
+
+        // M5 agent 表随第二次迁移落地。
+        let agent_tables: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN
+                 ('agent_profiles','agent_threads','agent_messages','agent_runs',
+                  'agent_tool_calls','agent_approvals','agent_memories','agent_store')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(agent_tables, 8);
     }
 }

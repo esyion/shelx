@@ -1,5 +1,6 @@
 //! SQLite 基础设施:连接打开/Pragma、迁移执行与连接树持久化(设计文档 §7.2)。
 
+pub mod agent_repo;
 pub mod connection_repo;
 pub mod host_key_repo;
 pub mod migrations;

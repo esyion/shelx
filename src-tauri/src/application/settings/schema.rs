@@ -270,6 +270,54 @@ fn raw_specs() -> Vec<RawSpec> {
             unit: None,
             kind: SettingKind::Bool,
         },
+        // ---- Agent(M5)docs/AGENT_DESIGN.md §11.3 ----
+        RawSpec {
+            path: "agent.approvalMode",
+            unit: None,
+            kind: SettingKind::Enum {
+                options: enum_values(&crate::domain::agent::ApprovalMode::ALL),
+            },
+        },
+        RawSpec {
+            path: "agent.maxTurns",
+            unit: Some("轮"),
+            kind: ints(1, 60, &[4, 8, 12, 20, 40]),
+        },
+        RawSpec {
+            path: "agent.contextMessages",
+            unit: Some("条"),
+            kind: ints(2, 400, &[10, 30, 60, 120]),
+        },
+        RawSpec {
+            path: "agent.batchLimit",
+            unit: Some("台"),
+            kind: ints(1, 20, &[1, 5, 10, 20]),
+        },
+        RawSpec {
+            path: "agent.parallelHosts",
+            unit: Some("台"),
+            kind: ints(1, 8, &[1, 2, 4, 8]),
+        },
+        RawSpec {
+            path: "agent.execTimeoutSecs",
+            unit: Some("秒"),
+            kind: ints(1, 120, &[10, 30, 60, 120]),
+        },
+        RawSpec {
+            path: "agent.tokenBudget",
+            unit: Some("tokens"),
+            kind: ints(0, 5_000_000, &[0, 50_000, 200_000, 1_000_000, 5_000_000]),
+        },
+        RawSpec {
+            path: "agent.injectMemories",
+            unit: None,
+            kind: SettingKind::Bool,
+        },
+        RawSpec {
+            path: "agent.showReasoning",
+            unit: None,
+            kind: SettingKind::Bool,
+        },
         RawSpec {
             path: "migration.pendingMigrationId",
             unit: None,

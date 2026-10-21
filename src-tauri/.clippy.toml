@@ -1,0 +1,13 @@
+# clippy 配置(与 AGENTS.md §4.2 守卫 2 对应)
+#
+# 用途:禁止旧协议入口。shelx 的 Agent 只允许 OpenAI Responses API 与 Anthropic Messages API,
+#       Chat Completions 在领域层就没有取值(dto/agent 的 ProtocolKind 只有两种),
+#       但 rig 的配置类型仍暴露 `chat()` 入口,这里在 lint 层封掉。
+# 生效:`cargo clippy -- -D warnings`(见 .github/workflows/ci.yml)+ lib.rs 的
+#       `#![warn(clippy::disallowed_methods)]`。
+# 回滚:删除本文件与 lib.rs 的 lint 属性;协议守卫测试(infrastructure/agent/protocol_guard.rs)
+#       仍会拦住旧协议,不依赖本配置。
+disallowed-methods = [
+  { path = "rig_core::providers::openai::OpenAIConfig::chat", reason = "禁止 Chat Completions:Agent 只允许 Responses API(docs/AGENT_DESIGN.md §4)" },
+  { path = "rig_core::client::openai::OpenAI::chat", reason = "禁止 Chat Completions:Agent 只允许 Responses API(docs/AGENT_DESIGN.md §4)" },
+]

@@ -66,6 +66,7 @@ export type SettingKind =
  * 应用设置全集(PRD §6.7 分组);默认值 = 各分组默认值的组合。
  */
 export interface AppSettings {
+  agent: AgentSettings;
   appearance: AppearanceSettings;
   connection: ConnectionSettings;
   migration: MigrationSettings;
@@ -73,6 +74,50 @@ export interface AppSettings {
   terminal: TerminalSettings;
   transfer: TransferSettings;
   update: UpdateSettings;
+}
+/**
+ * Agent 设置(M5,docs/AGENT_DESIGN.md)。
+ *
+ * 区间与档位只在 [`schema`] 登记一次,校验与界面下拉同源;
+ * 这里只定义字段与默认值,禁止在别处复制一份取值范围。
+ */
+export interface AgentSettings {
+  /**
+   * 审批模式(枚举带行为,不做自由文本,AGENTS.md §13)。
+   */
+  approvalMode: "read_only_auto" | "all_confirm" | "read_only_only";
+  /**
+   * 单次批量操作的主机数上限。
+   */
+  batchLimit: number;
+  /**
+   * 每次请求携带的历史消息条数(上下文窗口)。
+   */
+  contextMessages: number;
+  /**
+   * 单条远端命令超时(秒)。
+   */
+  execTimeoutSecs: number;
+  /**
+   * 是否把共享记忆注入系统提示。
+   */
+  injectMemories: boolean;
+  /**
+   * 单轮最多允许多少次工具往返。
+   */
+  maxTurns: number;
+  /**
+   * 同时执行的主机数上限。
+   */
+  parallelHosts: number;
+  /**
+   * 是否展示模型推理增量( provider 返回时)。
+   */
+  showReasoning: boolean;
+  /**
+   * 单对话 token 预算;0 表示不限。
+   */
+  tokenBudget: number;
 }
 /**
  * 外观设置。

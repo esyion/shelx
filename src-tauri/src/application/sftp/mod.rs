@@ -82,6 +82,81 @@ impl SftpService {
         Ok(self.channel_for(session_id).await?.entries(path).await?)
     }
 
+    /// 读取远端文本文件,最多 `max_bytes` 字节。
+    ///
+    /// 返回 `(内容, 是否被截断)`;截断事实必须回给调用方,禁止伪造完整内容。
+    /// 非 UTF-8 字节按 lossy 转换(运维场景宁可看到替换符也不整体失败)。
+    pub async fn read_text(
+        &self,
+        session_id: &str,
+        path: &str,
+        max_bytes: usize,
+    ) -> Result<(String, bool), SftpError> {
+        let channel = self.channel_for(session_id).await?;
+        let stream = channel.open_read_stream(path).await?;
+        let mut collected: Vec<u8> = Vec::new();
+        let mut truncated = false;
+        loop {
+            if collected.len() >= max_bytes {
+                truncated = true;
+                break;
+            }
+            let mut chunk = Vec::new();
+            let read = stream.read_chunk(&mut chunk, 32 * 1024).await?;
+            if read == 0 {
+                break;
+            }
+            collected.extend_from_slice(&chunk);
+        }
+        if collected.len() > max_bytes {
+            collected.truncate(max_bytes);
+            truncated = true;
+        }
+        Ok((String::from_utf8_lossy(&collected).into_owned(), truncated))
+    }
+
+    /// 写入远端文本文件。
+    ///
+    /// `append` 为真时先读回原内容再整体写回(底层通道为创建/截断语义);
+    /// 原文件超过 [`Self::MAX_APPEND_SOURCE_BYTES`] 时拒绝,避免把大文件读进内存。
+    pub async fn write_text(
+        &self,
+        session_id: &str,
+        path: &str,
+        content: &str,
+        append: bool,
+    ) -> Result<(), SftpError> {
+        let channel = self.channel_for(session_id).await?;
+        let payload = if append {
+            let existing_size = channel.file_size(path).await?.unwrap_or(0);
+            if existing_size > Self::MAX_APPEND_SOURCE_BYTES as u64 {
+                return Err(SftpError::Transport(TransportError::RemoteFs(format!(
+                    "追加写入仅支持原文件不超过 {} 字节,当前 {existing_size} 字节",
+                    Self::MAX_APPEND_SOURCE_BYTES
+                ))));
+            }
+            let (existing, _) = self
+                .read_text(session_id, path, Self::MAX_APPEND_SOURCE_BYTES)
+                .await?;
+            format!("{existing}{content}")
+        } else {
+            content.to_owned()
+        };
+        let stream = channel.open_write_stream(path).await?;
+        let bytes = payload.into_bytes();
+        let mut offset = 0usize;
+        while offset < bytes.len() {
+            let end = std::cmp::min(offset + 32 * 1024, bytes.len());
+            stream.append_chunk(&bytes[offset..end]).await?;
+            offset = end;
+        }
+        stream.finish().await?;
+        Ok(())
+    }
+
+    /// 追加写入时允许读回的原文件上限(1 MiB)。
+    pub const MAX_APPEND_SOURCE_BYTES: usize = 1024 * 1024;
+
     /// 创建目录。
     pub async fn mkdir(&self, session_id: &str, path: &str) -> Result<(), SftpError> {
         self.channel_for(session_id).await?.mkdir(path).await?;

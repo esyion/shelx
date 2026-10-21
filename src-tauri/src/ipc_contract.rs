@@ -41,8 +41,33 @@ fn build_module(types: &[(&str, ExportFn)]) -> Value {
     })
 }
 
+/// 递归按字典序重排 JSON 对象键。
+///
+/// 为什么要显式排序:schemars 产出的 `$defs` / `properties` 来自哈希表,插入顺序
+/// 随进程变化;不排序时同一份 Rust 代码每次 `bun run gen:ipc` 都会重排生成物字段,
+/// 让 `bun run check:ipc` 在契约未变时也可能偶红(AGENTS.md §5 契约单点必须可复现)。
+fn sort_keys(value: Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut entries: Vec<(String, Value)> = map
+                .into_iter()
+                .map(|(key, child)| (key, sort_keys(child)))
+                .collect();
+            entries.sort_by(|left, right| left.0.cmp(&right.0));
+            Value::Object(entries.into_iter().collect())
+        }
+        Value::Array(items) => Value::Array(items.into_iter().map(sort_keys).collect()),
+        other => other,
+    }
+}
+
 /// 完整契约文档(版本号用于识别占位与结构升级)。
 fn document() -> Value {
+    sort_keys(document_uncanonical())
+}
+
+/// 未排序的契约文档(仅供 [`document`] 调用)。
+fn document_uncanonical() -> Value {
     json!({
         "version": 1,
         "modules": {
@@ -132,6 +157,43 @@ fn document() -> Value {
             ]),
             "update": build_module(&[
                 ("UpdateNotice", refer::<crate::dto::update::UpdateNotice>),
+            ]),
+            "agent": build_module(&[
+                ("ProtocolKind", refer::<crate::domain::agent::ProtocolKind>),
+                ("ApprovalMode", refer::<crate::domain::agent::ApprovalMode>),
+                ("ApprovalDecision", refer::<crate::domain::agent::ApprovalDecision>),
+                ("RunState", refer::<crate::domain::agent::RunState>),
+                ("TargetStatus", refer::<crate::domain::agent::TargetStatus>),
+                ("ToolCategory", refer::<crate::domain::agent::ToolCategory>),
+                ("MemoryScope", refer::<crate::domain::agent::MemoryScope>),
+                ("TargetScope", refer::<crate::domain::agent::TargetScope>),
+                ("MessageRole", refer::<crate::application::agent::types::MessageRole>),
+                ("AgentEventKind", refer::<crate::application::agent::events::AgentEventKind>),
+                ("AgentUsage", refer::<crate::application::agent::events::AgentUsage>),
+                ("AgentEvent", refer::<crate::application::agent::events::AgentEvent>),
+                ("ThreadDto", refer::<crate::dto::agent::ThreadDto>),
+                ("MessageDto", refer::<crate::dto::agent::MessageDto>),
+                ("RunDto", refer::<crate::dto::agent::RunDto>),
+                ("AuditDto", refer::<crate::dto::agent::AuditDto>),
+                ("TargetDto", refer::<crate::dto::agent::TargetDto>),
+                ("ApprovalDto", refer::<crate::dto::agent::ApprovalDto>),
+                ("ThreadSnapshotDto", refer::<crate::dto::agent::ThreadSnapshotDto>),
+                ("ProfileDto", refer::<crate::dto::agent::ProfileDto>),
+                ("MemoryDto", refer::<crate::dto::agent::MemoryDto>),
+                ("SendAcceptedDto", refer::<crate::dto::agent::SendAcceptedDto>),
+                ("ProbeDto", refer::<crate::dto::agent::ProbeDto>),
+                ("CreateThreadRequestDto", refer::<crate::dto::agent::CreateThreadRequestDto>),
+                ("UpdateThreadRequestDto", refer::<crate::dto::agent::UpdateThreadRequestDto>),
+                ("SendMessageRequestDto", refer::<crate::dto::agent::SendMessageRequestDto>),
+                ("ThreadIdRequestDto", refer::<crate::dto::agent::ThreadIdRequestDto>),
+                ("CancelRunRequestDto", refer::<crate::dto::agent::CancelRunRequestDto>),
+                ("ApprovalDecisionDto", refer::<crate::dto::agent::ApprovalDecisionDto>),
+                ("RespondApprovalRequestDto", refer::<crate::dto::agent::RespondApprovalRequestDto>),
+                ("DetachRequestDto", refer::<crate::dto::agent::DetachRequestDto>),
+                ("UpsertProfileRequestDto", refer::<crate::dto::agent::UpsertProfileRequestDto>),
+                ("AgentIdRequestDto", refer::<crate::dto::agent::AgentIdRequestDto>),
+                ("UpsertMemoryRequestDto", refer::<crate::dto::agent::UpsertMemoryRequestDto>),
+                ("ResolveTargetsRequestDto", refer::<crate::dto::agent::ResolveTargetsRequestDto>),
             ]),
         }
     })
@@ -266,6 +328,27 @@ fn enum_wire_literals_are_unchanged() {
         assert_eq!(serde_json::to_value(value).unwrap(), json!(expected));
         assert_eq!(serde_json::to_value(value).unwrap(), json!(value.as_str()));
     }
+}
+
+/// 契约文档必须按键有序:哈希表顺序一旦泄漏进工件,`check:ipc` 会在契约未变时偶发红。
+#[test]
+fn contract_document_keys_are_sorted() {
+    fn walk(value: &Value) {
+        match value {
+            Value::Object(map) => {
+                let keys: Vec<&String> = map.keys().collect();
+                let mut sorted = keys.clone();
+                sorted.sort();
+                assert_eq!(keys, sorted, "契约工件的键必须按字典序落盘");
+                for child in map.values() {
+                    walk(child);
+                }
+            }
+            Value::Array(items) => items.iter().for_each(walk),
+            _ => {}
+        }
+    }
+    walk(&document());
 }
 
 /// 每个模块必须真的导出至少一个类型,防止登记漏项。

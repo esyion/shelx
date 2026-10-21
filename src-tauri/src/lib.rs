@@ -4,6 +4,10 @@
 //! `commands/`(接口层)→ `application/`(用例)→ `domain/`(业务规则),
 //! `infrastructure/` 提供外部依赖适配,`dto/` 与 `shared/` 定义跨边界契约。
 
+// 旧协议守卫(docs/AGENT_DESIGN.md §4.2):Chat Completions 入口在 .clippy.toml 里禁用,
+// 与 infrastructure/agent/protocol_guard.rs 的报文断言互为备份。
+#![warn(clippy::disallowed_methods)]
+
 pub mod application;
 pub mod commands;
 pub mod domain;
@@ -142,6 +146,28 @@ pub fn run() {
             commands::monitor::list_processes,
             commands::monitor::kill_process,
             commands::update::get_update_notice,
+            // ---- Agent(M5)docs/AGENT_DESIGN.md ----
+            commands::agent::list_agent_threads,
+            commands::agent::get_agent_thread,
+            commands::agent::create_agent_thread,
+            commands::agent::update_agent_thread,
+            commands::agent::delete_agent_thread,
+            commands::agent::send_agent_message,
+            commands::agent::attach_agent_thread,
+            commands::agent::detach_agent_thread,
+            commands::agent::cancel_agent_run,
+            commands::agent::respond_tool_approval,
+            commands::agent::list_pending_approvals,
+            commands::agent::list_agent_audit,
+            commands::agent_config::list_agent_profiles,
+            commands::agent_config::upsert_agent_profile,
+            commands::agent_config::delete_agent_profile,
+            commands::agent_config::test_agent_profile,
+            commands::agent_config::resolve_agent_targets,
+            commands::agent_config::list_agent_memories,
+            commands::agent_config::upsert_agent_memory,
+            commands::agent_config::delete_agent_memory,
+            commands::agent_config::list_agent_memory_scopes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,45 +1,9 @@
 {
-  "defaults": {
-    "appearance": {
-      "language": "zh",
-      "theme": "system"
-    },
-    "connection": {
-      "defaultAuthMethod": "password",
-      "keepaliveIntervalSecs": 30
-    },
-    "migration": {
-      "dismissedAutoMigrations": [],
-      "pendingMigrationId": null
-    },
-    "monitor": {
-      "defaultIntervalSecs": 5
-    },
-    "terminal": {
-      "colorScheme": "github_light",
-      "confirmCloseTab": true,
-      "copyOnSelect": true,
-      "cursorStyle": "bar",
-      "fontFamily": "Cascadia Mono, Consolas, monospace",
-      "fontSize": 13,
-      "lineHeight": 1.2,
-      "rightClickPaste": true,
-      "scrollback": 5000
-    },
-    "transfer": {
-      "chunkSizeKib": 32,
-      "defaultConflictPolicy": "ask",
-      "maxConcurrentTasks": 2,
-      "notifyOnComplete": false
-    },
-    "update": {
-      "autoCheck": true
-    }
-  },
   "schema": [
     {
-      "default": "system",
+      "path": "appearance.theme",
       "group": "appearance",
+      "unit": null,
       "kind": {
         "kind": "enum",
         "options": [
@@ -48,12 +12,12 @@
           "light"
         ]
       },
-      "path": "appearance.theme",
-      "unit": null
+      "default": "system"
     },
     {
-      "default": "zh",
+      "path": "appearance.language",
       "group": "appearance",
+      "unit": null,
       "kind": {
         "kind": "enum",
         "options": [
@@ -61,26 +25,26 @@
           "en"
         ]
       },
-      "path": "appearance.language",
-      "unit": null
+      "default": "zh"
     },
     {
-      "default": "Cascadia Mono, Consolas, monospace",
+      "path": "terminal.fontFamily",
       "group": "terminal",
+      "unit": "字符",
       "kind": {
         "kind": "text",
         "maxLen": 200
       },
-      "path": "terminal.fontFamily",
-      "unit": "字符"
+      "default": "Cascadia Mono, Consolas, monospace"
     },
     {
-      "default": 13.0,
+      "path": "terminal.fontSize",
       "group": "terminal",
+      "unit": "px",
       "kind": {
         "kind": "int",
-        "max": 32,
         "min": 8,
+        "max": 32,
         "presets": [
           10,
           11,
@@ -97,16 +61,16 @@
           32
         ]
       },
-      "path": "terminal.fontSize",
-      "unit": "px"
+      "default": 13.0
     },
     {
-      "default": 1.2,
+      "path": "terminal.lineHeight",
       "group": "terminal",
+      "unit": null,
       "kind": {
         "kind": "float",
-        "max": 2.0,
         "min": 1.0,
+        "max": 2.0,
         "presets": [
           1.0,
           1.1,
@@ -118,12 +82,12 @@
           2.0
         ]
       },
-      "path": "terminal.lineHeight",
-      "unit": null
+      "default": 1.2
     },
     {
-      "default": "github_light",
+      "path": "terminal.colorScheme",
       "group": "terminal",
+      "unit": null,
       "kind": {
         "kind": "enum",
         "options": [
@@ -136,12 +100,12 @@
           "github_light"
         ]
       },
-      "path": "terminal.colorScheme",
-      "unit": null
+      "default": "github_light"
     },
     {
-      "default": "bar",
+      "path": "terminal.cursorStyle",
       "group": "terminal",
+      "unit": null,
       "kind": {
         "kind": "enum",
         "options": [
@@ -150,16 +114,16 @@
           "underline"
         ]
       },
-      "path": "terminal.cursorStyle",
-      "unit": null
+      "default": "bar"
     },
     {
-      "default": 5000.0,
+      "path": "terminal.scrollback",
       "group": "terminal",
+      "unit": "行",
       "kind": {
         "kind": "int",
-        "max": 100000,
         "min": 100,
+        "max": 100000,
         "presets": [
           1000,
           5000,
@@ -168,43 +132,43 @@
           100000
         ]
       },
-      "path": "terminal.scrollback",
-      "unit": "行"
+      "default": 5000.0
     },
     {
-      "default": true,
-      "group": "terminal",
-      "kind": {
-        "kind": "bool"
-      },
       "path": "terminal.copyOnSelect",
-      "unit": null
-    },
-    {
-      "default": true,
       "group": "terminal",
+      "unit": null,
       "kind": {
         "kind": "bool"
       },
+      "default": true
+    },
+    {
       "path": "terminal.rightClickPaste",
-      "unit": null
-    },
-    {
-      "default": true,
       "group": "terminal",
+      "unit": null,
       "kind": {
         "kind": "bool"
       },
-      "path": "terminal.confirmCloseTab",
-      "unit": null
+      "default": true
     },
     {
-      "default": 30.0,
+      "path": "terminal.confirmCloseTab",
+      "group": "terminal",
+      "unit": null,
+      "kind": {
+        "kind": "bool"
+      },
+      "default": true
+    },
+    {
+      "path": "connection.keepaliveIntervalSecs",
       "group": "connection",
+      "unit": "秒",
       "kind": {
         "kind": "int",
-        "max": 600,
         "min": 0,
+        "max": 600,
         "presets": [
           0,
           15,
@@ -215,12 +179,12 @@
           600
         ]
       },
-      "path": "connection.keepaliveIntervalSecs",
-      "unit": "秒"
+      "default": 30.0
     },
     {
-      "default": "password",
+      "path": "connection.defaultAuthMethod",
       "group": "connection",
+      "unit": null,
       "kind": {
         "kind": "enum",
         "options": [
@@ -230,16 +194,16 @@
           "agent"
         ]
       },
-      "path": "connection.defaultAuthMethod",
-      "unit": null
+      "default": "password"
     },
     {
-      "default": 2.0,
+      "path": "transfer.maxConcurrentTasks",
       "group": "transfer",
+      "unit": "个",
       "kind": {
         "kind": "int",
-        "max": 8,
         "min": 1,
+        "max": 8,
         "presets": [
           1,
           2,
@@ -251,16 +215,16 @@
           8
         ]
       },
-      "path": "transfer.maxConcurrentTasks",
-      "unit": "个"
+      "default": 2.0
     },
     {
-      "default": 32.0,
+      "path": "transfer.chunkSizeKib",
       "group": "transfer",
+      "unit": "KiB",
       "kind": {
         "kind": "int",
-        "max": 1024,
         "min": 4,
+        "max": 1024,
         "presets": [
           16,
           32,
@@ -270,12 +234,12 @@
           1024
         ]
       },
-      "path": "transfer.chunkSizeKib",
-      "unit": "KiB"
+      "default": 32.0
     },
     {
-      "default": "ask",
+      "path": "transfer.defaultConflictPolicy",
       "group": "transfer",
+      "unit": null,
       "kind": {
         "kind": "enum",
         "options": [
@@ -285,25 +249,25 @@
           "rename"
         ]
       },
-      "path": "transfer.defaultConflictPolicy",
-      "unit": null
+      "default": "ask"
     },
     {
-      "default": false,
+      "path": "transfer.notifyOnComplete",
       "group": "transfer",
+      "unit": null,
       "kind": {
         "kind": "bool"
       },
-      "path": "transfer.notifyOnComplete",
-      "unit": null
+      "default": false
     },
     {
-      "default": 5.0,
+      "path": "monitor.defaultIntervalSecs",
       "group": "monitor",
+      "unit": "秒",
       "kind": {
         "kind": "int",
-        "max": 60,
         "min": 2,
+        "max": 60,
         "presets": [
           2,
           5,
@@ -312,35 +276,218 @@
           60
         ]
       },
-      "path": "monitor.defaultIntervalSecs",
-      "unit": "秒"
+      "default": 5.0
     },
     {
-      "default": true,
+      "path": "update.autoCheck",
       "group": "update",
+      "unit": null,
       "kind": {
         "kind": "bool"
       },
-      "path": "update.autoCheck",
-      "unit": null
+      "default": true
     },
     {
-      "default": null,
-      "group": "migration",
+      "path": "agent.approvalMode",
+      "group": "agent",
+      "unit": null,
       "kind": {
-        "kind": "hidden"
+        "kind": "enum",
+        "options": [
+          "read_only_auto",
+          "all_confirm",
+          "read_only_only"
+        ]
       },
+      "default": "read_only_auto"
+    },
+    {
+      "path": "agent.maxTurns",
+      "group": "agent",
+      "unit": "轮",
+      "kind": {
+        "kind": "int",
+        "min": 1,
+        "max": 60,
+        "presets": [
+          4,
+          8,
+          12,
+          20,
+          40
+        ]
+      },
+      "default": 12.0
+    },
+    {
+      "path": "agent.contextMessages",
+      "group": "agent",
+      "unit": "条",
+      "kind": {
+        "kind": "int",
+        "min": 2,
+        "max": 400,
+        "presets": [
+          10,
+          30,
+          60,
+          120
+        ]
+      },
+      "default": 30.0
+    },
+    {
+      "path": "agent.batchLimit",
+      "group": "agent",
+      "unit": "台",
+      "kind": {
+        "kind": "int",
+        "min": 1,
+        "max": 20,
+        "presets": [
+          1,
+          5,
+          10,
+          20
+        ]
+      },
+      "default": 5.0
+    },
+    {
+      "path": "agent.parallelHosts",
+      "group": "agent",
+      "unit": "台",
+      "kind": {
+        "kind": "int",
+        "min": 1,
+        "max": 8,
+        "presets": [
+          1,
+          2,
+          4,
+          8
+        ]
+      },
+      "default": 4.0
+    },
+    {
+      "path": "agent.execTimeoutSecs",
+      "group": "agent",
+      "unit": "秒",
+      "kind": {
+        "kind": "int",
+        "min": 1,
+        "max": 120,
+        "presets": [
+          10,
+          30,
+          60,
+          120
+        ]
+      },
+      "default": 30.0
+    },
+    {
+      "path": "agent.tokenBudget",
+      "group": "agent",
+      "unit": "tokens",
+      "kind": {
+        "kind": "int",
+        "min": 0,
+        "max": 5000000,
+        "presets": [
+          0,
+          50000,
+          200000,
+          1000000,
+          5000000
+        ]
+      },
+      "default": 200000.0
+    },
+    {
+      "path": "agent.injectMemories",
+      "group": "agent",
+      "unit": null,
+      "kind": {
+        "kind": "bool"
+      },
+      "default": true
+    },
+    {
+      "path": "agent.showReasoning",
+      "group": "agent",
+      "unit": null,
+      "kind": {
+        "kind": "bool"
+      },
+      "default": true
+    },
+    {
       "path": "migration.pendingMigrationId",
-      "unit": null
-    },
-    {
-      "default": [],
       "group": "migration",
+      "unit": null,
       "kind": {
         "kind": "hidden"
       },
+      "default": null
+    },
+    {
       "path": "migration.dismissedAutoMigrations",
-      "unit": null
+      "group": "migration",
+      "unit": null,
+      "kind": {
+        "kind": "hidden"
+      },
+      "default": []
     }
-  ]
+  ],
+  "defaults": {
+    "appearance": {
+      "theme": "system",
+      "language": "zh"
+    },
+    "terminal": {
+      "fontFamily": "Cascadia Mono, Consolas, monospace",
+      "fontSize": 13,
+      "lineHeight": 1.2,
+      "colorScheme": "github_light",
+      "cursorStyle": "bar",
+      "scrollback": 5000,
+      "copyOnSelect": true,
+      "rightClickPaste": true,
+      "confirmCloseTab": true
+    },
+    "connection": {
+      "keepaliveIntervalSecs": 30,
+      "defaultAuthMethod": "password"
+    },
+    "transfer": {
+      "maxConcurrentTasks": 2,
+      "chunkSizeKib": 32,
+      "defaultConflictPolicy": "ask",
+      "notifyOnComplete": false
+    },
+    "monitor": {
+      "defaultIntervalSecs": 5
+    },
+    "update": {
+      "autoCheck": true
+    },
+    "agent": {
+      "maxTurns": 12,
+      "contextMessages": 30,
+      "batchLimit": 5,
+      "parallelHosts": 4,
+      "execTimeoutSecs": 30,
+      "approvalMode": "read_only_auto",
+      "tokenBudget": 200000,
+      "injectMemories": true,
+      "showReasoning": true
+    },
+    "migration": {
+      "pendingMigrationId": null,
+      "dismissedAutoMigrations": []
+    }
+  }
 }

@@ -71,6 +71,18 @@ async-trait = "0.1"
 # 回滚:删除本依赖 + `cargo remove` 后移除各类型的 `schemars::JsonSchema` derive 与
 # src-tauri/contract/ 生成物即可,前端退回手写类型。
 schemars = "1.2.3"
+# --- AI Agent(M5,docs/AGENT_DESIGN.md)---
+# 用途:Agent 循环、Responses/Messages 协议与工具调用。裁剪到 agent+derive+reqwest+native-tls+memory,
+#       不带向量库/embedding/MCP(§2 非目标)。
+# 精确锁版 `=0.45.0`:rig 为 0.x,每版可能破坏 API(CHANGELOG 大量 breaking);升级必须独立提交,
+#       改动面按防腐层压在 infrastructure/agent/{provider,rig_bridge}.rs 两处。
+# TLS 选 native-tls 而非默认 rustls:rustls 经 reqwest 会拉进 aws-lc-rs,Windows 构建需 NASM/CMake
+#       (与上面 russh 选 ring 的理由一致);native-tls 在 Windows=Schannel、macOS=SecurityFramework、
+#       Linux 需 libssl-dev。
+# 回滚:`cargo remove rig` + 删除 src-tauri/src/{domain,application,infrastructure}/agent*、
+#       commands/agent.rs、dto/agent.rs、migrations/0002_agent.sql 与前端 /agent 路由即可,核心 SSH 功能不受影响。
+rig = { version = "=0.45.0", default-features = false, features = ["agent", "derive", "reqwest", "native-tls", "memory"] }
+futures = "0.3"
 
 [dev-dependencies]
 tempfile = "3"

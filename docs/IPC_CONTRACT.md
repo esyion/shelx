@@ -8,7 +8,7 @@
 
 ---
 
-## 1. 三条不变量
+## 1. 四条不变量
 
 1. **单点定义**：任何跨 IPC 边界的字段名、类型、可空性、枚举取值、数值区间与单位，
    只在 Rust 侧定义一次。前端不存在"第二个定义处"。
@@ -16,6 +16,10 @@
    需要更友好的类型名，只允许在 `src/types/<module>.ts` 里做再导出/别名。
 3. **漂移必被门禁拦住**：`cargo test --lib`、`bun run check:ipc`、`bunx tsc --noEmit`、
    `bun run test` 四条都能独立发现"改了后端没重新生成"或"前端写了不存在的字段"。
+4. **导出必须可复现**：`ipc_contract::document()` 递归按键字典序落盘。
+   schemars 的 `$defs`/`properties` 来自哈希表，插入顺序随进程变化；不排序时同一份
+   Rust 代码每次重新导出都会重排生成物字段，`check:ipc` 会在契约没变的情况下偶红。
+   回归用例：`cargo test --lib ipc_contract::contract_document_keys_are_sorted`（M5 时发现）。
 
 ## 2. 工件与目录
 

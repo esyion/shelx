@@ -156,6 +156,35 @@
 - [ ] M4-R4 开源定案:License(MIT)、数据格式审计文档(凭据与连接存储说明)
 - [ ] M4-R5 诊断打包:一键导出脱敏日志(可观测性要求)
 
+## M5 AI Agent(方案见 `docs/AGENT_DESIGN.md`)
+
+分支 `feat/agent-rig`,基线 tag `m5-baseline`(= `2c38c7a` / v0.2.26)。
+
+### 后端
+
+- [x] M5-A1 依赖接入:`rig =0.45.0`(`default-features=false`,features `agent,derive,reqwest,native-tls,memory`);`cargo tree -e normal -i aws-lc-sys` 零命中,Windows 不必装 NASM/CMake ✅ 2026-10-21
+- [x] M5-A2 协议三道守卫:①`infrastructure/agent/provider.rs` 单点构造并强制 `Route::Responses`;②`.clippy.toml` + `#![warn(clippy::disallowed_methods)]` 封 `OpenAIConfig::chat`(已用探针实测:clippy 报 `use of a disallowed method rig_core::providers::openai::OpenAIConfig::chat`);③报文级断言 —— `infrastructure/agent/protocol_guard.rs` 用假 `HttpClientExt` 记录真实请求路径,断言 ∈ {`/responses`, `/v1/messages`} ✅ 2026-10-21
+- [x] M5-A3 profile 协议探测:`probe_protocol` 真发一次最小补全,404/405/501 → 协议不支持、401/403 → 凭据被拒(两种结论文案不混用);未确认协议的自建网关在领域层就拒绝构造 ✅ 2026-10-21
+- [x] M5-B1 分层落点与防腐层:`domain/agent`(值对象 + 命令/路径策略)、`application/agent`(用例 + 端口)、`infrastructure/agent`(rig 唯一落点:provider / rig_bridge / memory_store / protocol_guard);rig 类型不进应用层 ✅ 2026-10-21
+- [x] M5-B2 工具集 13 个(清单/详情/建连/系统信息/exec/read_file/list_dir/tail_log/write_file/remove_path/rename_path/set_permissions/remember);只读白名单 + shell 控制符与写文件参数一律升级为需批准;argv 组装做 POSIX 单引号转义 ✅ 2026-10-21
+- [x] M5-B3 流式:`send_agent_message` 经 `Channel` 推 `AgentEvent`(`text_delta`/`reasoning_delta`/`target_state`/`usage`…),增量按 512 字或 32ms 聚合;`attach/detach` 支持页面进出续接并按 `seq` 去重补发 ✅ 2026-10-21
+- [x] M5-B4 取消:drop 流 + `JoinHandle::abort` + 取消令牌;审计与界面如实说明"已发出的命令不回滚" ✅ 2026-10-21
+- [x] M5-C1 审批闸门:`on_dispatch` 改为工具执行器内部门禁(rig 无内建 HITL);批准按"每台主机"粒度,超时 600s 默认拒绝;`allowed_always` 仅本对话本主机本工具 ✅ 2026-10-21
+- [x] M5-C2 跨主机批量:`resolve_agent_targets` 单点解析作用域(拒绝未配置主机)、批量与并发档位、per-target 状态机、单台失败不阻断其余、逐台审计 ✅ 2026-10-21
+- [x] M5-D1 持久化:`migrations/0002_agent.sql`(profiles/threads/messages/runs/tool_calls/approvals/memories/store 节点,`PRAGMA user_version=2`)+ `SqliteAgentStore`;启动 `expire_unfinished_runs` 把上次未结束的运行标为失败并写明原因 ✅ 2026-10-21
+- [x] M5-D2 记忆三层:L1 轮内(rig `Conversation`)、L2 线程(自实现 `rig_memory::Store` → `agent_store` 表,按线程命名空间隔离)、L3 共享记忆(结构化条目 + 用户批准写入 + 疑似凭据拒写)✅ 2026-10-21
+- [x] M5-D3 密钥:API Key 走 `SecretStore` 引用键 `llm:<id>:api_key`,永不进 IPC/日志/DB;DTO 只回 `hasKey` ✅ 2026-10-21
+- [x] M5-E1 契约:23 个 agent 类型登记 `ipc_contract.rs`,`bun run gen:ipc` 产出 `src/types/gen/agent.ts`;新增 4 个错误码;新增 9 个设置项(`agent.*`,区间/档位在 `settings/schema.rs` 单点登记)✅ 2026-10-21
+- [x] 附带修复:`ipc_contract::document()` 改为按键字典序落盘。此前 schemars 的哈希表顺序随进程变化,同一份 Rust 代码每次重新导出都会重排生成物字段,`check:ipc` 有偶红风险;新增回归测试 `contract_document_keys_are_sorted` ✅ 2026-10-21
+
+### 前端
+
+- [x] M5-E2 `/agent` 整页:线程列表 + 对话 + 操作记录 + 共享记忆 + 模型接入点四个页签;侧栏 footer 入口带待批准角标 ✅ 2026-10-21
+- [x] M5-E3 `stores/agent.ts`(快照 + 流式增量 + 待批准 + 失败可见可重试)、`lib/agent-events.ts`(枚举中文映射集中一处)、`gateway/agent.ts`(Channel 封装) ✅ 2026-10-21
+- [x] M5-E4 跨对话待批准轮询:后台运行在别的线程等批准时,本页横幅常驻可见并可一键跳过去做决定 ✅ 2026-10-21
+- [x] M5-E5 测试:`cargo test` 243 通过、`bun run test` 117 通过、`bun run build`、`bun run check:ipc`、`cargo clippy -D warnings`、`cargo fmt --check` 全绿 ✅ 2026-10-21
+- [ ] M5-E6 手工验证(需 `bun run tauri dev` + 真实密钥):三平台安装包构建与体积增量、xterm/流式观感、Windows Schannel 实连、macOS/Linux 钥匙串路径 —— 见 `docs/AGENT_DESIGN.md` §18.3
+
 ---
 
 ## 持续事项(每个里程碑迭代执行)

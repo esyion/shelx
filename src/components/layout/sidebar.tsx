@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 import { useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   BarChart3,
   GripHorizontal,
@@ -18,10 +19,12 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SidebarMonitor } from "@/components/monitor/sidebar-monitor";
 import { UpdateButton } from "@/components/layout/update-button";
+import { useAgentStore } from "@/stores/agent";
 import { useTabsStore } from "@/stores/tabs";
 import { useUiStore } from "@/stores/ui";
 
@@ -197,11 +200,31 @@ function SidebarBody({ children }: { children: ReactNode }) {
   );
 }
 
-/** 底部:服务器总览 + 设置。 */
+/** 底部:AI 助手 + 服务器总览 + 设置。 */
 function SidebarFooter() {
   const router = useRouter();
+  const snapshots = useAgentStore((state) => state.snapshots);
+  const pendingCount = Object.values(snapshots).reduce(
+    (total, snapshot) => total + (snapshot?.pending.length ?? 0),
+    0,
+  );
   return (
     <div className="grid shrink-0 gap-1 border-t p-2">
+      <Button
+        size="sm"
+        variant="ghost"
+        className="w-full justify-start text-xs"
+        title="让 Agent 帮你排查和处理服务器"
+        onClick={() => router.push("/agent")}
+      >
+        <Sparkles className="size-4" />
+        AI 助手
+        {pendingCount > 0 && (
+          <Badge variant="default" className="ml-auto bg-amber-500 text-amber-50">
+            {`${pendingCount} 项待批准`}
+          </Badge>
+        )}
+      </Button>
       <Button
         size="sm"
         variant="ghost"

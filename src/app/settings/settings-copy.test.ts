@@ -35,6 +35,15 @@ const RENDERED_PATHS: SettingPath[] = [
   "transfer.notifyOnComplete",
   "monitor.defaultIntervalSecs",
   "update.autoCheck",
+  "agent.approvalMode",
+  "agent.maxTurns",
+  "agent.contextMessages",
+  "agent.batchLimit",
+  "agent.parallelHosts",
+  "agent.execTimeoutSecs",
+  "agent.tokenBudget",
+  "agent.injectMemories",
+  "agent.showReasoning",
 ];
 
 /** 中文字形检测:枚举映射必须是中文,不允许原值直接当标签。 */

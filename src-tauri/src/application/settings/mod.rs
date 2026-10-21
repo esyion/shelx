@@ -277,6 +277,50 @@ pub struct UpdateSettings {
     pub auto_check: bool,
 }
 
+/// Agent 设置(M5,docs/AGENT_DESIGN.md)。
+///
+/// 区间与档位只在 [`schema`] 登记一次,校验与界面下拉同源;
+/// 这里只定义字段与默认值,禁止在别处复制一份取值范围。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AgentSettings {
+    /// 单轮最多允许多少次工具往返。
+    pub max_turns: u32,
+    /// 每次请求携带的历史消息条数(上下文窗口)。
+    pub context_messages: u32,
+    /// 单次批量操作的主机数上限。
+    pub batch_limit: u32,
+    /// 同时执行的主机数上限。
+    pub parallel_hosts: u32,
+    /// 单条远端命令超时(秒)。
+    pub exec_timeout_secs: u32,
+    /// 审批档位。
+    pub approval_mode: crate::domain::agent::ApprovalMode,
+    /// 单对话 token 预算;0 表示不限。
+    pub token_budget: u32,
+    /// 是否把共享记忆注入系统提示。
+    pub inject_memories: bool,
+    /// 是否展示模型推理增量( provider 返回时)。
+    pub show_reasoning: bool,
+}
+
+impl Default for AgentSettings {
+    /// Agent 分组默认值:只读自动、批量 5 台、并发 4、超时 30s、预算 20 万 token。
+    fn default() -> Self {
+        Self {
+            max_turns: 12,
+            context_messages: 30,
+            batch_limit: 5,
+            parallel_hosts: 4,
+            exec_timeout_secs: 30,
+            approval_mode: crate::domain::agent::ApprovalMode::ReadOnlyAuto,
+            token_budget: 200_000,
+            inject_memories: true,
+            show_reasoning: true,
+        }
+    }
+}
+
 /// 数据迁移状态(设计文档 §7.1);由迁移用例与启动流程维护,设置页只读展示。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", default)]
@@ -303,6 +347,8 @@ pub struct AppSettings {
     pub monitor: MonitorSettings,
     /// 更新。
     pub update: UpdateSettings,
+    /// AI Agent(M5)。
+    pub agent: AgentSettings,
     /// 数据迁移。
     pub migration: MigrationSettings,
 }

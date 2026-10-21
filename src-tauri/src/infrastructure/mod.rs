@@ -8,6 +8,7 @@
 //!
 //! 约束:不向上层泄露驱动类型,通过应用层端口返回业务可理解的结果。
 
+pub mod agent;
 pub mod events;
 pub mod local_fs;
 pub mod secrets;

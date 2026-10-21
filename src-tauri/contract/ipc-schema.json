@@ -1,5 +1,1468 @@
 {
   "modules": {
+    "agent": {
+      "$defs": {
+        "AgentEvent": {
+          "description": "一条对外事件。",
+          "properties": {
+            "approvalRequestId": {
+              "description": "批准请求标识(应答复用)。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "argsJson": {
+              "description": "入参 JSON 原文(批准弹窗展示)。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "callId": {
+              "description": "调用标识。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "category": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ToolCategory"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "工具类别。"
+            },
+            "connId": {
+              "description": "目标主机 ID。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "connName": {
+              "description": "目标主机显示名。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "$ref": "#/$defs/AgentEventKind",
+              "description": "事件类别。"
+            },
+            "outputExcerpt": {
+              "description": "结果摘要(截断后)。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "runId": {
+              "description": "所属运行 ID。",
+              "type": "string"
+            },
+            "seq": {
+              "description": "线程内单调递增序号(重连时按此去重)。",
+              "format": "int64",
+              "type": "integer"
+            },
+            "targetStatus": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TargetStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "单主机状态。"
+            },
+            "text": {
+              "description": "文本增量 / 错误原文 / 标题等。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "threadId": {
+              "description": "所属线程 ID。",
+              "type": "string"
+            },
+            "toolName": {
+              "description": "工具名。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "usage": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AgentUsage"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "用量。"
+            }
+          },
+          "required": [
+            "threadId",
+            "runId",
+            "seq",
+            "kind"
+          ],
+          "type": "object"
+        },
+        "AgentEventKind": {
+          "description": "事件类别。",
+          "oneOf": [
+            {
+              "const": "run_started",
+              "description": "运行开始。",
+              "type": "string"
+            },
+            {
+              "const": "text_delta",
+              "description": "回答文本增量。",
+              "type": "string"
+            },
+            {
+              "const": "reasoning_delta",
+              "description": "推理过程增量(仅当 provider 返回思考内容)。",
+              "type": "string"
+            },
+            {
+              "const": "approval_required",
+              "description": "需要用户批准工具调用。",
+              "type": "string"
+            },
+            {
+              "const": "target_state",
+              "description": "批量执行中某台主机的状态变化。",
+              "type": "string"
+            },
+            {
+              "const": "tool_result",
+              "description": "工具执行完成(含结果摘要)。",
+              "type": "string"
+            },
+            {
+              "const": "usage",
+              "description": "一次模型调用的 token 用量。",
+              "type": "string"
+            },
+            {
+              "const": "final_response",
+              "description": "最终回答(整轮结束)。",
+              "type": "string"
+            },
+            {
+              "const": "run_failed",
+              "description": "运行失败。",
+              "type": "string"
+            },
+            {
+              "const": "run_cancelled",
+              "description": "运行被取消。",
+              "type": "string"
+            },
+            {
+              "const": "thread_title",
+              "description": "线程标题由模型归纳生成。",
+              "type": "string"
+            }
+          ]
+        },
+        "AgentIdRequestDto": {
+          "additionalProperties": false,
+          "description": "ID 请求(profile / 记忆 / 订阅通用)。",
+          "properties": {
+            "id": {
+              "description": "目标 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
+        },
+        "AgentUsage": {
+          "description": "token 用量(全部可空:provider 不上报时不伪造 0)。",
+          "properties": {
+            "cachedInputTokens": {
+              "description": "命中 provider 缓存的输入 token。",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "inputTokens": {
+              "description": "输入 token。",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "outputTokens": {
+              "description": "输出 token。",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "totalTokens": {
+              "description": "合计。",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "ApprovalDecision": {
+          "description": "单次工具调用的批准决策(粒度到\"一台主机\",见 docs/AGENT_DESIGN.md §7.2)。",
+          "oneOf": [
+            {
+              "const": "allowed_once",
+              "description": "允许本次。",
+              "type": "string"
+            },
+            {
+              "const": "allowed_always",
+              "description": "本线程内该主机该工具永久允许。",
+              "type": "string"
+            },
+            {
+              "const": "denied",
+              "description": "拒绝。",
+              "type": "string"
+            }
+          ]
+        },
+        "ApprovalDecisionDto": {
+          "additionalProperties": false,
+          "description": "单台主机的批准决策。",
+          "properties": {
+            "connId": {
+              "description": "目标主机。",
+              "type": "string"
+            },
+            "decision": {
+              "$ref": "#/$defs/ApprovalDecision",
+              "description": "决策。"
+            }
+          },
+          "required": [
+            "connId",
+            "decision"
+          ],
+          "type": "object"
+        },
+        "ApprovalDto": {
+          "description": "待批准请求(死状态必须持续可见)。",
+          "properties": {
+            "argsJson": {
+              "description": "入参原文。",
+              "type": "string"
+            },
+            "category": {
+              "$ref": "#/$defs/ToolCategory",
+              "description": "类别。"
+            },
+            "reason": {
+              "description": "为什么要批准。",
+              "type": "string"
+            },
+            "requestId": {
+              "description": "请求 ID。",
+              "type": "string"
+            },
+            "runId": {
+              "description": "运行 ID。",
+              "type": "string"
+            },
+            "targets": {
+              "description": "涉及主机。",
+              "items": {
+                "$ref": "#/$defs/TargetDto"
+              },
+              "type": "array"
+            },
+            "threadId": {
+              "description": "所属线程(跨对话提醒需要它)。",
+              "type": "string"
+            },
+            "toolName": {
+              "description": "工具名。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "requestId",
+            "threadId",
+            "runId",
+            "toolName",
+            "category",
+            "argsJson",
+            "reason",
+            "targets"
+          ],
+          "type": "object"
+        },
+        "ApprovalMode": {
+          "description": "审批模式(枚举带行为,不做自由文本,AGENTS.md §13)。",
+          "oneOf": [
+            {
+              "const": "read_only_auto",
+              "description": "只读工具自动执行,写操作与建连逐次确认。",
+              "type": "string"
+            },
+            {
+              "const": "all_confirm",
+              "description": "任何工具都要点击确认。",
+              "type": "string"
+            },
+            {
+              "const": "read_only_only",
+              "description": "只注册只读工具(写工具不存在于本轮工具集)。",
+              "type": "string"
+            }
+          ]
+        },
+        "AuditDto": {
+          "description": "工具审计行。",
+          "properties": {
+            "approval": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ApprovalDecision"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "批准决策。"
+            },
+            "argsJson": {
+              "description": "入参原文。",
+              "type": "string"
+            },
+            "category": {
+              "$ref": "#/$defs/ToolCategory",
+              "description": "类别。"
+            },
+            "connId": {
+              "description": "目标主机。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "description": "ID。",
+              "type": "string"
+            },
+            "runId": {
+              "description": "运行 ID。",
+              "type": "string"
+            },
+            "status": {
+              "$ref": "#/$defs/TargetStatus",
+              "description": "状态。"
+            },
+            "toolName": {
+              "description": "工具名。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "runId",
+            "toolName",
+            "category",
+            "connId",
+            "argsJson",
+            "status",
+            "approval"
+          ],
+          "type": "object"
+        },
+        "CancelRunRequestDto": {
+          "additionalProperties": false,
+          "description": "取消运行请求。",
+          "properties": {
+            "runId": {
+              "description": "运行 ID。",
+              "type": "string"
+            },
+            "threadId": {
+              "description": "线程 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "threadId",
+            "runId"
+          ],
+          "type": "object"
+        },
+        "CreateThreadRequestDto": {
+          "additionalProperties": false,
+          "description": "新建线程请求。",
+          "properties": {
+            "approvalMode": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ApprovalMode"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "审批档位(不传用设置里的默认档)。"
+            },
+            "boundSessionId": {
+              "default": null,
+              "description": "绑定会话。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "profileId": {
+              "description": "模型配置 ID。",
+              "type": "string"
+            },
+            "title": {
+              "default": "",
+              "description": "标题(可空,默认\"新对话\")。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "title",
+            "profileId",
+            "approvalMode",
+            "boundSessionId"
+          ],
+          "type": "object"
+        },
+        "DetachRequestDto": {
+          "additionalProperties": false,
+          "description": "退订请求。",
+          "properties": {
+            "subscriptionId": {
+              "description": "订阅 ID。",
+              "type": "string"
+            },
+            "threadId": {
+              "description": "线程 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "threadId",
+            "subscriptionId"
+          ],
+          "type": "object"
+        },
+        "MemoryDto": {
+          "description": "共享记忆条目。",
+          "properties": {
+            "connId": {
+              "description": "主机 ID。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "content": {
+              "description": "内容。",
+              "type": "string"
+            },
+            "enabled": {
+              "description": "是否启用。",
+              "type": "boolean"
+            },
+            "id": {
+              "description": "ID。",
+              "type": "string"
+            },
+            "scope": {
+              "$ref": "#/$defs/MemoryScope",
+              "description": "作用域。"
+            }
+          },
+          "required": [
+            "id",
+            "scope",
+            "connId",
+            "content",
+            "enabled"
+          ],
+          "type": "object"
+        },
+        "MemoryScope": {
+          "description": "共享记忆条目的作用域。",
+          "oneOf": [
+            {
+              "const": "global",
+              "description": "全局事实(跨主机跨线程)。",
+              "type": "string"
+            },
+            {
+              "const": "connection",
+              "description": "某台连接的事实。",
+              "type": "string"
+            }
+          ]
+        },
+        "MessageDto": {
+          "description": "一条消息。",
+          "properties": {
+            "content": {
+              "description": "正文。",
+              "type": "string"
+            },
+            "createdAt": {
+              "description": "创建时间。",
+              "format": "int64",
+              "type": "integer"
+            },
+            "id": {
+              "description": "ID。",
+              "type": "string"
+            },
+            "role": {
+              "$ref": "#/$defs/MessageRole",
+              "description": "角色。"
+            }
+          },
+          "required": [
+            "id",
+            "role",
+            "content",
+            "createdAt"
+          ],
+          "type": "object"
+        },
+        "MessageRole": {
+          "description": "消息角色。",
+          "oneOf": [
+            {
+              "const": "user",
+              "description": "用户输入。",
+              "type": "string"
+            },
+            {
+              "const": "assistant",
+              "description": "模型回答。",
+              "type": "string"
+            },
+            {
+              "const": "tool",
+              "description": "工具调用与结果(审计与展开查看用)。",
+              "type": "string"
+            },
+            {
+              "const": "system",
+              "description": "系统事件文本(取消、失败、批准结果)。",
+              "type": "string"
+            }
+          ]
+        },
+        "ProbeDto": {
+          "description": "协议探测结果。",
+          "properties": {
+            "message": {
+              "description": "人话结论(失败原因同样用这一句)。",
+              "type": "string"
+            },
+            "supported": {
+              "description": "是否支持要求的协议。",
+              "type": "boolean"
+            },
+            "usage": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AgentUsage"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "本次探测用量。"
+            }
+          },
+          "required": [
+            "supported",
+            "message",
+            "usage"
+          ],
+          "type": "object"
+        },
+        "ProfileDto": {
+          "description": "模型配置(不含密钥,只说明有没有)。",
+          "properties": {
+            "baseUrl": {
+              "description": "自定义端点。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "enabled": {
+              "description": "是否启用。",
+              "type": "boolean"
+            },
+            "hasKey": {
+              "description": "是否已保存密钥(永不回显密钥本体)。",
+              "type": "boolean"
+            },
+            "id": {
+              "description": "ID。",
+              "type": "string"
+            },
+            "label": {
+              "description": "名称。",
+              "type": "string"
+            },
+            "model": {
+              "description": "模型名。",
+              "type": "string"
+            },
+            "protocol": {
+              "$ref": "#/$defs/ProtocolKind",
+              "description": "协议。"
+            },
+            "responsesVerified": {
+              "description": "协议是否已确认。",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "protocol",
+            "model",
+            "baseUrl",
+            "responsesVerified",
+            "enabled",
+            "hasKey"
+          ],
+          "type": "object"
+        },
+        "ProtocolKind": {
+          "description": "Provider 协议种类。\n\n取值即协议本身:OpenAI 侧只允许 Responses API(`POST /responses`),\nAnthropic 侧只允许 Messages API(`POST /v1/messages`)。Chat Completions\n不存在于本枚举中 —— 旧协议在领域层就没有表达位置(AGENTS.md §13)。",
+          "oneOf": [
+            {
+              "const": "openai_responses",
+              "description": "OpenAI Responses API。",
+              "type": "string"
+            },
+            {
+              "const": "anthropic_messages",
+              "description": "Anthropic Messages API。",
+              "type": "string"
+            }
+          ]
+        },
+        "ResolveTargetsRequestDto": {
+          "additionalProperties": false,
+          "description": "作用域解析请求。",
+          "properties": {
+            "scope": {
+              "$ref": "#/$defs/TargetScope",
+              "description": "作用域。"
+            }
+          },
+          "required": [
+            "scope"
+          ],
+          "type": "object"
+        },
+        "RespondApprovalRequestDto": {
+          "additionalProperties": false,
+          "description": "批准应答请求(逐台)。",
+          "properties": {
+            "decisions": {
+              "description": "每台主机的决策。",
+              "items": {
+                "$ref": "#/$defs/ApprovalDecisionDto"
+              },
+              "type": "array"
+            },
+            "requestId": {
+              "description": "请求 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "requestId",
+            "decisions"
+          ],
+          "type": "object"
+        },
+        "RunDto": {
+          "description": "一轮运行。",
+          "properties": {
+            "createdAt": {
+              "description": "开始时间。",
+              "format": "int64",
+              "type": "integer"
+            },
+            "error": {
+              "description": "失败原因。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "finalText": {
+              "description": "最终回答。",
+              "type": "string"
+            },
+            "prompt": {
+              "description": "提问。",
+              "type": "string"
+            },
+            "runId": {
+              "description": "运行 ID。",
+              "type": "string"
+            },
+            "state": {
+              "$ref": "#/$defs/RunState",
+              "description": "状态。"
+            },
+            "turns": {
+              "description": "工具轮次。",
+              "format": "int64",
+              "type": "integer"
+            },
+            "usage": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/AgentUsage"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "用量。"
+            }
+          },
+          "required": [
+            "runId",
+            "state",
+            "prompt",
+            "finalText",
+            "error",
+            "usage",
+            "turns",
+            "createdAt"
+          ],
+          "type": "object"
+        },
+        "RunState": {
+          "description": "一次运行(Run)的状态机。\n\n合法流转:\n- `Running → AwaitingApproval | Completed | Failed | Cancelled`\n- `AwaitingApproval → Running | Cancelled | Failed`(批准恢复 / 用户取消 / 应用重启被判定过期)\n\n`Completed`、`Cancelled` 为终态;`Failed` 后用户可在同线程重新发起(新 Run)。",
+          "oneOf": [
+            {
+              "const": "running",
+              "description": "模型循环或工具执行进行中。",
+              "type": "string"
+            },
+            {
+              "const": "awaiting_approval",
+              "description": "等待用户批准工具调用。",
+              "type": "string"
+            },
+            {
+              "const": "completed",
+              "description": "正常结束。",
+              "type": "string"
+            },
+            {
+              "const": "failed",
+              "description": "失败(含重启后待批准运行过期)。",
+              "type": "string"
+            },
+            {
+              "const": "cancelled",
+              "description": "用户取消。",
+              "type": "string"
+            }
+          ]
+        },
+        "SendAcceptedDto": {
+          "description": "发起一轮的受理结果。",
+          "properties": {
+            "runId": {
+              "description": "运行 ID。",
+              "type": "string"
+            },
+            "startedSeq": {
+              "description": "起始事件序号。",
+              "format": "int64",
+              "type": "integer"
+            },
+            "threadId": {
+              "description": "线程 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "runId",
+            "threadId",
+            "startedSeq"
+          ],
+          "type": "object"
+        },
+        "SendMessageRequestDto": {
+          "additionalProperties": false,
+          "description": "发起对话请求。",
+          "properties": {
+            "boundSessionId": {
+              "default": null,
+              "description": "本轮临时绑定(不传则沿线程设置)。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "prompt": {
+              "description": "用户输入。",
+              "type": "string"
+            },
+            "threadId": {
+              "description": "线程 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "threadId",
+            "prompt",
+            "boundSessionId"
+          ],
+          "type": "object"
+        },
+        "TargetDto": {
+          "description": "一台主机。",
+          "properties": {
+            "connId": {
+              "description": "连接 ID。",
+              "type": "string"
+            },
+            "connName": {
+              "description": "显示名。",
+              "type": "string"
+            },
+            "host": {
+              "description": "地址。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "online": {
+              "description": "是否在线。",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "port": {
+              "description": "端口。",
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "connId",
+            "connName",
+            "host",
+            "port",
+            "online"
+          ],
+          "type": "object"
+        },
+        "TargetScope": {
+          "description": "批量目标选择方式。",
+          "oneOf": [
+            {
+              "description": "指定连接 ID 列表。",
+              "properties": {
+                "ids": {
+                  "description": "连接 ID(字符串,AGENTS.md §5)。",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "mode": {
+                  "const": "ids",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode",
+                "ids"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "指定分组下的全部连接;`None` 为根目录。",
+              "properties": {
+                "group_id": {
+                  "description": "分组 ID;缺省表示根目录。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "mode": {
+                  "const": "group",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode",
+                "group_id"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "当前在线会话对应的连接。",
+              "properties": {
+                "mode": {
+                  "const": "online",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "用户配置过的全部连接(含离线)。",
+              "properties": {
+                "mode": {
+                  "const": "allConfigured",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "TargetStatus": {
+          "description": "批量执行中单台主机的状态。",
+          "oneOf": [
+            {
+              "const": "pending",
+              "description": "排队中。",
+              "type": "string"
+            },
+            {
+              "const": "connecting",
+              "description": "建连中。",
+              "type": "string"
+            },
+            {
+              "const": "running",
+              "description": "命令执行中。",
+              "type": "string"
+            },
+            {
+              "const": "ok",
+              "description": "成功。",
+              "type": "string"
+            },
+            {
+              "const": "failed",
+              "description": "失败。",
+              "type": "string"
+            },
+            {
+              "const": "denied",
+              "description": "用户拒绝。",
+              "type": "string"
+            },
+            {
+              "const": "cancelled",
+              "description": "取消(尚未开始就被中止)。",
+              "type": "string"
+            },
+            {
+              "const": "awaiting_approval",
+              "description": "等待批准。",
+              "type": "string"
+            }
+          ]
+        },
+        "ThreadDto": {
+          "description": "线程。",
+          "properties": {
+            "approvalMode": {
+              "$ref": "#/$defs/ApprovalMode",
+              "description": "审批档位。"
+            },
+            "boundSessionId": {
+              "description": "手动绑定的会话 ID。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "createdAt": {
+              "description": "创建时间。",
+              "format": "int64",
+              "type": "integer"
+            },
+            "id": {
+              "description": "ID。",
+              "type": "string"
+            },
+            "profileId": {
+              "description": "模型配置 ID。",
+              "type": "string"
+            },
+            "title": {
+              "description": "标题。",
+              "type": "string"
+            },
+            "updatedAt": {
+              "description": "更新时间。",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "profileId",
+            "approvalMode",
+            "boundSessionId",
+            "createdAt",
+            "updatedAt"
+          ],
+          "type": "object"
+        },
+        "ThreadIdRequestDto": {
+          "additionalProperties": false,
+          "description": "线程 ID 请求。",
+          "properties": {
+            "threadId": {
+              "description": "线程 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "threadId"
+          ],
+          "type": "object"
+        },
+        "ThreadSnapshotDto": {
+          "description": "线程快照。",
+          "properties": {
+            "latestSeq": {
+              "description": "当前事件序号(订阅续接用)。",
+              "format": "int64",
+              "type": "integer"
+            },
+            "messages": {
+              "description": "消息。",
+              "items": {
+                "$ref": "#/$defs/MessageDto"
+              },
+              "type": "array"
+            },
+            "pending": {
+              "description": "待批准。",
+              "items": {
+                "$ref": "#/$defs/ApprovalDto"
+              },
+              "type": "array"
+            },
+            "running": {
+              "description": "仍在进行的运行 ID。",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "runs": {
+              "description": "运行历史。",
+              "items": {
+                "$ref": "#/$defs/RunDto"
+              },
+              "type": "array"
+            },
+            "thread": {
+              "$ref": "#/$defs/ThreadDto",
+              "description": "线程。"
+            }
+          },
+          "required": [
+            "thread",
+            "messages",
+            "runs",
+            "pending",
+            "running",
+            "latestSeq"
+          ],
+          "type": "object"
+        },
+        "ToolCategory": {
+          "description": "工具调用对世界的影响类别。",
+          "oneOf": [
+            {
+              "const": "read_only",
+              "description": "只读取证,不改变远端状态。",
+              "type": "string"
+            },
+            {
+              "const": "mutating",
+              "description": "会改变远端状态(执行命令、写文件、改权限)。",
+              "type": "string"
+            },
+            {
+              "const": "connect",
+              "description": "建立一条新的 SSH 连接(可能触发认证交互与 TOFU 确认)。",
+              "type": "string"
+            }
+          ]
+        },
+        "UpdateThreadRequestDto": {
+          "additionalProperties": false,
+          "description": "修改线程请求(全部可选,只改传入项)。",
+          "properties": {
+            "approvalMode": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ApprovalMode"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "审批档位。"
+            },
+            "boundSessionId": {
+              "default": null,
+              "description": "绑定会话;传空字符串表示解绑。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "profileId": {
+              "default": null,
+              "description": "模型配置 ID。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "threadId": {
+              "description": "线程 ID。",
+              "type": "string"
+            },
+            "title": {
+              "default": null,
+              "description": "标题。",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "threadId",
+            "title",
+            "approvalMode",
+            "boundSessionId",
+            "profileId"
+          ],
+          "type": "object"
+        },
+        "UpsertMemoryRequestDto": {
+          "additionalProperties": false,
+          "description": "保存记忆请求。",
+          "properties": {
+            "connId": {
+              "default": null,
+              "description": "主机 ID。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "content": {
+              "description": "内容。",
+              "type": "string"
+            },
+            "enabled": {
+              "default": false,
+              "description": "是否启用。",
+              "type": "boolean"
+            },
+            "id": {
+              "default": null,
+              "description": "已有则传 ID。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scope": {
+              "$ref": "#/$defs/MemoryScope",
+              "description": "作用域。"
+            }
+          },
+          "required": [
+            "id",
+            "scope",
+            "connId",
+            "content",
+            "enabled"
+          ],
+          "type": "object"
+        },
+        "UpsertProfileRequestDto": {
+          "additionalProperties": false,
+          "description": "保存模型配置请求。",
+          "properties": {
+            "apiKey": {
+              "default": null,
+              "description": "密钥(不传表示保持不变;永不回显)。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "baseUrl": {
+              "default": null,
+              "description": "自定义端点。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "enabled": {
+              "default": false,
+              "description": "是否启用。",
+              "type": "boolean"
+            },
+            "id": {
+              "default": null,
+              "description": "已有时传 ID;新建留空。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "label": {
+              "description": "名称。",
+              "type": "string"
+            },
+            "model": {
+              "description": "模型名。",
+              "type": "string"
+            },
+            "protocol": {
+              "$ref": "#/$defs/ProtocolKind",
+              "description": "协议。"
+            },
+            "responsesVerified": {
+              "default": false,
+              "description": "是否已确认支持要求的协议。",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "label",
+            "protocol",
+            "model",
+            "baseUrl",
+            "responsesVerified",
+            "apiKey",
+            "enabled"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "AgentEvent": {
+          "$ref": "#/$defs/AgentEvent"
+        },
+        "AgentEventKind": {
+          "$ref": "#/$defs/AgentEventKind"
+        },
+        "AgentIdRequestDto": {
+          "$ref": "#/$defs/AgentIdRequestDto"
+        },
+        "AgentUsage": {
+          "$ref": "#/$defs/AgentUsage"
+        },
+        "ApprovalDecision": {
+          "$ref": "#/$defs/ApprovalDecision"
+        },
+        "ApprovalDecisionDto": {
+          "$ref": "#/$defs/ApprovalDecisionDto"
+        },
+        "ApprovalDto": {
+          "$ref": "#/$defs/ApprovalDto"
+        },
+        "ApprovalMode": {
+          "$ref": "#/$defs/ApprovalMode"
+        },
+        "AuditDto": {
+          "$ref": "#/$defs/AuditDto"
+        },
+        "CancelRunRequestDto": {
+          "$ref": "#/$defs/CancelRunRequestDto"
+        },
+        "CreateThreadRequestDto": {
+          "$ref": "#/$defs/CreateThreadRequestDto"
+        },
+        "DetachRequestDto": {
+          "$ref": "#/$defs/DetachRequestDto"
+        },
+        "MemoryDto": {
+          "$ref": "#/$defs/MemoryDto"
+        },
+        "MemoryScope": {
+          "$ref": "#/$defs/MemoryScope"
+        },
+        "MessageDto": {
+          "$ref": "#/$defs/MessageDto"
+        },
+        "MessageRole": {
+          "$ref": "#/$defs/MessageRole"
+        },
+        "ProbeDto": {
+          "$ref": "#/$defs/ProbeDto"
+        },
+        "ProfileDto": {
+          "$ref": "#/$defs/ProfileDto"
+        },
+        "ProtocolKind": {
+          "$ref": "#/$defs/ProtocolKind"
+        },
+        "ResolveTargetsRequestDto": {
+          "$ref": "#/$defs/ResolveTargetsRequestDto"
+        },
+        "RespondApprovalRequestDto": {
+          "$ref": "#/$defs/RespondApprovalRequestDto"
+        },
+        "RunDto": {
+          "$ref": "#/$defs/RunDto"
+        },
+        "RunState": {
+          "$ref": "#/$defs/RunState"
+        },
+        "SendAcceptedDto": {
+          "$ref": "#/$defs/SendAcceptedDto"
+        },
+        "SendMessageRequestDto": {
+          "$ref": "#/$defs/SendMessageRequestDto"
+        },
+        "TargetDto": {
+          "$ref": "#/$defs/TargetDto"
+        },
+        "TargetScope": {
+          "$ref": "#/$defs/TargetScope"
+        },
+        "TargetStatus": {
+          "$ref": "#/$defs/TargetStatus"
+        },
+        "ThreadDto": {
+          "$ref": "#/$defs/ThreadDto"
+        },
+        "ThreadIdRequestDto": {
+          "$ref": "#/$defs/ThreadIdRequestDto"
+        },
+        "ThreadSnapshotDto": {
+          "$ref": "#/$defs/ThreadSnapshotDto"
+        },
+        "ToolCategory": {
+          "$ref": "#/$defs/ToolCategory"
+        },
+        "UpdateThreadRequestDto": {
+          "$ref": "#/$defs/UpdateThreadRequestDto"
+        },
+        "UpsertMemoryRequestDto": {
+          "$ref": "#/$defs/UpsertMemoryRequestDto"
+        },
+        "UpsertProfileRequestDto": {
+          "$ref": "#/$defs/UpsertProfileRequestDto"
+        }
+      },
+      "required": [
+        "ProtocolKind",
+        "ApprovalMode",
+        "ApprovalDecision",
+        "RunState",
+        "TargetStatus",
+        "ToolCategory",
+        "MemoryScope",
+        "TargetScope",
+        "MessageRole",
+        "AgentEventKind",
+        "AgentUsage",
+        "AgentEvent",
+        "ThreadDto",
+        "MessageDto",
+        "RunDto",
+        "AuditDto",
+        "TargetDto",
+        "ApprovalDto",
+        "ThreadSnapshotDto",
+        "ProfileDto",
+        "MemoryDto",
+        "SendAcceptedDto",
+        "ProbeDto",
+        "CreateThreadRequestDto",
+        "UpdateThreadRequestDto",
+        "SendMessageRequestDto",
+        "ThreadIdRequestDto",
+        "CancelRunRequestDto",
+        "ApprovalDecisionDto",
+        "RespondApprovalRequestDto",
+        "DetachRequestDto",
+        "UpsertProfileRequestDto",
+        "AgentIdRequestDto",
+        "UpsertMemoryRequestDto",
+        "ResolveTargetsRequestDto"
+      ],
+      "type": "object"
+    },
     "appMeta": {
       "$defs": {
         "AppVersionDto": {
@@ -797,6 +2260,26 @@
             {
               "const": "NET_UNREACHABLE",
               "description": "网络不可达或连接被拒绝(细节见消息)。",
+              "type": "string"
+            },
+            {
+              "const": "AGENT_KEY_MISSING",
+              "description": "Agent:模型 API 密钥缺失,前端应引导去设置补齐(M5)。",
+              "type": "string"
+            },
+            {
+              "const": "AGENT_PROTOCOL_UNSUPPORTED",
+              "description": "Agent:接入点不支持要求的协议,禁止退回旧协议(M5)。",
+              "type": "string"
+            },
+            {
+              "const": "AGENT_BUSY",
+              "description": "Agent:该对话已有一轮在进行,需先取消或等待(M5)。",
+              "type": "string"
+            },
+            {
+              "const": "AGENT_TARGET_REJECTED",
+              "description": "Agent:目标主机不在用户配置列表内,或超出批量上限(M5)。",
               "type": "string"
             },
             {
@@ -1677,9 +3160,98 @@
     },
     "settings": {
       "$defs": {
+        "AgentSettings": {
+          "description": "Agent 设置(M5,docs/AGENT_DESIGN.md)。\n\n区间与档位只在 [`schema`] 登记一次,校验与界面下拉同源;\n这里只定义字段与默认值,禁止在别处复制一份取值范围。",
+          "properties": {
+            "approvalMode": {
+              "$ref": "#/$defs/ApprovalMode",
+              "default": "read_only_auto",
+              "description": "审批档位。"
+            },
+            "batchLimit": {
+              "default": 5,
+              "description": "单次批量操作的主机数上限。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "contextMessages": {
+              "default": 30,
+              "description": "每次请求携带的历史消息条数(上下文窗口)。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "execTimeoutSecs": {
+              "default": 30,
+              "description": "单条远端命令超时(秒)。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "injectMemories": {
+              "default": true,
+              "description": "是否把共享记忆注入系统提示。",
+              "type": "boolean"
+            },
+            "maxTurns": {
+              "default": 12,
+              "description": "单轮最多允许多少次工具往返。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "parallelHosts": {
+              "default": 4,
+              "description": "同时执行的主机数上限。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "showReasoning": {
+              "default": true,
+              "description": "是否展示模型推理增量( provider 返回时)。",
+              "type": "boolean"
+            },
+            "tokenBudget": {
+              "default": 200000,
+              "description": "单对话 token 预算;0 表示不限。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "maxTurns",
+            "contextMessages",
+            "batchLimit",
+            "parallelHosts",
+            "execTimeoutSecs",
+            "approvalMode",
+            "tokenBudget",
+            "injectMemories",
+            "showReasoning"
+          ],
+          "type": "object"
+        },
         "AppSettings": {
           "description": "应用设置全集(PRD §6.7 分组);默认值 = 各分组默认值的组合。",
           "properties": {
+            "agent": {
+              "$ref": "#/$defs/AgentSettings",
+              "default": {
+                "approvalMode": "read_only_auto",
+                "batchLimit": 5,
+                "contextMessages": 30,
+                "execTimeoutSecs": 30,
+                "injectMemories": true,
+                "maxTurns": 12,
+                "parallelHosts": 4,
+                "showReasoning": true,
+                "tokenBudget": 200000
+              },
+              "description": "AI Agent(M5)。"
+            },
             "appearance": {
               "$ref": "#/$defs/AppearanceSettings",
               "default": {
@@ -1751,6 +3323,7 @@
             "transfer",
             "monitor",
             "update",
+            "agent",
             "migration"
           ],
           "type": "object"
@@ -1774,6 +3347,26 @@
             "language"
           ],
           "type": "object"
+        },
+        "ApprovalMode": {
+          "description": "审批模式(枚举带行为,不做自由文本,AGENTS.md §13)。",
+          "oneOf": [
+            {
+              "const": "read_only_auto",
+              "description": "只读工具自动执行,写操作与建连逐次确认。",
+              "type": "string"
+            },
+            {
+              "const": "all_confirm",
+              "description": "任何工具都要点击确认。",
+              "type": "string"
+            },
+            {
+              "const": "read_only_only",
+              "description": "只注册只读工具(写工具不存在于本轮工具集)。",
+              "type": "string"
+            }
+          ]
         },
         "ConflictPolicy": {
           "description": "传输冲突默认策略(取值与传输契约一致)。",

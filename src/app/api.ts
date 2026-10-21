@@ -5,6 +5,7 @@
  * 连接管理各函数与 gateway/connections.ts 一一对应,类型见 @/types。
  */
 import {
+  agentApi,
   connectionsApi,
   localFsApi,
   migrationApi,
@@ -189,3 +190,57 @@ export const approveDataMigration = migrationApi.approveDataMigration;
 
 /** 「暂不」:关闭数据迁移自动弹窗(幂等)。 */
 export const dismissDataMigration = migrationApi.dismissDataMigration;
+
+/* -------------------------------------------------------------------------- */
+/* Agent(M5):docs/AGENT_DESIGN.md                                            */
+/* -------------------------------------------------------------------------- */
+
+/** 线程列表。 */
+export const listAgentThreads = agentApi.listAgentThreads;
+/** 线程快照。 */
+export const getAgentThread = agentApi.getAgentThread;
+/** 新建线程。 */
+export const createAgentThread = agentApi.createAgentThread;
+/** 修改线程。 */
+export const updateAgentThread = agentApi.updateAgentThread;
+/** 删除线程。 */
+export const deleteAgentThread = agentApi.deleteAgentThread;
+/** 发起一轮(流式)。 */
+export const sendAgentMessage = agentApi.sendAgentMessage;
+/** 订阅线程事件(重挂续接)。 */
+export function attachAgentThread(
+  threadId: string,
+  sinceSeq: number,
+  onEvent: Parameters<typeof agentApi.attachAgentThread>[2],
+): Promise<string> {
+  // 固定参数名 onEvent:Rust 侧命令参数名与之逐字一致。
+  return agentApi.attachAgentThread(threadId, sinceSeq, onEvent);
+}
+/** 退订事件。 */
+export const detachAgentThread = agentApi.detachAgentThread;
+/** 取消一轮。 */
+export const cancelAgentRun = agentApi.cancelAgentRun;
+/** 逐台批准。 */
+export const respondToolApproval = agentApi.respondToolApproval;
+/** 全局待批准。 */
+export const listPendingApprovals = agentApi.listPendingApprovals;
+/** 工具审计。 */
+export const listAgentAudit = agentApi.listAgentAudit;
+/** 模型接入点列表。 */
+export const listAgentProfiles = agentApi.listAgentProfiles;
+/** 保存模型接入点。 */
+export const upsertAgentProfile = agentApi.upsertAgentProfile;
+/** 删除模型接入点。 */
+export const deleteAgentProfile = agentApi.deleteAgentProfile;
+/** 测试接入点协议。 */
+export const testAgentProfile = agentApi.testAgentProfile;
+/** 解析目标主机集合。 */
+export const resolveAgentTargets = agentApi.resolveAgentTargets;
+/** 记忆作用域候选(取值来自后端枚举)。 */
+export const listAgentMemoryScopes = agentApi.listAgentMemoryScopes;
+/** 共享记忆列表。 */
+export const listAgentMemories = agentApi.listAgentMemories;
+/** 保存共享记忆。 */
+export const upsertAgentMemory = agentApi.upsertAgentMemory;
+/** 删除共享记忆。 */
+export const deleteAgentMemory = agentApi.deleteAgentMemory;

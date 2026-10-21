@@ -59,6 +59,17 @@ const CONFLICT_OPTIONS: Record<string, string> = {
   rename: "两者都保留",
 };
 
+/**
+ * AI 助手批准方式候选(与 Rust `ApprovalMode` 取值一致)。
+ *
+ * 键是契约原值、只能出现在映射里;界面正文一律用中文标签与 `optionHints`。
+ */
+const AGENT_APPROVAL_OPTIONS: Record<string, string> = {
+  read_only_auto: "只读自动",
+  all_confirm: "全部确认",
+  read_only_only: "仅只读",
+};
+
 /** 设置项文案表(缺失即不渲染)。 */
 export const SETTING_COPY: Partial<Record<SettingPath, SettingCopy>> = {
   "appearance.theme": {
@@ -155,5 +166,50 @@ export const SETTING_COPY: Partial<Record<SettingPath, SettingCopy>> = {
     label: "自动检查更新",
     hint: "后台定期检查新版本并点亮侧栏图标;关闭后仍可手动检查",
     groupTitle: "更新",
+  },
+  "agent.approvalMode": {
+    label: "操作批准方式",
+    hint: "AI 助手执行操作前,需要你批准到什么程度",
+    groupTitle: "AI 助手",
+    groupHint: "助手查服务器、批量改动时的默认尺度",
+    options: AGENT_APPROVAL_OPTIONS,
+    optionHints: {
+      read_only_auto: "查看类操作自动完成,改动服务器要逐台批准",
+      all_confirm: "每一步都要我点批准才继续,包括查看类操作",
+      read_only_only: "只提供查看类工具,助手不会改动服务器",
+    },
+  },
+  "agent.maxTurns": {
+    label: "一次任务最多走几轮",
+    hint: "一轮指助手思考并操作一次,轮数越大越能完成复杂任务,也越慢",
+  },
+  "agent.contextMessages": {
+    label: "每次带上多少条历史",
+    hint: "对话时给助手看的最近消息数,越多它越了解前因后果,开销也越大",
+  },
+  "agent.batchLimit": {
+    label: "一次最多操作几台服务器",
+    hint: "助手一轮里最多处理多少台;数量越大越省时间,一次改动的面也越大",
+  },
+  "agent.parallelHosts": {
+    label: "同时并发的服务器数",
+    hint: "真正并行执行的服务器数量,并发越高整体越快,对带宽和本机资源要求也越高",
+  },
+  "agent.execTimeoutSecs": {
+    label: "一条命令最多等多久",
+    hint: "超过这个时间命令就被中止,避免助手卡在一条不返回的命令上等死",
+  },
+  "agent.tokenBudget": {
+    label: "一次任务的用量上限",
+    hint: "助手一次任务最多用多少 tokens,超出就自动停下;选不限则一直跑到任务完成",
+    valueLabels: { "0": "不限" },
+  },
+  "agent.injectMemories": {
+    label: "让助手参考以往积累的信息",
+    hint: "对话时自动带上之前积累的记忆和服务器情况;关闭后只看当前这次对话",
+  },
+  "agent.showReasoning": {
+    label: "显示助手的思考过程",
+    hint: "回复里保留助手的中间分析步骤,便于看清它怎么得出结论;关闭后只显示结论",
   },
 };

@@ -7,6 +7,8 @@
 //!
 //! 禁止在本层直接访问文件系统、数据库、网络或调用操作系统命令。
 
+pub mod agent;
+pub mod agent_config;
 pub mod app_meta;
 pub mod connections;
 pub mod groups;

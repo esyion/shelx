@@ -123,6 +123,23 @@ impl ConnectionService {
         Ok(Self::build_tree(&groups, &conns, None))
     }
 
+    /// 平铺读取全部已配置连接(Agent 作用域、批量目标解析需要"用户配置过的列表",
+    /// 与在线会话集合无关,AGENTS.md §4.1)。
+    pub fn all_connections(&self) -> Result<Vec<ConnConfig>, ConnectionError> {
+        let mut conns = self.store.connections()?;
+        conns.sort_by(|left, right| {
+            left.position
+                .cmp(&right.position)
+                .then_with(|| left.name.cmp(&right.name))
+        });
+        Ok(conns)
+    }
+
+    /// 全部分组(批量目标按分组解析时用)。
+    pub fn all_groups(&self) -> Result<Vec<crate::domain::group::Group>, ConnectionError> {
+        Ok(self.store.groups()?)
+    }
+
     /// 递归组装 `parent` 下(根传 `None`)的节点列表。
     fn build_tree(
         groups: &[Group],

@@ -40,6 +40,14 @@ pub enum IpcErrorCode {
     NetTimeout,
     /// 网络不可达或连接被拒绝(细节见消息)。
     NetUnreachable,
+    /// Agent:模型 API 密钥缺失,前端应引导去设置补齐(M5)。
+    AgentKeyMissing,
+    /// Agent:接入点不支持要求的协议,禁止退回旧协议(M5)。
+    AgentProtocolUnsupported,
+    /// Agent:该对话已有一轮在进行,需先取消或等待(M5)。
+    AgentBusy,
+    /// Agent:目标主机不在用户配置列表内,或超出批量上限(M5)。
+    AgentTargetRejected,
     /// 未归类的内部错误;details 可携带脱敏上下文。
     Internal,
 }

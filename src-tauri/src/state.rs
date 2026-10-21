@@ -45,6 +45,8 @@ pub struct AppState {
     pub updates: Arc<UpdateAutoCheckService>,
     /// 键盘交互/指纹确认桥(respond_* 命令直达)。
     pub broker: Arc<PromptBroker>,
+    /// AI Agent 服务(M5:线程、运行、批准、记忆)。
+    pub agent: Arc<crate::application::agent::AgentService>,
     /// 数据迁移服务(状态查询/批准/暂不)。
     pub migrations: Arc<MigrationService>,
     /// 凭据存储可用性(供设置页展示"系统钥匙串 / 降级加密")。
@@ -75,6 +77,7 @@ impl AppState {
             .unwrap_or(30);
 
         let (secret_store, secret_availability) = secrets::open(dir);
+        let agent_secrets = Arc::clone(&secret_store);
         let connections = Arc::new(ConnectionService::new(Box::new(store), secret_store));
 
         let events: Arc<dyn SessionEventSink> = Arc::new(TauriSessionEvents::new(app.clone()));
@@ -96,6 +99,26 @@ impl AppState {
             &settings,
         ));
         let monitor = Arc::new(MonitorService::new(sessions.clone(), monitor_events));
+
+        // Agent(M5):独立存储句柄 + rig 网关 + 用例服务;启动时先把上次未结束的运行收敛,
+        // 避免界面出现永远"进行中"的死状态(AGENTS.md §4.1.1)。
+        let agent_store: Arc<dyn crate::application::agent::types::AgentStore> = Arc::new(
+            crate::infrastructure::sqlite::agent_repo::SqliteAgentStore::open(&db_path)
+                .unwrap_or_else(|err| panic!("Agent 数据库打开失败({}): {err}", db_path.display())),
+        );
+        let agent_gateway: Arc<dyn crate::application::agent::types::LlmGateway> = Arc::new(
+            crate::infrastructure::agent::RigGateway::new(Arc::clone(&agent_store)),
+        );
+        let agent = Arc::new(crate::application::agent::AgentService::new(
+            agent_store,
+            agent_gateway,
+            connections.clone(),
+            sessions.clone(),
+            sftp.clone(),
+            settings.clone(),
+            agent_secrets,
+        ));
+        agent.recover_unfinished_runs();
 
         // 更新自动检查:检查器与事件出口均为 Tauri 适配器,后台循环随进程存活。
         let checker: Arc<dyn UpdateChecker> = Arc::new(TauriUpdateChecker::new(app.clone()));
@@ -123,6 +146,7 @@ impl AppState {
             monitor,
             updates,
             broker,
+            agent,
             migrations,
             secret_availability,
         }

@@ -5,6 +5,7 @@
 //! 外部依赖(文件、网络、钥匙串、时钟)一律以 port trait 声明,
 //! 实现放 infrastructure 层。
 
+pub mod agent;
 pub mod connections;
 pub mod migration;
 pub mod monitoring;

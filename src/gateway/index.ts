@@ -9,6 +9,7 @@ export {
   APP_UPDATE_EVENTS,
   SESSION_EVENTS,
 } from "./tauri";
+export * as agentApi from "./agent";
 export * as connectionsApi from "./connections";
 export * as sessionsApi from "./sessions";
 export * as sftpApi from "./sftp";
