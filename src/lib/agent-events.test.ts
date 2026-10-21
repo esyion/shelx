@@ -4,7 +4,15 @@
  * 口径:界面拿到的中文标签不能是内部枚举原值;增量合并不能重复或丢字。
  */
 import { describe, expect, it } from "vitest";
-import type { AgentEvent, ApprovalDto, TargetDto, TargetStatus } from "@/types";
+import type {
+  AgentEvent,
+  AgentStreamFragment,
+  AgentTextPart,
+  AgentToolPart,
+  ApprovalDto,
+  TargetDto,
+  TargetStatus,
+} from "@/types";
 import {
   APPROVAL_DECISION_DISPLAY,
   APPROVAL_MODE_DISPLAY,
@@ -30,6 +38,14 @@ function event(partial: Partial<AgentEvent> & { seq: number }): AgentEvent {
     kind: "text_delta",
     ...partial,
   } as AgentEvent;
+}
+
+/** 时间线里所有回答段拼起来(断言用)。 */
+function textOf(fragment: AgentStreamFragment): string {
+  return fragment.parts
+    .filter((part): part is AgentTextPart => part.type === "text")
+    .map((part) => part.text)
+    .join("");
 }
 
 describe("Agent 中文映射", () => {
@@ -91,23 +107,52 @@ describe("Agent 中文映射", () => {
   });
 });
 
-describe("流式增量合并", () => {
-  it("按顺序累加文本与推理", () => {
+describe("时间线合并", () => {
+  it("同类增量续写同一段,类别一变就另起一段", () => {
     let fragment = emptyFragment();
     fragment = applyEvent(fragment, event({ seq: 1, kind: "text_delta", text: "你" }));
     fragment = applyEvent(fragment, event({ seq: 2, kind: "text_delta", text: "好" }));
     fragment = applyEvent(fragment, event({ seq: 3, kind: "reasoning_delta", text: "先看磁盘" }));
-    expect(fragment.text).toBe("你好");
-    expect(fragment.reasoning).toBe("先看磁盘");
+    expect(textOf(fragment)).toBe("你好");
+    expect(fragment.parts.map((part) => part.type)).toEqual(["text", "reasoning"]);
     expect(fragment.seq).toBe(3);
     expect(fragment.settled).toBe(false);
   });
 
-  it("终态事件覆盖增量并标记结束", () => {
+  it("想→做→又想 排成三段时间线,第二次思考不并进第一段", () => {
+    let fragment = emptyFragment();
+    fragment = applyEvent(fragment, event({ seq: 1, kind: "reasoning_delta", text: "先看磁盘" }));
+    fragment = applyEvent(
+      fragment,
+      event({ seq: 2, kind: "tool_call", callId: "a", toolName: "exec" }),
+    );
+    fragment = applyEvent(
+      fragment,
+      event({ seq: 3, kind: "target_state", callId: "a", connId: "k1", connName: "web-01", toolName: "exec", targetStatus: "ok" }),
+    );
+    fragment = applyEvent(
+      fragment,
+      event({ seq: 4, kind: "tool_result", callId: "a", toolName: "exec", targetStatus: "ok" }),
+    );
+    fragment = applyEvent(fragment, event({ seq: 5, kind: "reasoning_delta", text: "再确认服务" }));
+    // 两段思考各自成段,中间夹着那一步 —— 顺序就是发生顺序。
+    expect(fragment.parts.map((part) => part.type)).toEqual([
+      "reasoning",
+      "tool",
+      "reasoning",
+    ]);
+    const first = fragment.parts[0];
+    const last = fragment.parts[2];
+    expect(first?.type === "reasoning" && first.text).toBe("先看磁盘");
+    expect(last?.type === "reasoning" && last.text).toBe("再确认服务");
+  });
+
+  it("终态事件替换最后一段回答并标记结束", () => {
     let fragment = emptyFragment();
     fragment = applyEvent(fragment, event({ seq: 1, kind: "text_delta", text: "半成品" }));
     fragment = applyEvent(fragment, event({ seq: 2, kind: "final_response", text: "完整答案" }));
-    expect(fragment.text).toBe("完整答案");
+    expect(textOf(fragment)).toBe("完整答案");
+    expect(fragment.parts).toHaveLength(1);
     expect(fragment.settled).toBe(true);
     expect(fragment.usage).toBeUndefined();
   });
@@ -121,32 +166,102 @@ describe("流式增量合并", () => {
     expect(fragment.usage?.totalTokens).toBe(14);
     fragment = applyEvent(fragment, event({ seq: 2, kind: "run_cancelled", text: "已取消" }));
     expect(fragment.settled).toBe(true);
-    expect(fragment.text).toBe("已取消");
+    expect(textOf(fragment)).toBe("已取消");
   });
 
-  it("记录最近一条事件类别供界面显示进度", () => {    let fragment = emptyFragment();
-    fragment = applyEvent(fragment, event({ seq: 1, kind: "tool_result" }));
-    expect(fragment.lastKind).toBe("tool_result");
+  it("记录最近一条事件类别供界面显示进度", () => {
+    let fragment = emptyFragment();
+    fragment = applyEvent(fragment, event({ seq: 1, kind: "tool_call" }));
+    expect(fragment.lastKind).toBe("tool_call");
     fragment = applyEvent(fragment, event({ seq: 2, kind: "text_delta", text: "好" }));
     expect(fragment.lastKind).toBe("text_delta");
   });
 
-  it("逐台进度按主机合并,同一台只保留最新状态", () => {
+  it("一次调用开一步,扇出的多台主机合成一步、状态就地更新", () => {
     let fragment = emptyFragment();
     fragment = applyEvent(
       fragment,
-      event({ seq: 1, kind: "target_state", connName: "web-01", toolName: "exec", targetStatus: "running" }),
+      event({ seq: 1, kind: "tool_call", callId: "a", toolName: "exec", argsJson: '{"argv":["df","-h"]}' }),
     );
     fragment = applyEvent(
       fragment,
-      event({ seq: 2, kind: "target_state", connName: "web-02", toolName: "exec", targetStatus: "pending" }),
+      event({ seq: 2, kind: "target_state", callId: "a", connId: "k1", connName: "web-01", toolName: "exec", targetStatus: "running" }),
     );
     fragment = applyEvent(
       fragment,
-      event({ seq: 3, kind: "target_state", connName: "web-01", toolName: "exec", targetStatus: "ok" }),
+      event({ seq: 3, kind: "target_state", callId: "a", connId: "k2", connName: "web-02", toolName: "exec", targetStatus: "pending" }),
     );
-    expect(Object.keys(fragment.targets ?? {})).toEqual(["web-01", "web-02"]);
-    expect(fragment.targets?.["web-01"].status).toBe("ok");
+    fragment = applyEvent(
+      fragment,
+      event({ seq: 4, kind: "target_state", callId: "a", connId: "k1", connName: "web-01", toolName: "exec", targetStatus: "ok" }),
+    );
+    expect(fragment.parts).toEqual([
+      {
+        type: "tool",
+        id: "a",
+        toolName: "exec",
+        argsJson: '{"argv":["df","-h"]}',
+        done: false,
+        targets: {
+          k1: { connName: "web-01", status: "ok" },
+          k2: { connName: "web-02", status: "pending" },
+        },
+      },
+    ]);
+  });
+
+  it("并行发出的同名调用各归各步(实测过按工具名并会串成一步)", () => {
+    let fragment = emptyFragment();
+    fragment = applyEvent(fragment, event({ seq: 1, kind: "tool_call", callId: "a", toolName: "exec" }));
+    fragment = applyEvent(fragment, event({ seq: 2, kind: "tool_call", callId: "b", toolName: "exec" }));
+    fragment = applyEvent(
+      fragment,
+      event({ seq: 3, kind: "target_state", callId: "a", connId: "k1", connName: "web-01", toolName: "exec", targetStatus: "ok" }),
+    );
+    fragment = applyEvent(
+      fragment,
+      event({ seq: 4, kind: "target_state", callId: "b", connId: "k1", connName: "web-01", toolName: "exec", targetStatus: "failed" }),
+    );
+    const steps = fragment.parts.filter((part): part is AgentToolPart => part.type === "tool");
+    expect(steps.map((part) => part.id)).toEqual(["a", "b"]);
+    expect(steps[0]?.targets.k1?.status).toBe("ok");
+    expect(steps[1]?.targets.k1?.status).toBe("failed");
+  });
+
+  it("收尾事件结束那一步:没有逐台进度的工具也留得下结论", () => {
+    let fragment = emptyFragment();
+    fragment = applyEvent(fragment, event({ seq: 1, kind: "tool_call", callId: "a", toolName: "list_connections" }));
+    fragment = applyEvent(
+      fragment,
+      event({ seq: 2, kind: "tool_result", callId: "a", toolName: "list_connections", targetStatus: "ok", text: "列出 9 台" }),
+    );
+    expect(fragment.parts[0]).toMatchObject({ done: true, ok: true, summary: "列出 9 台" });
+  });
+
+  it("重挂补发看不到开步事件时,进度就地补一步而不是丢掉", () => {
+    let fragment = emptyFragment();
+    // 开步事件落在订阅游标之前(重挂只补发游标之后的事件)。
+    fragment = applyEvent(
+      fragment,
+      event({ seq: 8, kind: "target_state", callId: "a", connId: "k1", connName: "web-01", toolName: "tail_log", targetStatus: "ok" }),
+    );
+    expect(fragment.parts).toEqual([
+      {
+        type: "tool",
+        id: "a",
+        toolName: "tail_log",
+        argsJson: undefined,
+        done: false,
+        targets: { k1: { connName: "web-01", status: "ok" } },
+      },
+    ]);
+    // 重复投递不得再动时间线。
+    const settledParts = fragment.parts;
+    fragment = applyEvent(
+      fragment,
+      event({ seq: 8, kind: "target_state", callId: "a", connId: "k1", connName: "web-01", toolName: "tail_log", targetStatus: "ok" }),
+    );
+    expect(fragment.parts).toBe(settledParts);
   });
 
   it("同一序号重复投递不重复累加(两条订阅或重挂补发都会撞车)", () => {
@@ -155,14 +270,14 @@ describe("流式增量合并", () => {
     // 第二条订阅把已收过的包再投一次。
     fragment = applyEvent(fragment, event({ seq: 1, kind: "text_delta", text: "| 名称 |" }));
     fragment = applyEvent(fragment, event({ seq: 2, kind: "text_delta", text: " 8 台离线" }));
-    expect(fragment.text).toBe("| 名称 | 8 台离线");
+    expect(textOf(fragment)).toBe("| 名称 | 8 台离线");
   });
 
   it("结算后旧序号的迟到包被丢弃", () => {
     let fragment = emptyFragment();
     fragment = applyEvent(fragment, event({ seq: 5, kind: "final_response", text: "答案" }));
     fragment = applyEvent(fragment, event({ seq: 3, kind: "text_delta", text: "迟到" }));
-    expect(fragment.text).toBe("答案");
+    expect(textOf(fragment)).toBe("答案");
   });
 });
 

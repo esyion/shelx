@@ -210,6 +210,6 @@ export const SETTING_COPY: Partial<Record<SettingPath, SettingCopy>> = {
   },
   "agent.showReasoning": {
     label: "显示助手的思考过程",
-    hint: "回复里保留助手的中间分析步骤,便于看清它怎么得出结论;关闭后只显示结论",
+    hint: "对话里折叠展示助手怎么想的,点开可看原文;关闭后只留下做了哪些操作",
   },
 };

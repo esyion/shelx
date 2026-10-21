@@ -21,9 +21,11 @@ pub enum AgentEventKind {
     ReasoningDelta,
     /// 需要用户批准工具调用。
     ApprovalRequired,
-    /// 批量执行中某台主机的状态变化。
+    /// 批量执行中某台主机的状态变化(与开步事件同一个 `call_id` 才归为一步)。
     TargetState,
-    /// 工具执行完成(含结果摘要)。
+    /// 一次工具调用开始:带调用 ID、工具名、类别与入参。
+    ToolCall,
+    /// 一次工具调用收尾:带调用 ID 与结果摘要(没有逐台进度的工具靠它结束)。
     ToolResult,
     /// 一次模型调用的 token 用量。
     Usage,
@@ -46,6 +48,7 @@ impl AgentEventKind {
             Self::ReasoningDelta => "reasoning_delta",
             Self::ApprovalRequired => "approval_required",
             Self::TargetState => "target_state",
+            Self::ToolCall => "tool_call",
             Self::ToolResult => "tool_result",
             Self::Usage => "usage",
             Self::FinalResponse => "final_response",
@@ -63,6 +66,7 @@ impl AgentEventKind {
             Self::ReasoningDelta => "推理",
             Self::ApprovalRequired => "等待你的批准",
             Self::TargetState => "主机进度",
+            Self::ToolCall => "执行动作",
             Self::ToolResult => "工具结果",
             Self::Usage => "用量",
             Self::RunFailed => "失败",
@@ -256,6 +260,7 @@ mod tests {
             AgentEventKind::ReasoningDelta,
             AgentEventKind::ApprovalRequired,
             AgentEventKind::TargetState,
+            AgentEventKind::ToolCall,
             AgentEventKind::ToolResult,
             AgentEventKind::Usage,
             AgentEventKind::FinalResponse,

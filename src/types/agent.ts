@@ -74,30 +74,58 @@ export type ApprovalChoice = {
 /** 流式事件回调(由 Channel 驱动)。 */
 export type AgentEventHandler = (event: AgentEvent) => void;
 
-/** 流式增量片段:按线程累积,代表尚未落库的那部分输出。 */
+/**
+ * 流式增量片段:按线程累积,代表尚未落库的那部分输出。
+ *
+ * `parts` 是**有序时间线**(形状照 ai-sdk 的 `UIMessage.parts`):思考、工具调用、回答
+ * 按到达顺序排在同一个数组里。分成 `text` / `reasoning` / `steps` 三个桶会把先后毁掉 ——
+ * 第二次思考只能接到第一段的尾巴上,界面无论怎么排都是串台的。
+ */
 export type AgentStreamFragment = {
-  /** 回答增量文本。 */
-  text: string;
-  /** 推理增量文本。 */
-  reasoning: string;
+  /** 本轮时间线(思考段 / 工具步 / 回答段,按到达顺序)。 */
+  parts: AgentPart[];
   /** 已并入的最大事件序号(重挂时按此续接)。 */
   seq: number;
   /** 最近一条事件类别(界面用它显示"现在在做什么",不显示英文原值)。 */
   lastKind?: AgentEventKind;
-  /** 本轮每台主机的进度,键为连接 ID(无 ID 时用显示名),来自 `target_state` 事件。 */
-  targets?: Record<string, AgentTargetProgress>;
   /** 本轮用量。 */
   usage?: AgentEvent["usage"];
   /** 是否已收到终态事件。 */
   settled: boolean;
 };
 
-/** 单台主机在本轮里的进度(对话区实时轨迹用,落库后以审计行为准)。 */
-export type AgentTargetProgress = {
+/** 一步里的一台主机(状态就地更新,输出摘要去「操作记录」看)。 */
+export type ChainTarget = {
   /** 用户起的连接名。 */
   connName: string;
-  /** 工具名(后端原值,展示时翻成中文动作)。 */
-  toolName: string;
-  /** 状态。 */
+  /** 该台当前状态。 */
   status: TargetStatus;
 };
+
+/** 时间线里的一步 = 一次工具调用(身份由后端 `callId` 给定,不靠工具名猜)。 */
+export type AgentToolPart = {
+  type: "tool";
+  /** 调用身份:开步、逐台进度、收尾三条事件共用它。 */
+  id: string;
+  /** 工具名(后端原值,展示时翻成中文动作)。 */
+  toolName: string;
+  /** 入参 JSON(命令、路径等,展开时用 CodeBlock 显示)。 */
+  argsJson?: string;
+  /** 是否已收尾:没收尾就不许报"完成"(死状态要可见)。 */
+  done: boolean;
+  /** 收尾是否成功(没有逐台进度的工具靠它说话)。 */
+  ok?: boolean;
+  /** 收尾摘要原文(后端的话,不改写)。 */
+  summary?: string;
+  /** 逐台结果,键为连接 ID(无 ID 时用连接名)。 */
+  targets: Record<string, ChainTarget>;
+};
+
+/** 时间线里的一段思考(两次思考之间隔了工具调用就是两段,各自独立成段)。 */
+export type AgentReasoningPart = { type: "reasoning"; id: string; text: string };
+
+/** 时间线里的一段回答。 */
+export type AgentTextPart = { type: "text"; id: string; text: string };
+
+/** 时间线上的一个片段。 */
+export type AgentPart = AgentToolPart | AgentReasoningPart | AgentTextPart;

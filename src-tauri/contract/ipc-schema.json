@@ -177,12 +177,17 @@
             },
             {
               "const": "target_state",
-              "description": "批量执行中某台主机的状态变化。",
+              "description": "批量执行中某台主机的状态变化(与开步事件同一个 `call_id` 才归为一步)。",
+              "type": "string"
+            },
+            {
+              "const": "tool_call",
+              "description": "一次工具调用开始:带调用 ID、工具名、类别与入参。",
               "type": "string"
             },
             {
               "const": "tool_result",
-              "description": "工具执行完成(含结果摘要)。",
+              "description": "一次工具调用收尾:带调用 ID 与结果摘要(没有逐台进度的工具靠它结束)。",
               "type": "string"
             },
             {

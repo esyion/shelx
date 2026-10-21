@@ -445,8 +445,10 @@ send_agent_message(request, onEvent)            // src/app/api.ts → src/gatewa
 | --- | --- | --- |
 | 线程与流式贴底 | `MessageScrollerProvider` + `MessageScroller/Viewport/Content/Item/Button` | 用户轮次标 `scrollAnchor`;「回到底部」给中文 `sr-only`,不用默认英文标签 |
 | 回合外壳 | `Message` + `MessageAvatar`/`MessageContent`/`MessageHeader` | 人的回合套 `Bubble`,Agent 答案直接进 `MessageContent`(chat.md 明确区分) |
-| 推理过程 | `Trace` + `TraceCollapsible` + `TraceLine status="running"` | 不再用 `Marker` 顶替活动行 |
-| 本轮进度 / 逐台状态 | `TraceLine`(标题由 `traceLine()` 出中文时态,`TraceDescription` 放主机与统计) | `status` 只允许 `running|error|pending`,由 `TargetStatus` 映射,**不透传内部枚举** |
+| 时间线(唯一真源) | `AgentStreamFragment.parts` = 思考段 / 工具步 / 回答段按到达顺序排在同一个数组;渲染前 `chainSegments()` 把连续同类合成一段 | 形状照 ai-sdk 的 `UIMessage.parts`。**不按类别分桶**:分成 `text`/`reasoning`/`steps` 三个桶就把"想→做→又想"的先后毁掉了(实测:第二次思考接到第一段文本尾巴上,界面串台) |
+| 思考过程(Reasoning) | `Reasoning` = `Trace` + `TraceCollapsible(keepMounted)`,内容整段原文 | 想的时候一行「正在思考」并展开,说完自动收起(用户手动开合优先);**不拆成一行行**,否则模型的多句独白会伪装成"走了 N 步"。受设置项 `agent.showReasoning` 控制 |
+| 思维链(Chain of Thought) | `ChainOfThought` = `Trace` + 摘要 `TraceCollapsible` + 每步一行,推导在 `src/lib/agent-chain.ts` | **一步 = 一次工具调用**,身份是 `tool_host` 生成的 `callId`(开步 `tool_call`、逐台 `target_state`、收尾 `tool_result` 三条事件共用它);**禁止按工具名归并**(并行同名调用会串成一步,实测出现过三行永远停在「准备执行」)。一次调用扇出的多台主机合成一步,多台只报计数;摘要进行中说中文的「现在在做什么」,结束报步数与没完成的步数;有入参才再升一层 `TraceCollapsible`,入参用 `CodeBlock` |
+| 逐台状态 | 步骤展开后每台一个 `TraceLine`(`traceLine()` 出中文时态,`TraceDescription` 放主机名) | `status` 只允许 `running|error|pending`,由 `TargetStatus` 映射,**不透传内部枚举**;输出摘要去「操作记录」看。不针对主机的工具(列连接、记记忆)没有逐台行,靠 `tool_result` 的摘要收尾,不留「准备执行」死状态 |
 | 命令、入参、输出摘要 | `CodeBlock` + `CodeBlockHeader/Title/Content`(`size="sm" wrap max-h-64`) | 手写 `<pre>` 清零;失败输出用 `variant="destructive"` |
 | 待批准 | `Trace` **之外**的 `Card` + 每台一个 `Item`,`ItemActions` 里 `ToggleGroup`(拒绝 / 允许这一次 / 本对话内一直允许) | 默认全拒;`allowed_always` 只在本对话该主机该工具生效 |
 | 输入区 | `InputGroup` + `InputGroupTextarea` + `InputGroupAddon align="block-end"` + `Button` | 提示与「取消/发送」都在 addon 行里,禁用态来自后端 run |

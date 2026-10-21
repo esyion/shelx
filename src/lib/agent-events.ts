@@ -7,10 +7,13 @@
 import type {
   AgentEvent,
   AgentEventKind,
+  AgentPart,
   AgentStreamFragment,
+  AgentToolPart,
   ApprovalDecision,
   ApprovalMode,
   ApprovalDto,
+  ChainTarget,
   MemoryScope,
   MessageRole,
   ProtocolKind,
@@ -37,15 +40,16 @@ export type AgentDisplay = {
 export const EVENT_KIND_DISPLAY: Record<AgentEventKind, AgentDisplay> = {
   run_started: { label: "开始处理", description: "已把问题交给模型", tone: "info" },
   text_delta: { label: "回答", description: "模型正在写回答", tone: "neutral" },
-  reasoning_delta: { label: "推理", description: "模型的思考过程", tone: "neutral" },
+  reasoning_delta: { label: "推理", description: "模型正在思考", tone: "neutral" },
   approval_required: {
     label: "等你批准",
     description: "这一步会改动服务器,需要你逐台决定",
     tone: "warning",
   },
-  target_state: { label: "主机进度", description: "每台主机的执行状态", tone: "neutral" },
+  target_state: { label: "主机进度", description: "正在逐台执行", tone: "neutral" },
+  tool_call: { label: "执行动作", description: "正在执行操作", tone: "neutral" },
   tool_result: { label: "工具结果", description: "取证或改动动作的返回内容", tone: "neutral" },
-  usage: { label: "用量", description: "本次请求的 token 消耗", tone: "neutral" },
+  usage: { label: "用量", description: "正在统计本轮用量", tone: "neutral" },
   final_response: { label: "完成", description: "这一轮已经答完", tone: "success" },
   run_failed: { label: "失败", description: "这一轮没有完成", tone: "danger" },
   run_cancelled: { label: "已取消", description: "你中止了这一轮", tone: "warning" },
@@ -196,7 +200,35 @@ export const TONE_BADGE: Record<
 
 /** 空的流式片段。 */
 export function emptyFragment(): AgentStreamFragment {
-  return { text: "", reasoning: "", seq: 0, settled: false };
+  return { parts: [], seq: 0, settled: false };
+}
+
+/**
+ * 把增量接到同类的最后一段上;类别一变就另起一段。
+ *
+ * 先后关系就靠这个保留:第二次思考不会并进第一次的文本里。
+ */
+function appendRun(
+  parts: AgentPart[],
+  type: "text" | "reasoning",
+  text: string,
+  seq: number,
+): AgentPart[] {
+  if (!text) return parts;
+  const last = parts[parts.length - 1];
+  if (last?.type === type) {
+    return [...parts.slice(0, -1), { ...last, text: last.text + text }];
+  }
+  return [...parts, { type, id: `p${seq}`, text }];
+}
+
+/** 终态带来的权威全文:替换最后一段回答(没有就新开一段),不重复累加。 */
+function replaceLastText(parts: AgentPart[], text: string, seq: number): AgentPart[] {
+  const last = parts[parts.length - 1];
+  if (last?.type === "text") {
+    return [...parts.slice(0, -1), { ...last, text }];
+  }
+  return [...parts, { type: "text", id: `p${seq}`, text }];
 }
 
 /**
@@ -218,33 +250,84 @@ export function applyEvent(
   next.lastKind = event.kind;
   switch (event.kind) {
     case "text_delta":
-      next.text += event.text ?? "";
+      next.parts = appendRun(next.parts, "text", event.text ?? "", event.seq);
       break;
     case "reasoning_delta":
-      next.reasoning += event.text ?? "";
+      next.parts = appendRun(next.parts, "reasoning", event.text ?? "", event.seq);
       break;
+    case "tool_call": {
+      if (!event.toolName) break;
+      next.parts = [
+        ...next.parts,
+        {
+          type: "tool",
+          id: event.callId ?? `c${event.seq}`,
+          toolName: event.toolName,
+          argsJson: event.argsJson ?? undefined,
+          done: false,
+          targets: {},
+        },
+      ];
+      break;
+    }
+    case "tool_result": {
+      // 收尾:没有逐台进度的工具(列连接、记记忆)靠它结束,
+      // 否则界面上会留下一行永远停在"准备执行"的死状态。
+      const id = event.callId ?? `c${event.seq}`;
+      next.parts = next.parts.map((part) =>
+        part.type === "tool" && part.id === id
+          ? {
+              ...part,
+              done: true,
+              ok: event.targetStatus === "ok",
+              summary: event.text ?? undefined,
+            }
+          : part,
+      );
+      break;
+    }
+    case "target_state": {
+      // 键用 connId(连接名可能重名),没有 connId 时才退回显示名。
+      const connKey = event.connId ?? event.connName;
+      if (!connKey) break;
+      const target: ChainTarget = {
+        connName: event.connName ?? connKey,
+        status: event.targetStatus ?? "pending",
+      };
+      // 归步靠调用身份,不靠工具名:模型一轮里并行发多个同名调用时,
+      // 按名字并会把它们塞进同一步(实测出现过三行永远停在"准备执行")。
+      const index = event.callId
+        ? next.parts.findIndex((part) => part.type === "tool" && part.id === event.callId)
+        : -1;
+      if (index < 0) {
+        // 重挂补发时开步事件可能落在订阅游标之前看不见:就地补一步,进度不无处安放。
+        next.parts = [
+          ...next.parts,
+          {
+            type: "tool",
+            id: event.callId ?? `t${event.seq}`,
+            toolName: event.toolName ?? "",
+            argsJson: event.argsJson ?? undefined,
+            done: false,
+            targets: { [connKey]: target },
+          },
+        ];
+        break;
+      }
+      const open = next.parts[index] as AgentToolPart;
+      next.parts = next.parts.map((part, position) =>
+        position === index ? { ...open, targets: { ...open.targets, [connKey]: target } } : part,
+      );
+      break;
+    }
     case "usage":
       next.usage = event.usage ?? next.usage;
       break;
-    case "target_state": {
-      // 键用 connId(连接名可能重名),没有 connId 时才退回显示名。
-      const key = event.connId ?? event.connName;
-      if (!key) break;
-      next.targets = {
-        ...next.targets,
-        [key]: {
-          connName: event.connName ?? key,
-          toolName: event.toolName ?? "",
-          status: event.targetStatus ?? "pending",
-        },
-      };
-      break;
-    }
     case "final_response":
     case "run_failed":
     case "run_cancelled":
       next.settled = true;
-      if (event.text) next.text = event.text;
+      if (event.text) next.parts = replaceLastText(next.parts, event.text, event.seq);
       next.usage = event.usage ?? next.usage;
       break;
     default:

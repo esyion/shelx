@@ -19,7 +19,7 @@ use crate::application::agent::events::{AgentEvent, AgentEventKind, AgentUsage};
 use crate::application::agent::hub::{ApprovalCenter, ThreadEventHub};
 use crate::application::agent::tools::{tools_for, ToolHost};
 use crate::application::agent::types::{AgentStore, LlmGateway, RunContext, RunOutcome, RunPlan};
-use crate::domain::agent::{RunState, ToolCategory};
+use crate::domain::agent::RunState;
 
 /// 文本增量聚合:达到该字符数或时间间隔才推一条 IPC 事件(AGENTS.md §6 不阻塞 UI)。
 const FLUSH_CHARS: usize = 512;
@@ -220,17 +220,10 @@ impl LlmGateway for RigGateway {
                     // 部件起止与参数增量:工具结果由执行器逐台广播,这里不重复发。
                     _ => {}
                 },
-                Ok(MultiTurnStreamItem::ToolCall { tool_call }) => {
-                    let name = tool_call.function.name.as_str().to_owned();
-                    let args =
-                        serde_json::to_string(&tool_call.function.arguments).unwrap_or_default();
-                    em.emit(AgentEventKind::ToolResult, move |event| {
-                        event.tool_name = Some(name.clone());
-                        event.category = Some(category_hint(&name));
-                        event.args_json = Some(args.clone());
-                        event.text = Some("模型请求调用工具".into());
-                    });
-                }
+                // 工具调用不在这条路径上发事件:rig 不会把调用身份交给执行器,在这里发的话
+                // 前端只能靠工具名猜归属,一轮里并行的同名调用会串到同一步。
+                // 开步、逐台进度、收尾统一由 `SshToolHost::invoke` 用同一个 call_id 发出。
+                Ok(MultiTurnStreamItem::ToolCall { .. }) => {}
                 Ok(MultiTurnStreamItem::CompletionCall(call)) => {
                     turns += 1;
                     let usage = Self::map_usage(&call.usage);
@@ -292,17 +285,6 @@ impl LlmGateway for RigGateway {
     }
 }
 
-/// 工具类别提示(仅用于界面图标与文案,真实门禁在工具执行器内)。
-fn category_hint(name: &str) -> ToolCategory {
-    match crate::application::agent::tools::spec(name) {
-        Some(spec) => match spec.policy {
-            crate::application::agent::tools::ToolPolicy::Fixed(category) => category,
-            crate::application::agent::tools::ToolPolicy::CommandDriven => ToolCategory::Mutating,
-        },
-        None => ToolCategory::ReadOnly,
-    }
-}
-
 /// 累加用量(缺失字段按 0 参与累加,结果仍为 Some)。
 fn accumulate(mut total: AgentUsage, item: AgentUsage) -> AgentUsage {
     total.input_tokens = Some(total.input_tokens.unwrap_or(0) + item.input_tokens.unwrap_or(0));
@@ -334,15 +316,6 @@ mod tests {
         let mut batch = DeltaBatcher::new();
         assert!(batch.take().is_none());
         assert!(batch.push("").is_none());
-    }
-
-    /// 类别提示对未知工具按只读处理(不夸大危险)。
-    #[test]
-    fn category_hint_defaults_and_maps() {
-        assert_eq!(category_hint("list_connections"), ToolCategory::ReadOnly);
-        assert_eq!(category_hint("write_file"), ToolCategory::Mutating);
-        assert_eq!(category_hint("exec"), ToolCategory::Mutating);
-        assert_eq!(category_hint("nope"), ToolCategory::ReadOnly);
     }
 
     /// 用量累加对缺失字段容错。

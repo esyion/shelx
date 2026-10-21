@@ -1,16 +1,20 @@
 /**
- * AI Elements pattern 行为回归测试(AGENTS.md §9:测用户可见行为)。
+ * shadcn base 对话组件的行为回归测试(AGENTS.md §9:测用户可见行为)。
  *
- * 锁三件事:
+ * 锁五件事:
  * 1. 审计轨迹说人话(中文动作 + 连接名 + 耗时),不出现内部工具名与裸 ID;
  * 2. 待批准是"每台一个决定",默认拒绝,提交出去的逐台决策与界面选择一致;
- * 3. 命令与输出用 CodeBlock,不回退成手写 `<pre>`。
+ * 3. 命令与输出用 CodeBlock,不回退成手写 `<pre>`;
+ * 4. 思维链一步 = 一次工具调用(扇出的多台合成一步),摘要按时态报步数与未完成的步数;
+ * 5. 思考原文整段走 Reasoning 折叠,不被拆成一行行假步骤。
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ApprovalDto, AuditDto } from "@/types";
+import type { AgentToolPart, ApprovalDto, AuditDto } from "@/types";
 import { ApprovalCard } from "./approval-card";
 import { AuditList } from "./audit-list";
+import { ChainOfThought } from "./chain-of-thought";
+import { Reasoning } from "./reasoning";
 import { useAgentStore } from "@/stores/agent";
 import { useConnectionsStore } from "@/stores/connections";
 
@@ -122,6 +126,93 @@ describe("操作记录(Trace + CodeBlock)", () => {
     expect(screen.queryByText("0 毫秒")).toBeNull();
     fireEvent.click(deniedLine);
     expect(await screen.findByText(/path: \/etc\/hosts/)).toBeTruthy();
+  });
+});
+
+describe("思维链(Chain of Thought)", () => {
+  /** 两次调用:第一次扇出两台(一台失败),第二次刚开始。 */
+  const steps: AgentToolPart[] = [
+    {
+      type: "tool",
+      id: "c1",
+      toolName: "exec",
+      argsJson: '{"argv":["df","-h"]}',
+      done: true,
+      ok: false,
+      targets: {
+        k1: { connName: "web-01", status: "ok" },
+        k2: { connName: "web-02", status: "failed" },
+      },
+    },
+    {
+      type: "tool",
+      id: "c2",
+      toolName: "tail_log",
+      done: false,
+      targets: { k1: { connName: "web-01", status: "running" } },
+    },
+  ];
+
+  /** 按给定运行状态渲染思维链。 */
+  function view(overrides: Partial<Parameters<typeof ChainOfThought>[0]> = {}) {
+    return render(
+      <ChainOfThought steps={steps} running activity="正在执行命令" terminal={null} {...overrides} />,
+    );
+  }
+
+  it("一次调用扇出多台也只算一步,摘要按时态报步数", () => {
+    const { unmount } = view();
+    expect(screen.getByText("正在执行命令")).toBeTruthy();
+    unmount();
+    cleanup();
+    view({ running: false, activity: null });
+    // 三次主机进度、两次调用 → 两步;有失败必须说出来。
+    expect(screen.getByText("这一轮走了 2 步,其中 1 步没完成")).toBeTruthy();
+    expect(screen.getByText("执行命令：1 台完成，1 台失败")).toBeTruthy();
+  });
+
+  it("运行中摘要展开、步骤先收成一行,点开才看到入参", () => {
+    const { container } = view();
+    const panels = container.querySelectorAll("[data-slot=trace-collapsible-content]");
+    // 第一块是摘要(展开),第二块是那一步的明细(默认收起)。
+    expect(panels[0]?.hasAttribute("hidden")).toBe(false);
+    expect(panels[1]?.hasAttribute("hidden")).toBe(true);
+    fireEvent.click(screen.getByText("执行命令：1 台完成，1 台失败"));
+    expect(panels[1]?.hasAttribute("hidden")).toBe(false);
+    expect(screen.getByText("入参")).toBeTruthy();
+    expect(container.querySelector("[data-slot=code-block]")).toBeTruthy();
+    expect(screen.getByText(/df -h/)).toBeTruthy();
+  });
+
+  it("内部枚举原值与工具名不进界面正文", () => {
+    cleanup();
+    const { container } = view({ running: false, activity: null });
+    expect(container.textContent).not.toMatch(/reasoning_delta|target_state|awaiting_approval/);
+    expect(container.textContent).not.toContain("exec");
+    expect(container.textContent).not.toContain("tail_log");
+  });
+});
+
+describe("思考过程(Reasoning)", () => {
+  const text = "这台机器负载偏高。先看磁盘占用是否满了。";
+
+  it("原文整段呈现,不被拆成一行行假步骤", () => {
+    render(<Reasoning text={text} thinking={false} />);
+    expect(screen.getByText("思考过程")).toBeTruthy();
+    expect(screen.getAllByText(text)).toHaveLength(1);
+  });
+
+  it("想的时候一行“正在思考”,说完收起", () => {
+    cleanup();
+    render(<Reasoning text={text} thinking />);
+    expect(screen.getByText("正在思考")).toBeTruthy();
+    expect(document.querySelector("[data-status=running]")).toBeTruthy();
+  });
+
+  it("没有推理原文时不留空块", () => {
+    cleanup();
+    const { container } = render(<Reasoning text="" thinking />);
+    expect(container.textContent).toBe("");
   });
 });
 

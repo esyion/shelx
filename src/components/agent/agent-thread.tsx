@@ -1,22 +1,20 @@
 /**
- * Agent 对话视图:消息流、流式增量、推理轨迹与待批准。
+ * Agent 对话视图:消息流、流式增量、思维链与待批准。
  *
  * 覆盖 loading / 成功 / 空 / 失败 / 重试五态(AGENTS.md §6);待批准常驻可见,
  * 失败保留输入内容,不吞后端原文。滚动交给 shadcn `MessageScroller`(自动贴底 + 回到底部),
- * 推理与进度用 `Trace`(一行说一件事,时态用词一致),空态示例做成可点的建议按钮。
+ * 空态示例做成可点的建议按钮。思考原文、工具步骤、回答三段共用一条时间线(`parts` 顺序):
+ * 思考走 `Reasoning`(整段折叠,想的时候展开、说完收起),工具步骤走 `ChainOfThought`
+ * (一步 = 一次工具调用,有入参或逐台结果才再展开一层),所以"想→做→又想"不会串台。
  */
 "use client";
 
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { ArrowDown, Brain, Sparkles } from "lucide-react";
+import { ArrowDown, Sparkles } from "lucide-react";
 import type { MessageDto } from "@/types";
-import {
-  EVENT_KIND_DISPLAY,
-  MESSAGE_ROLE_DISPLAY,
-  toolActionLabel,
-  traceLine,
-} from "@/lib/agent-events";
+import { EVENT_KIND_DISPLAY, MESSAGE_ROLE_DISPLAY } from "@/lib/agent-events";
+import { chainSegments } from "@/lib/agent-chain";
 import { resolveAgentTargets } from "@/app/api";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -33,21 +31,13 @@ import {
   MessageScrollerViewport,
 } from "@/components/ui/message-scroller";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Trace,
-  TraceCollapsible,
-  TraceCollapsibleContent,
-  TraceCollapsibleTrigger,
-  TraceDescription,
-  TraceIcon,
-  TraceLine,
-  TraceTitle,
-} from "@/components/ui/trace";
 import { useConnectionsStore } from "@/stores/connections";
 import { useSettingsStore } from "@/stores/settings";
 import { useAgentStore } from "@/stores/agent";
 import { AgentAnswer } from "./answer";
 import { ApprovalCard } from "./approval-card";
+import { ChainOfThought } from "./chain-of-thought";
+import { Reasoning } from "./reasoning";
 import { ThreadComposer } from "./thread-composer";
 import { ThreadHeader } from "./thread-header";
 
@@ -114,6 +104,7 @@ export function AgentThread({ threadId }: { threadId: string }) {
   const send = useAgentStore((state) => state.send);
   const error = useAgentStore((state) => state.error);
   const loadSettings = useSettingsStore((state) => state.load);
+  const settings = useSettingsStore((state) => state.settings);
   const tree = useConnectionsStore((state) => state.tree);
   const [scope, setScope] = useState<{ count: number; error: string | null }>({
     count: 0,
@@ -153,8 +144,18 @@ export function AgentThread({ threadId }: { threadId: string }) {
   const busy = running.length > 0;
   /** 界面只说"现在在做什么",文案取中文事件映射。 */
   const activity = stream?.lastKind ? EVENT_KIND_DISPLAY[stream.lastKind] : null;
-  /** 本轮逐台进度(Task 口径:走到哪写到哪,不落库的那部分也看得见)。 */
-  const steps = Object.values(stream?.targets ?? {});
+  /** 本轮时间线:思考段 / 工具步 / 回答段,按事件到达顺序排(不落库的那部分也看得见)。 */
+  const segments = chainSegments(stream?.parts ?? []);
+  const lastKind = stream?.lastKind;
+  /** 终态只从已结算的片段读:没收尾就没有"失败/停止"可说。 */
+  const terminal: "run_failed" | "run_cancelled" | null =
+    stream?.settled && (lastKind === "run_failed" || lastKind === "run_cancelled")
+      ? lastKind
+      : null;
+  /** 设置项 `agent.showReasoning`:关掉后不显示思考原文。 */
+  const showReasoning = settings?.agent?.showReasoning ?? true;
+  /** 空态判据:这一轮还没有任何回答段。 */
+  const hasAnswer = segments.some((segment) => segment.kind === "text");
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -175,7 +176,7 @@ export function AgentThread({ threadId }: { threadId: string }) {
                     <Skeleton className="h-24 w-full" />
                   </MessageScrollerItem>
                 )}
-                {snapshot && snapshot.messages.length === 0 && !stream?.text && (
+                {snapshot && snapshot.messages.length === 0 && !hasAnswer && (
                   <MessageScrollerItem>
                     <Empty className="border">
                       <EmptyHeader>
@@ -209,59 +210,40 @@ export function AgentThread({ threadId }: { threadId: string }) {
                     <HistoryMessage message={message} />
                   </MessageScrollerItem>
                 ))}
-                {stream?.reasoning && (
-                  <MessageScrollerItem>
-                    <Trace>
-                      <TraceCollapsible>
-                        <TraceCollapsibleTrigger>
-                          <TraceLine status={busy ? "running" : undefined}>
-                            <TraceIcon>
-                              <Brain />
-                            </TraceIcon>
-                            <TraceTitle>{busy ? "正在推理" : "推理过程"}</TraceTitle>
-                          </TraceLine>
-                        </TraceCollapsibleTrigger>
-                        <TraceCollapsibleContent>
-                          <p className="text-xs leading-relaxed whitespace-pre-wrap text-muted-foreground">
-                            {stream.reasoning}
-                          </p>
-                        </TraceCollapsibleContent>
-                      </TraceCollapsible>
-                    </Trace>
-                  </MessageScrollerItem>
-                )}
-                {stream?.text && (
-                  <MessageScrollerItem messageId="streaming">
-                    <AgentRow caption={busy ? "正在回答" : "Agent"}>
-                      <AgentAnswer text={stream.text} streaming={busy} />
-                    </AgentRow>
-                  </MessageScrollerItem>
-                )}
-                {busy && activity && (
-                  <MessageScrollerItem>
-                    <Trace>
-                      <TraceLine status="running">
-                        <TraceTitle>{activity.description}</TraceTitle>
-                      </TraceLine>
-                    </Trace>
-                  </MessageScrollerItem>
-                )}
-                {busy &&
-                  steps.length > 0 && (
-                    <MessageScrollerItem messageId="live-steps">
-                      <Trace>
-                        {steps.map(({ connName, toolName, status }) => {
-                          const line = traceLine(toolActionLabel(toolName), status);
-                          return (
-                            <TraceLine key={connName} status={line.status}>
-                              <TraceTitle>{line.title}</TraceTitle>
-                              <TraceDescription>{connName}</TraceDescription>
-                            </TraceLine>
-                          );
-                        })}
-                      </Trace>
+                {segments.map((segment, index) => {
+                  // 只有时间线最后一段是"活的":前面的思考段说完就该收起,前面的步骤已定局。
+                  const isTail = index === segments.length - 1;
+                  if (segment.kind === "reasoning") {
+                    if (!showReasoning) return null;
+                    return (
+                      <MessageScrollerItem key={segment.id}>
+                        <Reasoning
+                          text={segment.text}
+                          thinking={isTail && busy && lastKind === "reasoning_delta"}
+                        />
+                      </MessageScrollerItem>
+                    );
+                  }
+                  if (segment.kind === "tools") {
+                    return (
+                      <MessageScrollerItem key={segment.id} messageId={segment.id}>
+                        <ChainOfThought
+                          steps={segment.steps}
+                          running={isTail && busy}
+                          activity={isTail && busy ? (activity?.description ?? null) : null}
+                          terminal={isTail ? terminal : null}
+                        />
+                      </MessageScrollerItem>
+                    );
+                  }
+                  return (
+                    <MessageScrollerItem key={segment.id} messageId={segment.id}>
+                      <AgentRow caption={isTail && busy ? "正在回答" : "Agent"}>
+                        <AgentAnswer text={segment.text} streaming={isTail && busy} />
+                      </AgentRow>
                     </MessageScrollerItem>
-                  )}
+                  );
+                })}
                 {snapshot?.pending.map((approval) => (
                   <MessageScrollerItem key={approval.requestId}>
                     <ApprovalCard approval={approval} />

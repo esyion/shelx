@@ -30,6 +30,7 @@ export type AgentEventKind =
   | "reasoning_delta"
   | "approval_required"
   | "target_state"
+  | "tool_call"
   | "tool_result"
   | "usage"
   | "final_response"

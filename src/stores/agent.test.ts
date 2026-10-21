@@ -139,7 +139,12 @@ describe("发起一轮", () => {
 
     onEvent?.(event({ seq: 1, kind: "text_delta", text: "因为" }));
     onEvent?.(event({ seq: 2, kind: "text_delta", text: "磁盘满" }));
-    expect(useAgentStore.getState().streams.t1?.text).toBe("因为磁盘满");
+    const parts = useAgentStore.getState().streams.t1?.parts ?? [];
+    expect(parts.filter((part) => part.type === "text").map((part) => part.text).join("")).toBe(
+      "因为磁盘满",
+    );
+    // 同类增量续写同一段,不是一句一个 part。
+    expect(parts).toHaveLength(1);
 
     // 受理后立刻刷一次快照:用户那一轮要马上可见,不能等切走再切回。
     await vi.waitFor(() => {

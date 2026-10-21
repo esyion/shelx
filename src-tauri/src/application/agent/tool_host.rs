@@ -75,6 +75,56 @@ impl SshToolHost {
     fn event(&self, context: &RunContext, kind: AgentEventKind) -> AgentEvent {
         AgentEvent::new(&context.thread_id, &context.run_id, 0, kind)
     }
+
+    /// 构造一条属于某次调用的事件:开步与收尾共用,保证字段口径一致。
+    fn call_event(
+        &self,
+        context: &RunContext,
+        call_id: &str,
+        kind: AgentEventKind,
+        name: &str,
+        category: ToolCategory,
+        args_json: &str,
+    ) -> AgentEvent {
+        let mut event = self.event(context, kind);
+        event.tool_name = Some(name.to_owned());
+        event.category = Some(category);
+        event.call_id = Some(call_id.to_owned());
+        event.args_json = Some(args_json.to_owned());
+        event
+    }
+
+    /// 收尾一次调用:把结论发出去。
+    ///
+    /// 没有逐台进度的工具(列连接、记记忆)与执行前就失败的工具都靠它结束 ——
+    /// 否则界面上会留下一行永远停在"准备执行"的死状态(AGENTS.md §4.1.1)。
+    fn finish_call(
+        &self,
+        context: &RunContext,
+        call_id: &str,
+        name: &str,
+        category: ToolCategory,
+        args_json: &str,
+        outcome: &ToolOutcome,
+    ) {
+        let mut event = self.call_event(
+            context,
+            call_id,
+            AgentEventKind::ToolResult,
+            name,
+            category,
+            args_json,
+        );
+        event.text = Some(outcome.summary.clone());
+        event.target_status = Some(if outcome.ok {
+            TargetStatus::Ok
+        } else if outcome.needs_user {
+            TargetStatus::AwaitingApproval
+        } else {
+            TargetStatus::Failed
+        });
+        self.publish(context, event);
+    }
 }
 
 #[async_trait::async_trait]
@@ -87,33 +137,55 @@ impl ToolHost for SshToolHost {
             return ToolOutcome::failed("运行已取消,未执行任何操作");
         }
 
-        // 不针对远端主机的工具单独处理。
+        let argv = string_array(&arguments, "argv");
+        let category = tool.category_for(Some(&argv));
+        let args_json = serde_json::to_string(&arguments).unwrap_or_default();
+        // 一次调用一个身份:开步事件、逐台进度、收尾事件共用它,前端据此归步。
+        // 不靠工具名配对 —— 模型一轮里并行发多个同名调用时会串到同一步。
+        let call_id = uuid::Uuid::new_v4().to_string();
+        self.publish(
+            &context,
+            self.call_event(
+                &context,
+                &call_id,
+                AgentEventKind::ToolCall,
+                name,
+                category,
+                &args_json,
+            ),
+        );
+
+        // 不针对远端主机的工具单独处理:没有逐台进度,靠收尾事件把这一步说完。
         if name == "list_connections" {
-            return super::tool_ops::list_connections(
-                &self.connections,
-                &self.sessions,
-                &arguments,
-            );
+            let outcome =
+                super::tool_ops::list_connections(&self.connections, &self.sessions, &arguments);
+            self.finish_call(&context, &call_id, name, category, &args_json, &outcome);
+            return outcome;
         }
         if name == "remember" {
-            return super::tool_ops::remember(&self.store, &arguments).await;
+            let outcome = super::tool_ops::remember(&self.store, &arguments).await;
+            self.finish_call(&context, &call_id, name, category, &args_json, &outcome);
+            return outcome;
         }
 
         let mut targets = match self.resolve_targets(&context, &arguments) {
             Ok(resolved) => resolved,
-            Err(outcome) => return outcome,
+            Err(outcome) => {
+                self.finish_call(&context, &call_id, name, category, &args_json, &outcome);
+                return outcome;
+            }
         };
         if targets.is_empty() {
             targets = match self.scope_targets(&arguments) {
                 Ok(resolved) => resolved,
-                Err(outcome) => return outcome,
+                Err(outcome) => {
+                    self.finish_call(&context, &call_id, name, category, &args_json, &outcome);
+                    return outcome;
+                }
             };
         }
 
-        let argv = string_array(&arguments, "argv");
-        let category = tool.category_for(Some(&argv));
         let reason = classify_reason(name, &argv, category);
-        let args_json = serde_json::to_string(&arguments).unwrap_or_default();
 
         let needs_approval = context.approval.requires_approval(category);
         let pending: Vec<(String, String)> = targets
@@ -276,9 +348,14 @@ impl ToolHost for SshToolHost {
         }
 
         for (outcome, duration_ms) in &results {
-            let mut event = self.event(&context, AgentEventKind::TargetState);
-            event.tool_name = Some(name.to_owned());
-            event.category = Some(category);
+            let mut event = self.call_event(
+                &context,
+                &call_id,
+                AgentEventKind::TargetState,
+                name,
+                category,
+                &args_json,
+            );
             event.conn_id = Some(outcome.conn_id.clone());
             event.conn_name = Some(outcome.conn_name.clone());
             event.target_status = Some(outcome.status);
@@ -329,6 +406,7 @@ impl ToolHost for SshToolHost {
         {
             outcome.summary.push_str(";部分主机被拒绝,未执行");
         }
+        self.finish_call(&context, &call_id, name, category, &args_json, &outcome);
         outcome
     }
 }
