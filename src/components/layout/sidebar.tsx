@@ -216,7 +216,7 @@ function SidebarFooter() {
         size="sm"
         variant="ghost"
         className="w-full justify-start text-xs"
-        title="让 Agent 帮你排查和处理服务器(右抽屉,不打断当前终端)"
+        title="让 Agent 帮你排查和处理服务器(停靠右侧栏,终端自动让位不被遮挡)"
         onClick={() => toggleAgent()}
       >
         <Sparkles className="size-4" />

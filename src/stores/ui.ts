@@ -18,6 +18,13 @@ export const BOTTOM_PANEL_MAX_RATIO = 0.7;
 /** 底部面板默认高度占视口比例。 */
 export const BOTTOM_PANEL_DEFAULT_RATIO = 0.3;
 
+/** AI 助手停靠右栏默认宽度占主区(ResizablePanel 组)比例(%)。 */
+export const AGENT_PANEL_DEFAULT_PERCENT = 35;
+/** AI 助手停靠右栏最小宽度占比(%),低于此视为挤没对话区。 */
+export const AGENT_PANEL_MIN_PERCENT = 20;
+/** AI 助手停靠右栏最大宽度占比(%),防把终端挤没;与主列最小占比 40 互补。 */
+export const AGENT_PANEL_MAX_PERCENT = 60;
+
 /** 轻量 toast 条目。 */
 export interface ToastItem {
   id: number;
@@ -41,8 +48,10 @@ export interface UiStore {
   toasts: ToastItem[];
   /** 待决策的传输冲突任务 ID；null = 无冲突弹窗（引擎 awaiting_conflict → 弹框，PRD §6.4）。 */
   conflictTaskId: string | null;
-  /** AI 助手右抽屉是否打开（跨路由存活，与 conflictTaskId 同一类瞬时 UI 态，不落布局）。 */
+  /** AI 助手右栏是否展开(跨路由存活;开关与宽度都落布局,重启恢复原样)。 */
   agentOpen: boolean;
+  /** AI 助手右栏宽度占主区百分比(20-60);null = 未持久化,用默认 35。 */
+  agentPanelSplit: number | null;
   /** 启动时从后端恢复布局（幂等）。 */
   restoreLayout(): Promise<void>;
   /** 折叠/展开侧栏。 */
@@ -61,10 +70,12 @@ export interface UiStore {
   toast(message: string, variant?: ToastItem["variant"]): void;
   /** 设置待决策冲突任务（null 关闭冲突弹窗）。 */
   setConflictTaskId(taskId: string | null): void;
-  /** 打开/关闭 AI 助手右抽屉。 */
+  /** 打开/关闭 AI 助手右栏。 */
   setAgentOpen(open: boolean): void;
-  /** 切换 AI 助手右抽屉。 */
+  /** 切换 AI 助手右栏。 */
   toggleAgent(): void;
+  /** 调整 AI 助手右栏宽度占比（拖拽手柄回调驱动，内部钳制到 [20, 60]）。 */
+  setAgentPanelSplit(percent: number): void;
 }
 
 let toastSeq = 0;
@@ -80,6 +91,8 @@ function persistLayout(state: UiStore): void {
       sidebarSplit: state.sidebarSplit,
       bottomPanel: state.bottomPanel,
       bottomPanelHeight: state.bottomPanelHeight,
+      agentOpen: state.agentOpen,
+      agentPanelSplit: state.agentPanelSplit,
     });
   }, 500);
 }
@@ -93,6 +106,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
   toasts: [],
   conflictTaskId: null,
   agentOpen: false,
+  agentPanelSplit: null,
 
   async restoreLayout() {
     try {
@@ -124,6 +138,16 @@ export const useUiStore = create<UiStore>((set, get) => ({
         // 按当前视口夹一下,避免在大屏拖高后在小屏启动时底面板挤没主区。
         const maxPx = Math.floor(window.innerHeight * BOTTOM_PANEL_MAX_RATIO);
         patch.bottomPanelHeight = Math.min(layout.bottomPanelHeight, maxPx);
+      }
+      if (typeof layout.agentOpen === "boolean") {
+        patch.agentOpen = layout.agentOpen;
+      }
+      if (typeof layout.agentPanelSplit === "number") {
+        // 同样夹取:旧布局文件里的越界值不得挤没对话区或终端。
+        patch.agentPanelSplit = Math.min(
+          AGENT_PANEL_MAX_PERCENT,
+          Math.max(AGENT_PANEL_MIN_PERCENT, Math.round(layout.agentPanelSplit)),
+        );
       }
       if (Object.keys(patch).length > 0) set(patch);
     } catch {
@@ -186,9 +210,20 @@ export const useUiStore = create<UiStore>((set, get) => ({
 
   setAgentOpen(open) {
     set({ agentOpen: open });
+    persistLayout(get());
   },
 
   toggleAgent() {
     set((state) => ({ agentOpen: !state.agentOpen }));
+    persistLayout(get());
+  },
+
+  setAgentPanelSplit(percent) {
+    const clamped = Math.min(
+      AGENT_PANEL_MAX_PERCENT,
+      Math.max(AGENT_PANEL_MIN_PERCENT, Math.round(percent)),
+    );
+    set({ agentPanelSplit: clamped });
+    persistLayout(get());
   },
 }));
