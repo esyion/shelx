@@ -20,7 +20,6 @@ import type {
   RunState,
   TargetStatus,
   ThreadDto,
-  ThreadSnapshotDto,
   ToolCategory,
 } from "@/types";
 
@@ -205,20 +204,18 @@ export function emptyFragment(): AgentStreamFragment {
 }
 
 /**
- * 结算且回答已落进历史时,流式时间线里的回答段交给历史消息呈现。
+ * 本轮回答由谁呈现:结算后的时间线已经带着权威全文,历史里那条助手消息就是它的副本。
  *
- * 事件流不落库,回答文本会:完成的事件广播时快照里随之出现助手消息,
- * 若继续渲染流式回答段,同一段回答会出现两份(历史一份、时间线一份)。
- * 失败与取消的错误说明、部分回答只存在于时间线上,不在此列。
+ * 两条来源同源 —— 落库的 `MessageRole::Assistant` 与 `final_response` 事件带的是同一个
+ * `RunOutcome.final_text`(见 `src-tauri/src/application/agent/run.rs` 的 `finish_run`),
+ * 所以只留一份。留时间线那份:回答排在思考与步骤之下,与用户看到的先后一致
+ * (AGENTS.md §4.1.1)。换成留历史那份,结算那一帧回答会跳到过程上面。
  */
-export function answerRenderedInHistory(
-  stream: Pick<AgentStreamFragment, "settled" | "lastKind"> | null | undefined,
-  snapshot: Pick<ThreadSnapshotDto, "messages"> | null | undefined,
+export function answerInTimeline(
+  stream: Pick<AgentStreamFragment, "settled" | "lastKind" | "parts"> | null | undefined,
 ): boolean {
   if (!stream?.settled || stream.lastKind !== "final_response") return false;
-  const messages = snapshot?.messages ?? [];
-  const last = messages[messages.length - 1];
-  return last?.role === "assistant";
+  return stream.parts.some((part) => part.type === "text" && part.text.trim() !== "");
 }
 
 /**

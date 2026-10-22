@@ -6,6 +6,7 @@
  * 形态:助手是 AppShell 里的停靠右栏(ResizablePanel 第三列,挤压工作区),
  * 不是覆盖层抽屉 —— 页面里不得出现 Drawer 弹层节点,主列随开关保持挂载
  * (AGENTS.md §4.1.1,docs/AGENT_DESIGN.md §12.1)。
+ * 位置:一轮回答始终排在思考与步骤之下,且历史副本与流式时间线只渲染一份。
  */
 import type { ReactNode } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -13,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadSnapshotDto } from "@/types";
 import { AppShell } from "@/components/layout/app-shell";
 import { Sidebar } from "@/components/layout/sidebar";
+import { AgentThread } from "./agent-thread";
 import { useAgentStore } from "@/stores/agent";
 import { useUiStore } from "@/stores/ui";
 
@@ -172,6 +174,47 @@ describe("AI 助手停靠右栏形态", () => {
     expect(screen.queryByRole("separator", { name: "调整 AI 助手面板宽度" })).toBeNull();
     // 主列照常渲染。
     expect(screen.getByText("还没有打开任何会话")).toBeTruthy();
+  });
+});
+
+describe("本轮回答的位置", () => {
+  /** 落库的助手回答与时间线里的回答同源(同一个 `RunOutcome.final_text`)。 */
+  const settledSnapshot = {
+    ...snapshot,
+    messages: [
+      { id: "m1", role: "user", content: "有哪些容器", createdAt: 1 },
+      { id: "m2", role: "assistant", content: "共 3 个在跑", createdAt: 2 },
+    ],
+  } as unknown as ThreadSnapshotDto;
+
+  beforeEach(() => {
+    api.getAgentThread.mockResolvedValue(settledSnapshot);
+    useAgentStore.setState({
+      snapshots: { t1: settledSnapshot },
+      streams: {
+        t1: {
+          seq: 4,
+          settled: true,
+          lastKind: "final_response",
+          parts: [
+            { type: "reasoning", id: "p1", text: "先看 docker ps" },
+            { type: "tool", id: "c1", toolName: "exec", done: true, ok: true, targets: {} },
+            { type: "text", id: "p2", text: "共 3 个在跑" },
+          ],
+        },
+      },
+    });
+  });
+
+  it("结算后回答排在思考与步骤之下,且全文只有时间线那一份", async () => {
+    const { container } = render(<AgentThread threadId="t1" />);
+    expect(await screen.findByText("执行命令完成")).toBeTruthy();
+    // 历史尾部那条副本不再渲染,同一段回答只有一份。
+    expect(screen.getAllByText("共 3 个在跑")).toHaveLength(1);
+    const at = (needle: string) => container.textContent?.indexOf(needle) ?? -1;
+    expect(at("有哪些容器")).toBeLessThan(at("思考过程"));
+    expect(at("思考过程")).toBeLessThan(at("执行命令完成"));
+    expect(at("执行命令完成")).toBeLessThan(at("共 3 个在跑"));
   });
 });
 

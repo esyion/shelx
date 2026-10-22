@@ -20,7 +20,7 @@ import {
   RUN_STATE_DISPLAY,
   TARGET_STATUS_DISPLAY,
   TOOL_CATEGORY_DISPLAY,
-  answerRenderedInHistory,
+  answerInTimeline,
   applyEvent,
   describeApprovalTargets,
   emptyFragment,
@@ -311,39 +311,42 @@ describe("时间线合并", () => {
   });
 });
 
-describe("结算后回答的呈现位置", () => {
-  /** 构造快照(测试只关心 messages 的角色序列)。 */
-  const snapshotWith = (roles: string[]) =>
-    ({ messages: roles.map((role) => ({ role })) }) as unknown as Parameters<
-      typeof answerRenderedInHistory
-    >[1];
-  const streamOf = (settled: boolean, lastKind: string) =>
-    ({ settled, lastKind }) as unknown as Parameters<typeof answerRenderedInHistory>[0];
+describe("结算后回答由谁呈现", () => {
+  /** 按事件序列拼出片段(走真实的合并路径,不手搓 parts)。 */
+  const byEvents = (events: AgentEvent[]) =>
+    events.reduce<AgentStreamFragment>((acc, item) => applyEvent(acc, item), emptyFragment());
 
-  it("完成且回答已落库:时间线不再渲染回答段,否则同一段回答出现两份", () => {
+  it("完成且时间线带着回答全文:历史尾部那条助手消息是副本,交给时间线", () => {
     expect(
-      answerRenderedInHistory(streamOf(true, "final_response"), snapshotWith(["user", "assistant"])),
+      answerInTimeline(
+        byEvents([
+          event({ seq: 1, kind: "reasoning_delta", text: "先看容器" }),
+          event({ seq: 2, kind: "tool_call", toolName: "exec", callId: "c1" }),
+          event({ seq: 3, kind: "text_delta", text: "有 3 个在跑" }),
+          event({ seq: 4, kind: "final_response", text: "有 3 个在跑" }),
+        ]),
+      ),
     ).toBe(true);
   });
 
-  it("失败与取消的错误说明只在时间线上,不交给历史", () => {
+  it("失败与取消的错误说明只存在于时间线上,不交出历史副本", () => {
     expect(
-      answerRenderedInHistory(streamOf(true, "run_failed"), snapshotWith(["user", "assistant"])),
+      answerInTimeline(byEvents([event({ seq: 1, kind: "run_failed", text: "超时了" })])),
     ).toBe(false);
     expect(
-      answerRenderedInHistory(streamOf(true, "run_cancelled"), snapshotWith(["user"])),
+      answerInTimeline(byEvents([event({ seq: 1, kind: "run_cancelled", text: "停了" })])),
     ).toBe(false);
   });
 
-  it("没结算或快照还没刷新到助手消息时,回答仍走时间线", () => {
+  it("没收尾、或收尾时没有回答文本,都不算时间线已承载", () => {
     expect(
-      answerRenderedInHistory(streamOf(false, "final_response"), snapshotWith(["user", "assistant"])),
+      answerInTimeline(byEvents([event({ seq: 1, kind: "text_delta", text: "半句话" })])),
     ).toBe(false);
     expect(
-      answerRenderedInHistory(streamOf(true, "final_response"), snapshotWith(["user"])),
+      answerInTimeline(byEvents([event({ seq: 1, kind: "final_response", text: "   " })])),
     ).toBe(false);
-    expect(answerRenderedInHistory(streamOf(true, "final_response"), null)).toBe(false);
-    expect(answerRenderedInHistory(null, snapshotWith(["assistant"]))).toBe(false);
+    expect(answerInTimeline(emptyFragment())).toBe(false);
+    expect(answerInTimeline(null)).toBe(false);
   });
 });
 

@@ -13,7 +13,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { ArrowDown, Sparkles } from "lucide-react";
 import type { MessageDto } from "@/types";
-import { EVENT_KIND_DISPLAY, MESSAGE_ROLE_DISPLAY, answerRenderedInHistory } from "@/lib/agent-events";
+import { EVENT_KIND_DISPLAY, MESSAGE_ROLE_DISPLAY, answerInTimeline } from "@/lib/agent-events";
 import { chainSegments } from "@/lib/agent-chain";
 import { resolveAgentTargets } from "@/app/api";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
@@ -156,8 +156,14 @@ export function AgentThread({ threadId }: { threadId: string }) {
   const showReasoning = settings?.agent?.showReasoning ?? true;
   /** 空态判据:这一轮还没有任何回答段。 */
   const hasAnswer = segments.some((segment) => segment.kind === "text");
-  /** 完成且回答已落库时,回答由历史消息呈现,时间线不再重复渲染同一份。 */
-  const answerInHistory = answerRenderedInHistory(stream ?? null, snapshot);
+  /** 回答是否已由时间线承载(见 `answerInTimeline`)。 */
+  const answerCarried = answerInTimeline(stream);
+  /** 历史消息:时间线带着本轮回答时,尾部那条助手消息是同一份内容的副本,不渲染。 */
+  const history = snapshot?.messages ?? [];
+  const messages =
+    answerCarried && history[history.length - 1]?.role === "assistant"
+      ? history.slice(0, -1)
+      : history;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -178,7 +184,7 @@ export function AgentThread({ threadId }: { threadId: string }) {
                     <Skeleton className="h-24 w-full" />
                   </MessageScrollerItem>
                 )}
-                {snapshot && snapshot.messages.length === 0 && !hasAnswer && (
+                {snapshot && messages.length === 0 && !hasAnswer && (
                   <MessageScrollerItem>
                     <Empty className="border">
                       <EmptyHeader>
@@ -203,7 +209,7 @@ export function AgentThread({ threadId }: { threadId: string }) {
                     </Empty>
                   </MessageScrollerItem>
                 )}
-                {snapshot?.messages.map((message) => (
+                {messages.map((message) => (
                   <MessageScrollerItem
                     key={message.id}
                     messageId={message.id}
@@ -239,7 +245,6 @@ export function AgentThread({ threadId }: { threadId: string }) {
                     );
                   }
                   if (segment.kind === "text") {
-                    if (answerInHistory) return null;
                     return (
                       <MessageScrollerItem key={segment.id} messageId={segment.id}>
                         <AgentRow caption={isTail && busy ? "正在回答" : "Agent"}>
