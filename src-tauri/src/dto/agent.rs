@@ -101,6 +101,8 @@ pub struct RunDto {
     pub turns: i64,
     /// 开始时间。
     pub created_at: Millis,
+    /// 这一轮的过程日志(已发布事件,按 seq 正序;界面时间线的唯一来源)。
+    pub timeline: Vec<AgentEvent>,
 }
 
 impl From<RunRecord> for RunDto {
@@ -115,6 +117,7 @@ impl From<RunRecord> for RunDto {
             usage: value.usage,
             turns: value.turns,
             created_at: value.created_at,
+            timeline: value.timeline,
         }
     }
 }

@@ -18,25 +18,172 @@ export type MemoryScope = "global" | "connection";
  */
 export type ProtocolKind = "openai_responses" | "anthropic_messages";
 /**
+ * 一条对外事件:信封 + 载荷。
+ *
+ * 序号不由调用方给:发布时由中枢在同一临界区内分配(见
+ * [`crate::application::agent::hub::ThreadEventHub::publish`])。
+ */
+export type AgentEvent = {
+  /**
+   * 所属运行 ID。
+   */
+  runId: string;
+  /**
+   * 线程内单调递增序号(重连与去重按此)。
+   */
+  seq: number;
+  /**
+   * 所属线程 ID。
+   */
+  threadId: string;
+} & AgentEvent1;
+export type AgentEvent1 =
+  | {
+      kind: "run_started";
+      /**
+       * 用户这一轮的输入。
+       */
+      prompt: string;
+    }
+  | {
+      kind: "text_delta";
+      /**
+       * 增量文本。
+       */
+      text: string;
+    }
+  | {
+      kind: "reasoning_delta";
+      /**
+       * 增量原文(模型的话,不改写)。
+       */
+      text: string;
+    }
+  | {
+      /**
+       * 批准请求标识(应答复用)。
+       */
+      approvalRequestId: string;
+      /**
+       * 入参 JSON 原文。
+       */
+      argsJson: string;
+      category: ToolCategory;
+      kind: "approval_required";
+      /**
+       * 为什么要批准。
+       */
+      reason: string;
+      /**
+       * 工具名。
+       */
+      toolName: string;
+    }
+  | {
+      /**
+       * 入参 JSON 原文。
+       */
+      argsJson: string;
+      /**
+       * 调用标识(归步身份,不按工具名配对)。
+       */
+      callId: string;
+      category: ToolCategory;
+      kind: "tool_call";
+      /**
+       * 工具名。
+       */
+      toolName: string;
+    }
+  | {
+      /**
+       * 调用标识。
+       */
+      callId: string;
+      category: ToolCategory;
+      kind: "tool_result";
+      status: TargetStatus;
+      /**
+       * 结论摘要原文(后端的话,不改写)。
+       */
+      summary: string;
+      /**
+       * 工具名。
+       */
+      toolName: string;
+    }
+  | {
+      /**
+       * 入参 JSON 原文。
+       */
+      argsJson: string;
+      /**
+       * 调用标识(该台属于哪一步)。
+       */
+      callId: string;
+      category: ToolCategory;
+      /**
+       * 主机 ID。
+       */
+      connId: string;
+      /**
+       * 主机显示名(用户起的名字)。
+       */
+      connName: string;
+      /**
+       * 失败原因原文;成功不上线。
+       */
+      error?: string | null;
+      kind: "target_state";
+      /**
+       * 输出摘要(截断后);无输出不上线。
+       */
+      outputExcerpt?: string | null;
+      status: TargetStatus;
+      /**
+       * 工具名。
+       */
+      toolName: string;
+    }
+  | {
+      kind: "usage";
+      usage: AgentUsage;
+    }
+  | {
+      kind: "final_response";
+      /**
+       * 权威全文。
+       */
+      text: string;
+      usage: AgentUsage;
+    }
+  | {
+      kind: "run_retry";
+      /**
+       * 说明文字。
+       */
+      text: string;
+    }
+  | {
+      kind: "run_failed";
+      /**
+       * 失败原因原文。
+       */
+      text: string;
+      usage: AgentUsage;
+    }
+  | {
+      kind: "run_cancelled";
+      /**
+       * 取消说明(含"已发出的命令不会自动撤回")。
+       */
+      text: string;
+      usage: AgentUsage;
+    };
+/**
  * 工具调用对世界的影响类别。
  */
 export type ToolCategory = "read_only" | "mutating" | "connect";
-/**
- * 事件类别。
- */
-export type AgentEventKind =
-  | "run_started"
-  | "text_delta"
-  | "reasoning_delta"
-  | "approval_required"
-  | "target_state"
-  | "tool_call"
-  | "tool_result"
-  | "usage"
-  | "final_response"
-  | "run_failed"
-  | "run_cancelled"
-  | "thread_title";
 /**
  * 批量执行中单台主机的状态。
  */
@@ -104,68 +251,6 @@ export interface AgentEnumsDto {
    * 可用协议(只有两种新协议)。
    */
   protocols: ProtocolKind[];
-}
-/**
- * 一条对外事件。
- */
-export interface AgentEvent {
-  /**
-   * 批准请求标识(应答复用)。
-   */
-  approvalRequestId?: string | null;
-  /**
-   * 入参 JSON 原文(批准弹窗展示)。
-   */
-  argsJson?: string | null;
-  /**
-   * 调用标识。
-   */
-  callId?: string | null;
-  /**
-   * 工具类别。
-   */
-  category?: ToolCategory | null;
-  /**
-   * 目标主机 ID。
-   */
-  connId?: string | null;
-  /**
-   * 目标主机显示名。
-   */
-  connName?: string | null;
-  kind: AgentEventKind;
-  /**
-   * 结果摘要(截断后)。
-   */
-  outputExcerpt?: string | null;
-  /**
-   * 所属运行 ID。
-   */
-  runId: string;
-  /**
-   * 线程内单调递增序号(重连时按此去重)。
-   */
-  seq: number;
-  /**
-   * 单主机状态。
-   */
-  targetStatus?: TargetStatus | null;
-  /**
-   * 文本增量 / 错误原文 / 标题等。
-   */
-  text?: string | null;
-  /**
-   * 所属线程 ID。
-   */
-  threadId: string;
-  /**
-   * 工具名。
-   */
-  toolName?: string | null;
-  /**
-   * 用量。
-   */
-  usage?: AgentUsage | null;
 }
 /**
  * token 用量(全部可空:provider 不上报时不伪造 0)。
@@ -487,6 +572,10 @@ export interface RunDto {
    */
   runId: string;
   state: RunState;
+  /**
+   * 这一轮的过程日志(已发布事件,按 seq 正序;界面时间线的唯一来源)。
+   */
+  timeline: AgentEvent[];
   /**
    * 工具轮次。
    */

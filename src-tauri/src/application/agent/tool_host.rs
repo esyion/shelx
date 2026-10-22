@@ -11,7 +11,7 @@ use std::sync::{Arc, RwLock};
 use serde_json::Value;
 use tokio::sync::Semaphore;
 
-use super::events::{AgentEvent, AgentEventKind, ApprovalRequest};
+use super::events::{AgentEvent, AgentEventPayload, ApprovalRequest};
 use super::hub::{ApprovalCenter, ThreadEventHub};
 use super::tools::{spec, ToolHost, ToolOutcome, ToolTargetOutcome};
 use super::types::{AgentStore, RunContext};
@@ -61,37 +61,13 @@ impl SshToolHost {
         }
     }
 
-    /// 广播一条已填好字段的事件。
-    fn publish(&self, context: &RunContext, event: AgentEvent) {
-        let seq = self.hub.next_seq(&context.thread_id);
-        let mut event = event;
-        event.seq = seq;
-        event.thread_id = context.thread_id.clone();
-        event.run_id = context.run_id.clone();
-        self.hub.broadcast(event);
-    }
-
-    /// 构造事件骨架(线程、运行、类别)。
-    fn event(&self, context: &RunContext, kind: AgentEventKind) -> AgentEvent {
-        AgentEvent::new(&context.thread_id, &context.run_id, 0, kind)
-    }
-
-    /// 构造一条属于某次调用的事件:开步与收尾共用,保证字段口径一致。
-    fn call_event(
-        &self,
-        context: &RunContext,
-        call_id: &str,
-        kind: AgentEventKind,
-        name: &str,
-        category: ToolCategory,
-        args_json: &str,
-    ) -> AgentEvent {
-        let mut event = self.event(context, kind);
-        event.tool_name = Some(name.to_owned());
-        event.category = Some(category);
-        event.call_id = Some(call_id.to_owned());
-        event.args_json = Some(args_json.to_owned());
-        event
+    /// 广播一条属于本轮的事件(序号与投递顺序由中枢在同一临界区内分配)。
+    fn publish(&self, context: &RunContext, payload: AgentEventPayload) {
+        self.hub.publish(AgentEvent::new(
+            &context.thread_id,
+            &context.run_id,
+            payload,
+        ));
     }
 
     /// 收尾一次调用:把结论发出去。
@@ -104,26 +80,24 @@ impl SshToolHost {
         call_id: &str,
         name: &str,
         category: ToolCategory,
-        args_json: &str,
         outcome: &ToolOutcome,
     ) {
-        let mut event = self.call_event(
+        self.publish(
             context,
-            call_id,
-            AgentEventKind::ToolResult,
-            name,
-            category,
-            args_json,
+            AgentEventPayload::ToolResult {
+                call_id: call_id.to_owned(),
+                tool_name: name.to_owned(),
+                category,
+                status: if outcome.ok {
+                    TargetStatus::Ok
+                } else if outcome.needs_user {
+                    TargetStatus::AwaitingApproval
+                } else {
+                    TargetStatus::Failed
+                },
+                summary: outcome.summary.clone(),
+            },
         );
-        event.text = Some(outcome.summary.clone());
-        event.target_status = Some(if outcome.ok {
-            TargetStatus::Ok
-        } else if outcome.needs_user {
-            TargetStatus::AwaitingApproval
-        } else {
-            TargetStatus::Failed
-        });
-        self.publish(context, event);
     }
 }
 
@@ -145,33 +119,31 @@ impl ToolHost for SshToolHost {
         let call_id = uuid::Uuid::new_v4().to_string();
         self.publish(
             &context,
-            self.call_event(
-                &context,
-                &call_id,
-                AgentEventKind::ToolCall,
-                name,
+            AgentEventPayload::ToolCall {
+                call_id: call_id.clone(),
+                tool_name: name.to_owned(),
                 category,
-                &args_json,
-            ),
+                args_json: args_json.clone(),
+            },
         );
 
         // 不针对远端主机的工具单独处理:没有逐台进度,靠收尾事件把这一步说完。
         if name == "list_connections" {
             let outcome =
                 super::tool_ops::list_connections(&self.connections, &self.sessions, &arguments);
-            self.finish_call(&context, &call_id, name, category, &args_json, &outcome);
+            self.finish_call(&context, &call_id, name, category, &outcome);
             return outcome;
         }
         if name == "remember" {
             let outcome = super::tool_ops::remember(&self.store, &arguments).await;
-            self.finish_call(&context, &call_id, name, category, &args_json, &outcome);
+            self.finish_call(&context, &call_id, name, category, &outcome);
             return outcome;
         }
 
         let mut targets = match self.resolve_targets(&context, &arguments) {
             Ok(resolved) => resolved,
             Err(outcome) => {
-                self.finish_call(&context, &call_id, name, category, &args_json, &outcome);
+                self.finish_call(&context, &call_id, name, category, &outcome);
                 return outcome;
             }
         };
@@ -179,7 +151,7 @@ impl ToolHost for SshToolHost {
             targets = match self.scope_targets(&arguments) {
                 Ok(resolved) => resolved,
                 Err(outcome) => {
-                    self.finish_call(&context, &call_id, name, category, &args_json, &outcome);
+                    self.finish_call(&context, &call_id, name, category, &outcome);
                     return outcome;
                 }
             };
@@ -207,13 +179,16 @@ impl ToolHost for SshToolHost {
                 .collect()
         } else {
             let request_id = uuid::Uuid::new_v4().to_string();
-            let mut event = self.event(&context, AgentEventKind::ApprovalRequired);
-            event.approval_request_id = Some(request_id.clone());
-            event.tool_name = Some(name.to_owned());
-            event.category = Some(category);
-            event.args_json = Some(args_json.clone());
-            event.text = Some(reason.clone());
-            self.publish(&context, event);
+            self.publish(
+                &context,
+                AgentEventPayload::ApprovalRequired {
+                    approval_request_id: request_id.clone(),
+                    tool_name: name.to_owned(),
+                    category,
+                    args_json: args_json.clone(),
+                    reason: reason.clone(),
+                },
+            );
             let granted = self
                 .approvals
                 .await_decision(ApprovalRequest {
@@ -348,24 +323,12 @@ impl ToolHost for SshToolHost {
         }
 
         for (outcome, duration_ms) in &results {
-            let mut event = self.call_event(
-                &context,
-                &call_id,
-                AgentEventKind::TargetState,
-                name,
-                category,
-                &args_json,
-            );
-            event.conn_id = Some(outcome.conn_id.clone());
-            event.conn_name = Some(outcome.conn_name.clone());
-            event.target_status = Some(outcome.status);
-            event.output_excerpt = outcome.output.clone();
-            event.text = outcome.error.clone();
-            self.publish(&context, event);
             let approval = decisions
                 .iter()
                 .find(|(id, _)| *id == outcome.conn_id)
                 .and_then(|(_, decision)| *decision);
+            // 先写审计再广播进度:用户看到"这台完成了"就切去「操作记录」,
+            // 那一行必须已经在库里(反过来会读到缺行)。
             self.audit(
                 &context,
                 name,
@@ -374,6 +337,20 @@ impl ToolHost for SshToolHost {
                 approval,
                 outcome,
                 *duration_ms,
+            );
+            self.publish(
+                &context,
+                AgentEventPayload::TargetState {
+                    call_id: call_id.clone(),
+                    tool_name: name.to_owned(),
+                    category,
+                    args_json: args_json.clone(),
+                    conn_id: outcome.conn_id.clone(),
+                    conn_name: outcome.conn_name.clone(),
+                    status: outcome.status,
+                    output_excerpt: outcome.output.clone(),
+                    error: outcome.error.clone(),
+                },
             );
         }
 
@@ -406,7 +383,7 @@ impl ToolHost for SshToolHost {
         {
             outcome.summary.push_str(";部分主机被拒绝,未执行");
         }
-        self.finish_call(&context, &call_id, name, category, &args_json, &outcome);
+        self.finish_call(&context, &call_id, name, category, &outcome);
         outcome
     }
 }

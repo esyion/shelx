@@ -81,6 +81,7 @@ export type {
   AgentTextPart,
   AgentThread,
   AgentToolPart,
+  AgentUsage,
   ApprovalChoice,
   ApprovalDecision,
   ApprovalDto,

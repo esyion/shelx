@@ -1,20 +1,23 @@
 /**
- * Agent 对话视图:消息流、流式增量、思维链与待批准。
+ * Agent 对话视图:按轮渲染的运行流、思维链与待批准。
  *
  * 覆盖 loading / 成功 / 空 / 失败 / 重试五态(AGENTS.md §6);待批准常驻可见,
  * 失败保留输入内容,不吞后端原文。滚动交给 shadcn `MessageScroller`(自动贴底 + 回到底部),
- * 空态示例做成可点的建议按钮。思考原文、工具步骤、回答三段共用一条时间线(`parts` 顺序):
- * 思考走 `Reasoning`(整段折叠,想的时候展开、说完收起),工具步骤走 `ChainOfThought`
- * (一步 = 一次工具调用,有入参或逐台结果才再展开一层),所以"想→做→又想"不会串台。
+ * 空态示例做成可点的建议按钮。
+ *
+ * **一轮只有一条时间线**:轮次来自 `snapshot.runs`(提问 + 该轮已发布的事件日志),
+ * 界面把日志交给与流式途中同一个归并器(`foldEvents` / `applyEvent`)还原成
+ * 思考段 / 工具步 / 回答段。回答因此天然排在过程之下,重开线程也看得到过程,
+ * 不再需要判断"这一份回答由历史消息还是由流式缓冲呈现"(AGENTS.md §5 单点真源)。
  */
 "use client";
 
+import { Fragment, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
 import { ArrowDown, Sparkles } from "lucide-react";
-import type { MessageDto } from "@/types";
-import { EVENT_KIND_DISPLAY, MESSAGE_ROLE_DISPLAY, answerInTimeline } from "@/lib/agent-events";
-import { chainSegments } from "@/lib/agent-chain";
+import type { RunDto } from "@/types";
+import { EVENT_KIND_DISPLAY, MESSAGE_ROLE_DISPLAY, foldEvents } from "@/lib/agent-events";
+import { chainSegments, type AgentSegment } from "@/lib/agent-chain";
 import { resolveAgentTargets } from "@/app/api";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -48,7 +51,7 @@ const SUGGESTIONS = [
   "这台机器的 nginx 配置里 upstream 长什么样",
 ];
 
-/** Agent 侧一条消息的外壳(历史与流式共用;助手的答案不套气泡)。 */
+/** Agent 侧一段的外壳(助手的答案不套气泡)。 */
 function AgentRow({ caption, children }: { caption: string; children: ReactNode }) {
   return (
     <Message align="start">
@@ -67,29 +70,15 @@ function AgentRow({ caption, children }: { caption: string; children: ReactNode 
   );
 }
 
-/** 一条历史消息的渲染。 */
-function HistoryMessage({ message }: { message: MessageDto }) {
-  const display = MESSAGE_ROLE_DISPLAY[message.role];
-  if (message.role === "user") {
-    return (
-      <Message align="end">
-        <MessageContent>
-          <MessageHeader>{display.label}</MessageHeader>
-          <Bubble align="end">
-            <BubbleContent>
-              <p className="whitespace-pre-wrap">{message.content}</p>
-            </BubbleContent>
-          </Bubble>
-        </MessageContent>
-      </Message>
-    );
-  }
-  return (
-    <AgentRow caption={display.label}>
-      <AgentAnswer text={message.content} streaming={false} />
-    </AgentRow>
-  );
-}
+/** 一屏里的一轮:用户的提问 + 这一轮的时间线。 */
+type TurnView = {
+  /** 该轮的运行记录。 */
+  run: RunDto;
+  /** 渲染段(思考 / 工具步 / 回答),顺序即发生顺序。 */
+  segments: AgentSegment[];
+  /** 这一段是否仍在流出(只有当前轮为真)。 */
+  live: boolean;
+};
 
 /**
  * 单个线程的完整对话面板。
@@ -144,8 +133,6 @@ export function AgentThread({ threadId }: { threadId: string }) {
   const busy = running.length > 0;
   /** 界面只说"现在在做什么",文案取中文事件映射。 */
   const activity = stream?.lastKind ? EVENT_KIND_DISPLAY[stream.lastKind] : null;
-  /** 本轮时间线:思考段 / 工具步 / 回答段,按事件到达顺序排(不落库的那部分也看得见)。 */
-  const segments = chainSegments(stream?.parts ?? []);
   const lastKind = stream?.lastKind;
   /** 终态只从已结算的片段读:没收尾就没有"失败/停止"可说。 */
   const terminal: "run_failed" | "run_cancelled" | null =
@@ -154,16 +141,17 @@ export function AgentThread({ threadId }: { threadId: string }) {
       : null;
   /** 设置项 `agent.showReasoning`:关掉后不显示思考原文。 */
   const showReasoning = settings?.agent?.showReasoning ?? true;
-  /** 空态判据:这一轮还没有任何回答段。 */
-  const hasAnswer = segments.some((segment) => segment.kind === "text");
-  /** 回答是否已由时间线承载(见 `answerInTimeline`)。 */
-  const answerCarried = answerInTimeline(stream);
-  /** 历史消息:时间线带着本轮回答时,尾部那条助手消息是同一份内容的副本,不渲染。 */
-  const history = snapshot?.messages ?? [];
-  const messages =
-    answerCarried && history[history.length - 1]?.role === "assistant"
-      ? history.slice(0, -1)
-      : history;
+  /** 仍在流出的那一轮:它的时间线是缓冲;其余轮次一律读该轮已发布的日志。 */
+  const liveRunId = busy ? running[0] : undefined;
+  const turns: TurnView[] = (snapshot?.runs ?? []).map((run) => ({
+    run,
+    segments: chainSegments(
+      run.runId === liveRunId ? (stream?.parts ?? []) : foldEvents(run.timeline).parts,
+    ),
+    live: run.runId === liveRunId,
+  }));
+  /** 空态判据:一轮都没有,缓冲里也还没有回答。 */
+  const hasAnswer = turns.some((turn) => turn.segments.some((segment) => segment.kind === "text"));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -184,7 +172,7 @@ export function AgentThread({ threadId }: { threadId: string }) {
                     <Skeleton className="h-24 w-full" />
                   </MessageScrollerItem>
                 )}
-                {snapshot && messages.length === 0 && !hasAnswer && (
+                {snapshot && turns.length === 0 && !hasAnswer && (
                   <MessageScrollerItem>
                     <Empty className="border">
                       <EmptyHeader>
@@ -209,51 +197,96 @@ export function AgentThread({ threadId }: { threadId: string }) {
                     </Empty>
                   </MessageScrollerItem>
                 )}
-                {messages.map((message) => (
-                  <MessageScrollerItem
-                    key={message.id}
-                    messageId={message.id}
-                    scrollAnchor={message.role === "user"}
-                  >
-                    <HistoryMessage message={message} />
-                  </MessageScrollerItem>
-                ))}
-                {segments.map((segment, index) => {
-                  // 只有时间线最后一段是"活的":前面的思考段说完就该收起,前面的步骤已定局。
-                  const isTail = index === segments.length - 1;
-                  if (segment.kind === "reasoning") {
-                    if (!showReasoning) return null;
-                    return (
-                      <MessageScrollerItem key={segment.id}>
-                        <Reasoning
-                          text={segment.text}
-                          thinking={isTail && busy && lastKind === "reasoning_delta"}
-                        />
+                {turns.map((turn) => {
+                  const tail = turn.segments[turn.segments.length - 1];
+                  /** 只有当前轮的最后一段可能是"正在流出"的那一块。 */
+                  const isTail = (index: number) =>
+                    turn.live && index === turn.segments.length - 1;
+                  const answering = turn.live && busy && tail?.kind === "text";
+                  return (
+                    <Fragment key={turn.run.runId}>
+                      <MessageScrollerItem messageId={`${turn.run.runId}:user`} scrollAnchor>
+                        <Message align="end">
+                          <MessageContent>
+                            <MessageHeader>{MESSAGE_ROLE_DISPLAY.user.label}</MessageHeader>
+                            <Bubble align="end">
+                              <BubbleContent>
+                                <p className="whitespace-pre-wrap">{turn.run.prompt}</p>
+                              </BubbleContent>
+                            </Bubble>
+                          </MessageContent>
+                        </Message>
                       </MessageScrollerItem>
-                    );
-                  }
-                  if (segment.kind === "tools") {
-                    return (
-                      <MessageScrollerItem key={segment.id} messageId={segment.id}>
-                        <ChainOfThought
-                          steps={segment.steps}
-                          running={isTail && busy}
-                          activity={isTail && busy ? (activity?.description ?? null) : null}
-                          terminal={isTail ? terminal : null}
-                        />
-                      </MessageScrollerItem>
-                    );
-                  }
-                  if (segment.kind === "text") {
-                    return (
-                      <MessageScrollerItem key={segment.id} messageId={segment.id}>
-                        <AgentRow caption={isTail && busy ? "正在回答" : "Agent"}>
-                          <AgentAnswer text={segment.text} streaming={isTail && busy} />
-                        </AgentRow>
-                      </MessageScrollerItem>
-                    );
-                  }
-                  return null;
+                      {turn.segments.length > 0 && (
+                        // 一轮的回答是一个 `Message`:思考、步骤、答案按发生顺序排在同一个
+                        // `MessageContent` 里(官方 chat 形态),头像与标题不重复出现。
+                        <MessageScrollerItem messageId={`${turn.run.runId}:agent`}>
+                          <AgentRow
+                            caption={answering ? "正在回答" : MESSAGE_ROLE_DISPLAY.assistant.label}
+                          >
+                            {turn.segments.map((segment, index) => {
+                              if (segment.kind === "reasoning") {
+                                if (!showReasoning) return null;
+                                return (
+                                  <Reasoning
+                                    key={segment.id}
+                                    text={segment.text}
+                                    thinking={isTail(index) && busy && lastKind === "reasoning_delta"}
+                                  />
+                                );
+                              }
+                              if (segment.kind === "tools") {
+                                return (
+                                  <ChainOfThought
+                                    key={segment.id}
+                                    steps={segment.steps}
+                                    running={isTail(index) && busy}
+                                    activity={
+                                      isTail(index) && busy
+                                        ? (activity?.description ?? null)
+                                        : null
+                                    }
+                                    terminal={isTail(index) ? terminal : null}
+                                  />
+                                );
+                              }
+                              return (
+                                <AgentAnswer
+                                  key={segment.id}
+                                  text={segment.text}
+                                  streaming={isTail(index) && busy}
+                                />
+                              );
+                            })}
+                          </AgentRow>
+                        </MessageScrollerItem>
+                      )}
+                      {turn.run.state === "failed" && turn.run.error && (
+                        <MessageScrollerItem messageId={`${turn.run.runId}:failed`}>
+                          <Alert variant="destructive">
+                            <AlertDescription>{turn.run.error}</AlertDescription>
+                            <AlertAction>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={busy}
+                                onClick={() => void send(turn.run.prompt)}
+                              >
+                                照原问题重试
+                              </Button>
+                            </AlertAction>
+                          </Alert>
+                        </MessageScrollerItem>
+                      )}
+                      {turn.run.state === "cancelled" && (
+                        <MessageScrollerItem messageId={`${turn.run.runId}:cancelled`}>
+                          <p className="text-xs text-muted-foreground">
+                            这一轮已停止;已发出的命令不会自动撤回。
+                          </p>
+                        </MessageScrollerItem>
+                      )}
+                    </Fragment>
+                  );
                 })}
                 {snapshot?.pending.map((approval) => (
                   <MessageScrollerItem key={approval.requestId}>

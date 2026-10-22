@@ -119,6 +119,41 @@ describe("加载与打开线程", () => {
     expect(api.attachAgentThread.mock.calls[0]?.[0]).toBe("t1");
     expect(api.attachAgentThread.mock.calls[0]?.[1]).toBe(7);
   });
+
+  it("重开进行中的一轮:先按该轮已发布日志铺底,退订句柄存在 store 里", async () => {
+    api.getAgentThread.mockResolvedValue(
+      snapshot({
+        running: ["r1"],
+        latestSeq: 2,
+        runs: [
+          {
+            runId: "r1",
+            state: "running",
+            prompt: "为什么慢",
+            finalText: "",
+            error: null,
+            usage: null,
+            turns: 0,
+            createdAt: 1,
+            timeline: [
+              event({ seq: 1, kind: "reasoning_delta", text: "先看磁盘" }),
+              event({ seq: 2, kind: "text_delta", text: "磁盘满了" }),
+            ],
+          },
+        ],
+      }),
+    );
+    api.attachAgentThread.mockResolvedValue("sub-1");
+    await useAgentStore.getState().openThread("t1");
+    const stream = useAgentStore.getState().streams.t1;
+    expect(stream?.parts.map((part) => part.type)).toEqual(["reasoning", "text"]);
+    // 游标停在日志末尾:之后按 seq 续接,已铺底的内容不会被再投一遍。
+    expect(stream?.seq).toBe(2);
+    expect(useAgentStore.getState().subscriptions.t1).toBe("sub-1");
+    useAgentStore.getState().closeThread();
+    expect(api.detachAgentThread).toHaveBeenCalledWith("t1", "sub-1");
+    expect(useAgentStore.getState().subscriptions.t1).toBeUndefined();
+  });
 });
 
 describe("发起一轮", () => {
@@ -154,7 +189,7 @@ describe("发起一轮", () => {
     api.getAgentThread.mockResolvedValue(
       snapshot({ messages: [{ id: "m1", role: "user", content: "为什么慢", createdAt: 2 }] }),
     );
-    onEvent?.(event({ seq: 3, kind: "final_response", text: "磁盘满" }));
+    onEvent?.(event({ seq: 3, kind: "final_response", text: "磁盘满", usage: {} }));
     await vi.waitFor(() => {
       expect(api.getAgentThread).toHaveBeenCalledTimes(3);
     });

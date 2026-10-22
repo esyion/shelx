@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use super::events::{AgentEvent, AgentEventKind};
+use super::events::{canonical_log, AgentEvent, AgentEventPayload};
 use super::prompt::{system_preamble, HostLine};
 use super::types::{
     MessageRecord, MessageRole, RunContext, RunOutcome, RunPlan, RunRecord, SendRequest,
@@ -98,6 +98,7 @@ impl AgentService {
             turns: 0,
             created_at: now,
             updated_at: now,
+            timeline: Vec::new(),
         })?;
 
         let cancel = self.runs.register(&run_id, &thread_id);
@@ -128,14 +129,16 @@ impl AgentService {
             context_messages: settings.context_messages.max(2) as usize,
         });
 
-        let seq = self.hub.next_seq(&thread_id);
-        self.hub.broadcast(
-            AgentEvent::new(&thread_id, &run_id, seq, AgentEventKind::RunStarted)
-                .with_text(plan.prompt.clone()),
-        );
+        let started_seq = self.hub.publish(AgentEvent::new(
+            &thread_id,
+            &run_id,
+            AgentEventPayload::RunStarted {
+                prompt: plan.prompt.clone(),
+            },
+        ));
 
         let service = Arc::clone(self);
-        let task = tokio::spawn(async move {
+        tokio::spawn(async move {
             let outcome = service
                 .gateway
                 .execute(
@@ -148,15 +151,18 @@ impl AgentService {
                 .await;
             service.finish_run(&context.run_id, &context.thread_id, &outcome);
         });
-        self.runs.bind_task(&run_id, task);
         Ok(SendAccepted {
             run_id,
             thread_id,
-            started_seq: seq,
+            started_seq,
         })
     }
 
-    /// 取消一轮(异步:需清除该运行的待批准请求)。
+    /// 取消一轮:置取消标志、清待批准请求、把运行状态落库。
+    ///
+    /// 这里**不发**终态事件:运行体观察到取消标志后由 [`Self::finish_run`] 单点广播终态。
+    /// 两处都发会让同一轮出现两条 `run_cancelled`(文案还不一样),而取消与增量流是
+    /// 两个任务在并发发布 —— 正是这条链最先被丢包的地方。
     ///
     /// # Errors
     /// 存储写入失败。
@@ -180,13 +186,9 @@ impl AgentService {
                 turns: 0,
                 created_at: super::now_millis(),
                 updated_at: super::now_millis(),
+                timeline: Vec::new(),
             })
             .map_err(AgentError::Store)?;
-        let seq = self.hub.next_seq(thread_id);
-        self.hub.broadcast(
-            AgentEvent::new(thread_id, run_id, seq, AgentEventKind::RunCancelled)
-                .with_text("已取消。已经发出去的命令不会自动撤回。"),
-        );
         Ok(true)
     }
 
@@ -198,6 +200,9 @@ impl AgentService {
             other => other,
         };
         self.runs.finish(run_id, state);
+        // 规范日志:这一轮已发布的事件整理后随运行记录落库。先落库、后广播终态,
+        // 前端收到终态事件去刷快照时一定读得到完整过程(AGENTS.md §6 错误要可观察)。
+        let timeline = canonical_log(self.hub.run_events(run_id), &outcome.final_text);
         if let Err(err) = self.store.upsert_run(&RunRecord {
             run_id: run_id.to_owned(),
             thread_id: thread_id.to_owned(),
@@ -209,6 +214,7 @@ impl AgentService {
             turns: outcome.turns as i64,
             created_at: now,
             updated_at: now,
+            timeline,
         }) {
             tracing::warn!("运行收尾落库失败: {err}");
         }
@@ -238,22 +244,31 @@ impl AgentService {
                 }
             }
         }
-        // 终态事件由此处唯一广播(网关只发增量与工具事件),界面不会停在"进行中"。
-        let kind = match state {
-            RunState::Completed => AgentEventKind::FinalResponse,
-            RunState::Cancelled => AgentEventKind::RunCancelled,
-            _ => AgentEventKind::RunFailed,
+        // 终态事件的唯一发射点:网关只发增量与工具事件,取消只置标志。
+        // 先落库再广播,前端收到终态后刷快照一定读得到这一轮的内容。
+        let payload = match state {
+            RunState::Completed => AgentEventPayload::FinalResponse {
+                text: outcome.final_text.clone(),
+                usage: outcome.usage,
+            },
+            RunState::Cancelled => AgentEventPayload::RunCancelled {
+                text: outcome
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| "已取消。已经发出去的命令不会自动撤回。".to_owned()),
+                usage: outcome.usage,
+            },
+            _ => AgentEventPayload::RunFailed {
+                text: outcome
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| outcome.final_text.clone()),
+                usage: outcome.usage,
+            },
         };
-        let seq = self.hub.next_seq(thread_id);
-        let mut event = AgentEvent::new(thread_id, run_id, seq, kind);
-        event.text = Some(
-            outcome
-                .error
-                .clone()
-                .unwrap_or_else(|| outcome.final_text.clone()),
-        );
-        event.usage = Some(outcome.usage);
-        self.hub.broadcast(event);
+        self.hub
+            .publish(AgentEvent::new(thread_id, run_id, payload));
+        self.hub.forget_run(run_id);
     }
 
     /// 线程 token 预算:超出则拒绝新运行,并说明下一步。

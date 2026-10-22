@@ -158,14 +158,28 @@ describe("摘要行按时态说话", () => {
 
   it("结束后报步数;失败与取消各说各话", () => {
     const base = { running: false, activity: null, failedSteps: 0 };
-    expect(chainSummary({ ...base, steps: 4, terminal: null }).title).toBe("这一轮走了 4 步");
+    expect(chainSummary({ ...base, steps: 4, terminal: null }).title).toBe("这一段走了 4 步");
     expect(chainSummary({ ...base, steps: 4, terminal: "run_failed" })).toEqual({
-      title: "走到第 4 步时失败",
+      title: "这一段走到第 4 步时失败",
       status: "error",
     });
     expect(chainSummary({ ...base, steps: 2, terminal: "run_cancelled" }).title).toBe(
-      "走了 2 步后停止",
+      "这一段走了 2 步后停止",
     );
+  });
+
+  it("回归:摘要说的是这一段,一轮里的多段不得各自宣称整轮步数", () => {
+    const titles = [2, 4, 1].map((steps) =>
+      chainSummary({
+        steps,
+        running: false,
+        activity: null,
+        terminal: null,
+        failedSteps: 0,
+      }).title,
+    );
+    expect(titles).toEqual(["这一段走了 2 步", "这一段走了 4 步", "这一段走了 1 步"]);
+    for (const title of titles) expect(title).not.toContain("这一轮");
   });
 
   it("某台没完成要说出来,不能报成顺利走完", () => {
@@ -177,7 +191,7 @@ describe("摘要行按时态说话", () => {
         terminal: null,
         failedSteps: 1,
       }),
-    ).toEqual({ title: "这一轮走了 5 步,其中 1 步没完成", status: "error" });
+    ).toEqual({ title: "这一段走了 5 步,其中 1 步没完成", status: "error" });
     expect(
       countFailedSteps([
         step("exec", { k1: ["web-01", "ok"] }),

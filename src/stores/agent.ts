@@ -20,13 +20,14 @@ import type {
 import {
   applyEvent,
   emptyFragment,
+  foldEvents,
 } from "@/lib/agent-events";
 import * as api from "@/app/api";
 import { GatewayError, isGatewayError } from "@/gateway";
 import { useUiStore } from "@/stores/ui";
 
-/** 订阅句柄(非响应式:退订只需要 ID)。 */
-const subscriptions = new Map<string, string>();
+/** 线程 ID → 事件订阅 ID(放在 store 里而不是模块级变量:测试要能重置它)。 */
+type Subscriptions = Record<string, string>;
 
 /** Agent store 形状。 */
 export interface AgentStore {
@@ -44,6 +45,8 @@ export interface AgentStore {
   snapshots: Record<string, ThreadSnapshotDto | null>;
   /** 线程流式增量。 */
   streams: Record<string, AgentStreamFragment>;
+  /** 各线程当前的订阅句柄(退订要用,界面不读它)。 */
+  subscriptions: Subscriptions;
   /** 首次加载进行中。 */
   loading: boolean;
   /** 最近一次失败原因(界面可见并可重试)。 */
@@ -120,6 +123,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   activeThreadId: null,
   snapshots: {},
   streams: {},
+  subscriptions: {},
   loading: false,
   error: null,
 
@@ -144,6 +148,12 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     const snapshot = get().snapshots[threadId];
     // 已有终态(无进行中的运行)时不必订阅,避免无意义连接。
     if (!snapshot || snapshot.running.length === 0) return;
+    // 仍在进行的那一轮先按已发布的日志铺底:重开面板才看得见此前流出的思考与步骤,
+    // 之后的增量靠序号游标续接,不会重复(AGENTS.md §5 一轮只有一条时间线)。
+    const running = snapshot.runs.find((run) => run.runId === snapshot.running[0]);
+    set({
+      streams: { ...get().streams, [threadId]: foldEvents(running?.timeline ?? []) },
+    });
     get().closeThread();
     try {
       const subscriptionId = await api.attachAgentThread(
@@ -151,7 +161,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         snapshot.latestSeq,
         (event) => get().applyEvent(event),
       );
-      subscriptions.set(threadId, subscriptionId);
+      set({ subscriptions: { ...get().subscriptions, [threadId]: subscriptionId } });
     } catch (error) {
       set({ error: messageOf(error) });
     }
@@ -160,8 +170,8 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   closeThread() {
     const threadId = get().activeThreadId;
     if (!threadId) return;
-    const subscriptionId = subscriptions.get(threadId);
-    subscriptions.delete(threadId);
+    const { [threadId]: subscriptionId, ...rest } = get().subscriptions;
+    set({ subscriptions: rest });
     if (subscriptionId) {
       void api.detachAgentThread(threadId, subscriptionId).catch(() => undefined);
     }
@@ -230,7 +240,9 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         { threadId, prompt },
         (event) => get().applyEvent(event),
       );
-      subscriptions.set(threadId, accepted.subscriptionId);
+      set({
+        subscriptions: { ...get().subscriptions, [threadId]: accepted.subscriptionId },
+      });
       // 用户消息在受理前已落库,立刻刷一次快照,否则要等切走再切回才看得见。
       await refreshSnapshot(threadId, set, get);
     } catch (error) {

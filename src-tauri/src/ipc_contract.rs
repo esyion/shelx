@@ -172,7 +172,6 @@ fn document_uncanonical() -> Value {
                 ("MemoryScope", refer::<crate::domain::agent::MemoryScope>),
                 ("TargetScope", refer::<crate::domain::agent::TargetScope>),
                 ("MessageRole", refer::<crate::application::agent::types::MessageRole>),
-                ("AgentEventKind", refer::<crate::application::agent::events::AgentEventKind>),
                 ("AgentUsage", refer::<crate::application::agent::events::AgentUsage>),
                 ("AgentEvent", refer::<crate::application::agent::events::AgentEvent>),
                 ("ThreadDto", refer::<crate::dto::agent::ThreadDto>),

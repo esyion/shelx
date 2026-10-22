@@ -1,83 +1,21 @@
 //! Agent 事件契约:一次运行对外可见的全部增量(AGENTS.md §5 显式数据契约)。
 //!
-//! 形状与 [`crate::application::ports::TransferProgressEvent`] 一致:一个宽结构 + 类别枚举,
-//! 由 Tauri 适配层经 `Channel` 序列化为 JSON;英文枚举原值不进界面,中文映射集中在前端一处
-//! (`src/lib/agent-events.ts`,AGENTS.md §4.1.1)。
+//! 形状:信封(`threadId` / `runId` / `seq`)+ **按 `kind` 判别的载荷联合**。
+//! 每类事件带哪些字段由变体本身决定 —— 不再是"一个宽结构 + 一堆 `Option` + 靠约定填":
+//! 后端发不出"target_state 没带主机"这类半成品事件,前端拿到的是可收窄的判别联合。
+//! 英文枚举原值不进界面,中文映射集中在前端一处(`src/lib/agent-events.ts`,AGENTS.md §4.1.1),
+//! Rust 侧不复制第二份中文名。
+//!
+//! 线格式与改造前一致(`kind` 与业务字段同层),因为这份 JSON 还要按轮落库再重放
+//! (见 [`canonical_log`] 与 `agent_runs.timeline`)。
 
 use schemars::JsonSchema;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::domain::agent::{ApprovalDecision, TargetStatus, ToolCategory};
 
-/// 事件类别。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum AgentEventKind {
-    /// 运行开始。
-    RunStarted,
-    /// 回答文本增量。
-    TextDelta,
-    /// 推理过程增量(仅当 provider 返回思考内容)。
-    ReasoningDelta,
-    /// 需要用户批准工具调用。
-    ApprovalRequired,
-    /// 批量执行中某台主机的状态变化(与开步事件同一个 `call_id` 才归为一步)。
-    TargetState,
-    /// 一次工具调用开始:带调用 ID、工具名、类别与入参。
-    ToolCall,
-    /// 一次工具调用收尾:带调用 ID 与结果摘要(没有逐台进度的工具靠它结束)。
-    ToolResult,
-    /// 一次模型调用的 token 用量。
-    Usage,
-    /// 最终回答(整轮结束)。
-    FinalResponse,
-    /// 运行失败。
-    RunFailed,
-    /// 运行被取消。
-    RunCancelled,
-    /// 线程标题由模型归纳生成。
-    ThreadTitle,
-}
-
-impl AgentEventKind {
-    /// 稳定字面量(与 serde 一致)。
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::RunStarted => "run_started",
-            Self::TextDelta => "text_delta",
-            Self::ReasoningDelta => "reasoning_delta",
-            Self::ApprovalRequired => "approval_required",
-            Self::TargetState => "target_state",
-            Self::ToolCall => "tool_call",
-            Self::ToolResult => "tool_result",
-            Self::Usage => "usage",
-            Self::FinalResponse => "final_response",
-            Self::RunFailed => "run_failed",
-            Self::RunCancelled => "run_cancelled",
-            Self::ThreadTitle => "thread_title",
-        }
-    }
-
-    /// 界面主文案。
-    pub fn display_name(self) -> &'static str {
-        match self {
-            Self::RunStarted => "开始处理",
-            Self::TextDelta | Self::FinalResponse => "回答",
-            Self::ReasoningDelta => "推理",
-            Self::ApprovalRequired => "等待你的批准",
-            Self::TargetState => "主机进度",
-            Self::ToolCall => "执行动作",
-            Self::ToolResult => "工具结果",
-            Self::Usage => "用量",
-            Self::RunFailed => "失败",
-            Self::RunCancelled => "已取消",
-            Self::ThreadTitle => "标题",
-        }
-    }
-}
-
 /// token 用量(全部可空:provider 不上报时不伪造 0)。
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentUsage {
     /// 输入 token。
@@ -94,123 +32,287 @@ pub struct AgentUsage {
     pub cached_input_tokens: Option<i64>,
 }
 
-/// 一条对外事件。
-#[derive(Debug, Clone, Serialize, JsonSchema)]
+/// 一条事件的载荷:变体名即 `kind` 字面量,变体字段即该类别携带的字段。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AgentEventPayload {
+    /// 运行开始(带用户原文,界面立刻把这一轮的问题立起来,不等快照)。
+    #[serde(rename_all = "camelCase")]
+    RunStarted {
+        /// 用户这一轮的输入。
+        prompt: String,
+    },
+    /// 回答文本增量。
+    #[serde(rename_all = "camelCase")]
+    TextDelta {
+        /// 增量文本。
+        text: String,
+    },
+    /// 推理过程增量(仅当 provider 返回思考内容)。
+    #[serde(rename_all = "camelCase")]
+    ReasoningDelta {
+        /// 增量原文(模型的话,不改写)。
+        text: String,
+    },
+    /// 需要用户批准工具调用(每台一个决定)。
+    #[serde(rename_all = "camelCase")]
+    ApprovalRequired {
+        /// 批准请求标识(应答复用)。
+        approval_request_id: String,
+        /// 工具名。
+        tool_name: String,
+        /// 工具类别。
+        category: ToolCategory,
+        /// 入参 JSON 原文。
+        args_json: String,
+        /// 为什么要批准。
+        reason: String,
+    },
+    /// 一次工具调用开始:开步,与逐台进度、收尾共用同一个 `callId`。
+    #[serde(rename_all = "camelCase")]
+    ToolCall {
+        /// 调用标识(归步身份,不按工具名配对)。
+        call_id: String,
+        /// 工具名。
+        tool_name: String,
+        /// 工具类别。
+        category: ToolCategory,
+        /// 入参 JSON 原文。
+        args_json: String,
+    },
+    /// 一次工具调用收尾:没有逐台进度的工具靠它结束,不留"准备执行"的死状态。
+    #[serde(rename_all = "camelCase")]
+    ToolResult {
+        /// 调用标识。
+        call_id: String,
+        /// 工具名。
+        tool_name: String,
+        /// 工具类别。
+        category: ToolCategory,
+        /// 收尾状态(成功 / 失败 / 还在等批准)。
+        status: TargetStatus,
+        /// 结论摘要原文(后端的话,不改写)。
+        summary: String,
+    },
+    /// 批量执行中某台主机的状态变化。
+    #[serde(rename_all = "camelCase")]
+    TargetState {
+        /// 调用标识(该台属于哪一步)。
+        call_id: String,
+        /// 工具名。
+        tool_name: String,
+        /// 工具类别。
+        category: ToolCategory,
+        /// 入参 JSON 原文。
+        args_json: String,
+        /// 主机 ID。
+        conn_id: String,
+        /// 主机显示名(用户起的名字)。
+        conn_name: String,
+        /// 该台当前状态。
+        status: TargetStatus,
+        /// 输出摘要(截断后);无输出不上线。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        output_excerpt: Option<String>,
+        /// 失败原因原文;成功不上线。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+    /// 一次模型调用的 token 用量。
+    #[serde(rename_all = "camelCase")]
+    Usage {
+        /// 该次调用的用量。
+        usage: AgentUsage,
+    },
+    /// 最终回答(整轮结束,`text` 是与落库同源的权威全文)。
+    #[serde(rename_all = "camelCase")]
+    FinalResponse {
+        /// 权威全文。
+        text: String,
+        /// 整轮累计用量。
+        usage: AgentUsage,
+    },
+    /// 某一轮回答不合格、模型正在重来(**非终态**)。
+    #[serde(rename_all = "camelCase")]
+    RunRetry {
+        /// 说明文字。
+        text: String,
+    },
+    /// 运行失败(终态)。
+    #[serde(rename_all = "camelCase")]
+    RunFailed {
+        /// 失败原因原文。
+        text: String,
+        /// 已产生的用量。
+        usage: AgentUsage,
+    },
+    /// 运行被取消(终态)。
+    #[serde(rename_all = "camelCase")]
+    RunCancelled {
+        /// 取消说明(含"已发出的命令不会自动撤回")。
+        text: String,
+        /// 已产生的用量。
+        usage: AgentUsage,
+    },
+}
+
+impl AgentEventPayload {
+    /// 该载荷的 `kind` 字面量(与 serde tag 同源,回归测试锁住两者一致)。
+    #[must_use]
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::RunStarted { .. } => "run_started",
+            Self::TextDelta { .. } => "text_delta",
+            Self::ReasoningDelta { .. } => "reasoning_delta",
+            Self::ApprovalRequired { .. } => "approval_required",
+            Self::ToolCall { .. } => "tool_call",
+            Self::ToolResult { .. } => "tool_result",
+            Self::TargetState { .. } => "target_state",
+            Self::Usage { .. } => "usage",
+            Self::FinalResponse { .. } => "final_response",
+            Self::RunRetry { .. } => "run_retry",
+            Self::RunFailed { .. } => "run_failed",
+            Self::RunCancelled { .. } => "run_cancelled",
+        }
+    }
+
+    /// 是否属于"这一轮做了什么"的过程日志(其余是过程通知,不随轮次落库)。
+    #[must_use]
+    pub fn is_timeline(&self) -> bool {
+        !matches!(self, Self::RunStarted { .. } | Self::Usage { .. })
+    }
+}
+
+/// 一条对外事件:信封 + 载荷。
+///
+/// 序号不由调用方给:发布时由中枢在同一临界区内分配(见
+/// [`crate::application::agent::hub::ThreadEventHub::publish`])。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentEvent {
     /// 所属线程 ID。
     pub thread_id: String,
     /// 所属运行 ID。
     pub run_id: String,
-    /// 线程内单调递增序号(重连时按此去重)。
+    /// 线程内单调递增序号(重连与去重按此)。
     pub seq: i64,
-    /// 事件类别。
-    pub kind: AgentEventKind,
-    /// 文本增量 / 错误原文 / 标题等。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub text: Option<String>,
-    /// 工具名。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_name: Option<String>,
-    /// 工具类别。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub category: Option<ToolCategory>,
-    /// 调用标识。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub call_id: Option<String>,
-    /// 入参 JSON 原文(批准弹窗展示)。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub args_json: Option<String>,
-    /// 目标主机 ID。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub conn_id: Option<String>,
-    /// 目标主机显示名。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub conn_name: Option<String>,
-    /// 单主机状态。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target_status: Option<TargetStatus>,
-    /// 结果摘要(截断后)。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub output_excerpt: Option<String>,
-    /// 批准请求标识(应答复用)。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub approval_request_id: Option<String>,
-    /// 用量。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub usage: Option<AgentUsage>,
+    /// 载荷(`kind` 与业务字段与信封同层落在线格式上)。
+    #[serde(flatten)]
+    pub payload: AgentEventPayload,
 }
 
 impl AgentEvent {
-    /// 构造一条最小事件(其余字段缺省不序列化)。
+    /// 构造一条事件(序号待中枢分配)。
     pub fn new(
         thread_id: impl Into<String>,
         run_id: impl Into<String>,
-        seq: i64,
-        kind: AgentEventKind,
+        payload: AgentEventPayload,
     ) -> Self {
         Self {
             thread_id: thread_id.into(),
             run_id: run_id.into(),
-            seq,
-            kind,
-            text: None,
-            tool_name: None,
-            category: None,
-            call_id: None,
-            args_json: None,
-            conn_id: None,
-            conn_name: None,
-            target_status: None,
-            output_excerpt: None,
-            approval_request_id: None,
-            usage: None,
+            seq: 0,
+            payload,
         }
     }
+}
 
-    /// 设置文本字段。
-    pub fn with_text(mut self, text: impl Into<String>) -> Self {
-        self.text = Some(text.into());
-        self
-    }
+/// 相邻两条事件若能合成一条增量就合成(同类别、且是承载文本的那两类)。
+fn merged_delta(prev: &AgentEvent, next: &AgentEvent) -> Option<AgentEvent> {
+    let merged = match (&prev.payload, &next.payload) {
+        (AgentEventPayload::TextDelta { text: a }, AgentEventPayload::TextDelta { text: b }) => {
+            AgentEventPayload::TextDelta {
+                text: format!("{a}{b}"),
+            }
+        }
+        (
+            AgentEventPayload::ReasoningDelta { text: a },
+            AgentEventPayload::ReasoningDelta { text: b },
+        ) => AgentEventPayload::ReasoningDelta {
+            text: format!("{a}{b}"),
+        },
+        _ => return None,
+    };
+    Some(AgentEvent {
+        payload: merged,
+        ..prev.clone()
+    })
+}
 
-    /// 设置错误文本。
-    pub fn with_error(mut self, error: impl Into<String>) -> Self {
-        self.text = Some(error.into());
-        self
+/// 把一轮的原始事件整理成**规范日志**:只留时间线类别、相邻同类增量合并成一条、
+/// 最后一段回答以收尾给出的权威全文为准。
+///
+/// 相邻合并不改变界面看到的形状 —— 前端归并器本来就把同类相邻段接成一段,
+/// 合并前后归并结果一致,所以它只是存储压缩。权威全文只覆盖最后一段:步骤之间的
+/// 过程旁白照原样留在日志里,落库的历史与界面流式途中看到的因此是同一条时间线,
+/// 不需要再判断"哪一份是副本"(AGENTS.md §5)。
+///
+/// 终态事件本身不进日志:一轮是否结束、用量与失败原因都由 `RunRecord` 承载。
+///
+/// # Parameters
+/// - `events`:该轮已发布的事件(按 seq 正序);
+/// - `final_text`:收尾给出的权威回答(空串表示这一轮没有回答)。
+#[must_use]
+pub fn canonical_log(events: Vec<AgentEvent>, final_text: &str) -> Vec<AgentEvent> {
+    let mut log: Vec<AgentEvent> = Vec::new();
+    for event in events {
+        if !event.payload.is_timeline() {
+            continue;
+        }
+        if let Some(merged) = log.last().and_then(|prev| merged_delta(prev, &event)) {
+            log.pop();
+            log.push(merged);
+            continue;
+        }
+        log.push(event);
     }
-
-    /// 设置工具三件套(名称、类别、调用标识)。
-    pub fn with_tool(
-        mut self,
-        name: impl Into<String>,
-        category: ToolCategory,
-        call_id: Option<String>,
-    ) -> Self {
-        self.tool_name = Some(name.into());
-        self.category = Some(category);
-        self.call_id = call_id;
-        self
+    if final_text.trim().is_empty() {
+        return log;
     }
-
-    /// 设置目标主机与状态。
-    pub fn with_target(
-        mut self,
-        conn_id: impl Into<String>,
-        conn_name: Option<String>,
-        status: TargetStatus,
-    ) -> Self {
-        self.conn_id = Some(conn_id.into());
-        self.conn_name = conn_name;
-        self.target_status = Some(status);
-        self
-    }
-
-    /// 设置用量。
-    pub fn with_usage(mut self, usage: AgentUsage) -> Self {
-        self.usage = Some(usage);
-        self
-    }
+    let answer = final_text.trim();
+    // 权威全文覆盖的是**最后一段**回答。更早的回答段是模型在步骤之间说过的话,
+    // 流式途中用户已经读到,结算后不许凭空消失(AGENTS.md §5:流式与落库同源)。
+    let Some(index) = log
+        .iter()
+        .rposition(|event| matches!(event.payload, AgentEventPayload::TextDelta { .. }))
+    else {
+        // 全程没有回答增量(例如模型只走了工具就收尾):新开一段挂在末尾。
+        // 序号取日志尾 +1;终态事件不进日志,不会与它撞号。
+        let (thread_id, run_id) = log.last().map_or_else(
+            || (String::new(), String::new()),
+            |event| (event.thread_id.clone(), event.run_id.clone()),
+        );
+        let seq = log.last().map_or(0, |event| event.seq) + 1;
+        let mut event = AgentEvent::new(
+            thread_id,
+            run_id,
+            AgentEventPayload::TextDelta {
+                text: final_text.to_owned(),
+            },
+        );
+        event.seq = seq;
+        log.push(event);
+        return log;
+    };
+    let kept_seq = log[index].seq;
+    log.into_iter()
+        // 只收掉被权威全文原样重述出来的副本(实测 glm 会把一段回答整段推三遍)。
+        .filter(|event| match &event.payload {
+            AgentEventPayload::TextDelta { text } => {
+                let spoken = text.trim();
+                event.seq == kept_seq || spoken.is_empty() || !answer.contains(spoken)
+            }
+            _ => true,
+        })
+        .map(|mut event| {
+            if event.seq == kept_seq {
+                event.payload = AgentEventPayload::TextDelta {
+                    text: final_text.to_owned(),
+                };
+            }
+            event
+        })
+        .collect()
 }
 
 /// 一次批准请求:同一批工具调用涉及的主机集合(AGENTS.md §4.1.1 破坏性操作说清连带后果)。
@@ -251,62 +353,260 @@ mod tests {
     use super::*;
     use crate::domain::agent::RunState;
 
-    /// 事件类别字面量稳定(前端中文映射按这些值建表)。
+    /// 构造一条带序号的事件(测试用)。
+    fn event(seq: i64, payload: AgentEventPayload) -> AgentEvent {
+        let mut item = AgentEvent::new("t1", "r1", payload);
+        item.seq = seq;
+        item
+    }
+
+    /// 一次工具调用的三条事件(开步 / 一台进度 / 收尾)。
+    fn call_trio() -> Vec<AgentEventPayload> {
+        vec![
+            AgentEventPayload::ToolCall {
+                call_id: "c1".into(),
+                tool_name: "exec".into(),
+                category: ToolCategory::ReadOnly,
+                args_json: "{}".into(),
+            },
+            AgentEventPayload::TargetState {
+                call_id: "c1".into(),
+                tool_name: "exec".into(),
+                category: ToolCategory::ReadOnly,
+                args_json: "{}".into(),
+                conn_id: "k1".into(),
+                conn_name: "web-01".into(),
+                status: TargetStatus::Ok,
+                output_excerpt: Some("up 3 days".into()),
+                error: None,
+            },
+            AgentEventPayload::ToolResult {
+                call_id: "c1".into(),
+                tool_name: "exec".into(),
+                category: ToolCategory::ReadOnly,
+                status: TargetStatus::Ok,
+                summary: "1 台完成".into(),
+            },
+        ]
+    }
+
+    /// 全部类别的载荷样例。
+    fn samples() -> Vec<AgentEventPayload> {
+        let mut list = vec![
+            AgentEventPayload::RunStarted {
+                prompt: "为什么慢".into(),
+            },
+            AgentEventPayload::TextDelta {
+                text: "磁盘".into(),
+            },
+            AgentEventPayload::ReasoningDelta {
+                text: "先看".into(),
+            },
+            AgentEventPayload::ApprovalRequired {
+                approval_request_id: "q1".into(),
+                tool_name: "exec".into(),
+                category: ToolCategory::Mutating,
+                args_json: "{}".into(),
+                reason: "会改动服务器".into(),
+            },
+            AgentEventPayload::Usage {
+                usage: AgentUsage::default(),
+            },
+            AgentEventPayload::FinalResponse {
+                text: "磁盘满了".into(),
+                usage: AgentUsage::default(),
+            },
+            AgentEventPayload::RunRetry {
+                text: "正在重来".into(),
+            },
+            AgentEventPayload::RunFailed {
+                text: "超时".into(),
+                usage: AgentUsage::default(),
+            },
+            AgentEventPayload::RunCancelled {
+                text: "已取消".into(),
+                usage: AgentUsage::default(),
+            },
+        ];
+        list.extend(call_trio());
+        list
+    }
+
+    /// `kind()` 与 serde 落盘的 tag 必须同值:前端中文映射按字面量建表,两处一漂移就漏档。
     #[test]
-    fn event_kind_wire_literals() {
-        for kind in [
-            AgentEventKind::RunStarted,
-            AgentEventKind::TextDelta,
-            AgentEventKind::ReasoningDelta,
-            AgentEventKind::ApprovalRequired,
-            AgentEventKind::TargetState,
-            AgentEventKind::ToolCall,
-            AgentEventKind::ToolResult,
-            AgentEventKind::Usage,
-            AgentEventKind::FinalResponse,
-            AgentEventKind::RunFailed,
-            AgentEventKind::RunCancelled,
-            AgentEventKind::ThreadTitle,
-        ] {
-            let value = serde_json::to_value(kind).unwrap();
-            assert_eq!(value, serde_json::json!(kind.as_str()));
+    fn kind_matches_serde_tag() {
+        for payload in samples() {
+            let json = serde_json::to_value(&payload).unwrap();
+            assert_eq!(json["kind"], payload.kind(), "{payload:?}");
         }
-        assert_eq!(AgentEventKind::TextDelta.as_str(), "text_delta");
+        assert_eq!(samples().len(), 12, "类别数变化时同步检查前端映射表");
     }
 
-    /// 空字段不序列化,避免前端读到无意义的 null。
+    /// 载荷字段按 camelCase 上线,`None` 字段不落成 null;构造时序号为 0 待中枢分配。
     #[test]
-    fn optional_fields_are_skipped() {
-        let event = AgentEvent::new("t1", "r1", 1, AgentEventKind::RunStarted);
-        let json = serde_json::to_value(&event).unwrap();
-        assert_eq!(json["threadId"], "t1");
-        assert_eq!(json["seq"], 1);
-        assert!(json.get("text").is_none());
-        assert!(json.get("usage").is_none());
-    }
-
-    /// 链式设置器写入预期字段。
-    #[test]
-    fn builders_fill_expected_fields() {
-        let event = AgentEvent::new("t1", "r1", 2, AgentEventKind::TargetState)
-            .with_target("c1", Some("web-01".into()), TargetStatus::Running)
-            .with_tool("exec", ToolCategory::Mutating, Some("call-1".into()))
-            .with_usage(AgentUsage {
-                input_tokens: Some(10),
-                output_tokens: Some(4),
-                total_tokens: Some(14),
-                cached_input_tokens: None,
-            })
-            .with_text("hi");
-        let json = serde_json::to_value(&event).unwrap();
+    fn payload_fields_are_camel_case() {
+        let json = serde_json::to_value(event(0, call_trio()[1].clone())).unwrap();
+        assert_eq!(json["callId"], "c1");
         assert_eq!(json["connName"], "web-01");
-        assert_eq!(json["targetStatus"], "running");
-        assert_eq!(json["category"], "mutating");
-        assert_eq!(json["usage"]["totalTokens"], 14);
-        assert_eq!(json["text"], "hi");
+        assert_eq!(json["outputExcerpt"], "up 3 days");
+        assert!(json.get("error").is_none(), "没有失败原因就不该出现假 null");
+        assert_eq!(json["seq"], 0);
     }
 
-    /// 批准请求的台数与默认拒绝。
+    /// 信封与载荷同层:一条事件的 JSON 就是 `{threadId, runId, seq, kind, ...}`。
+    #[test]
+    fn envelope_flattens_payload() {
+        let json = serde_json::to_value(event(
+            3,
+            AgentEventPayload::TextDelta {
+                text: "半句".into(),
+            },
+        ))
+        .unwrap();
+        assert_eq!(json["threadId"], "t1");
+        assert_eq!(json["seq"], 3);
+        assert_eq!(json["kind"], "text_delta");
+        assert_eq!(json["text"], "半句");
+    }
+
+    /// 规范日志:相邻同类增量合并成一条、非时间线类别剔除、回答收敛为权威全文。
+    #[test]
+    fn canonical_log_merges_and_converges() {
+        let trio = call_trio();
+        let log = canonical_log(
+            vec![
+                event(
+                    1,
+                    AgentEventPayload::RunStarted {
+                        prompt: "提问".into(),
+                    },
+                ),
+                event(
+                    2,
+                    AgentEventPayload::ReasoningDelta {
+                        text: "先看".into(),
+                    },
+                ),
+                event(
+                    3,
+                    AgentEventPayload::ReasoningDelta {
+                        text: "看磁盘".into(),
+                    },
+                ),
+                event(4, trio[0].clone()),
+                event(
+                    5,
+                    AgentEventPayload::Usage {
+                        usage: AgentUsage::default(),
+                    },
+                ),
+                event(
+                    6,
+                    AgentEventPayload::TextDelta {
+                        text: "因为".into(),
+                    },
+                ),
+                event(
+                    7,
+                    AgentEventPayload::TextDelta {
+                        text: "满了".into(),
+                    },
+                ),
+            ],
+            "因为磁盘满了",
+        );
+        assert_eq!(
+            log.iter()
+                .map(|item| (item.seq, item.payload.kind()))
+                .collect::<Vec<_>>(),
+            vec![(2, "reasoning_delta"), (4, "tool_call"), (6, "text_delta")],
+            "合并后仍是同一段,回答落在它原本的位置"
+        );
+        assert_eq!(
+            log[2].payload,
+            AgentEventPayload::TextDelta {
+                text: "因为磁盘满了".into()
+            }
+        );
+    }
+
+    /// 回归:步骤之间的过程旁白在结算后保留,只收掉被权威全文原样重述的副本。
+    ///
+    /// 出过的形状是流式途中读到六段旁白,结算后一起消失 —— 落库历史与界面分叉。
+    #[test]
+    fn canonical_log_keeps_narration_between_steps() {
+        let trio = call_trio();
+        let log = canonical_log(
+            vec![
+                event(
+                    1,
+                    AgentEventPayload::TextDelta {
+                        text: "先看磁盘占用:".into(),
+                    },
+                ),
+                event(2, trio[0].clone()),
+                event(
+                    3,
+                    AgentEventPayload::TextDelta {
+                        text: "磁盘满了。".into(),
+                    },
+                ),
+                event(
+                    4,
+                    AgentEventPayload::ReasoningDelta {
+                        text: "再确认一下".into(),
+                    },
+                ),
+                event(
+                    5,
+                    AgentEventPayload::TextDelta {
+                        text: "磁盘满了。".into(),
+                    },
+                ),
+            ],
+            "磁盘满了。",
+        );
+        assert_eq!(
+            log.iter()
+                .map(|item| (item.seq, item.payload.kind()))
+                .collect::<Vec<_>>(),
+            vec![
+                (1, "text_delta"),
+                (2, "tool_call"),
+                (4, "reasoning_delta"),
+                (5, "text_delta"),
+            ],
+            "旁白留在它原本的位置,seq 3 那份重述副本被收掉"
+        );
+        assert_eq!(
+            log.iter()
+                .filter(|item| item.payload.kind() == "text_delta")
+                .map(|item| match &item.payload {
+                    AgentEventPayload::TextDelta { text } => text.as_str(),
+                    _ => "",
+                })
+                .collect::<Vec<_>>(),
+            vec!["先看磁盘占用:", "磁盘满了。"],
+            "覆盖只发生在最后一段"
+        );
+    }
+
+    /// 只走工具没吐增量的轮次:权威全文补成一段回答,挂在日志末尾。
+    #[test]
+    fn canonical_log_appends_authoritative_answer() {
+        let log = canonical_log(vec![event(1, call_trio()[2].clone())], "一共 3 台");
+        assert_eq!(log.len(), 2);
+        assert_eq!(log[1].payload.kind(), "text_delta");
+        assert_eq!(log[1].seq, 2);
+        assert_eq!(
+            log[1].payload,
+            AgentEventPayload::TextDelta {
+                text: "一共 3 台".into()
+            }
+        );
+    }
+
+    /// 批准请求的台数与默认拒绝;运行状态与事件类别互不混用。
     #[test]
     fn approval_request_defaults_to_denied() {
         let request = ApprovalRequest {
@@ -324,7 +624,6 @@ mod tests {
             ApprovalRequest::default_decision(),
             ApprovalDecision::Denied
         );
-        // 运行状态与事件类别互不混用。
         assert_eq!(RunState::Running.as_str(), "running");
     }
 }

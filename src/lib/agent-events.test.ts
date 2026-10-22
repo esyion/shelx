@@ -20,10 +20,10 @@ import {
   RUN_STATE_DISPLAY,
   TARGET_STATUS_DISPLAY,
   TOOL_CATEGORY_DISPLAY,
-  answerInTimeline,
   applyEvent,
   describeApprovalTargets,
   emptyFragment,
+  foldEvents,
   formatDuration,
   formatToolArgs,
   formatUsage,
@@ -31,14 +31,21 @@ import {
   traceLine,
 } from "@/lib/agent-events";
 
-/** 构造事件。 */
-function event(partial: Partial<AgentEvent> & { seq: number }): AgentEvent {
-  return {
-    threadId: "t1",
-    runId: "r1",
-    kind: "text_delta",
-    ...partial,
-  } as AgentEvent;
+/** 对联合的每个分支分别 Omit(直接 Omit 只会留下公共字段)。 */
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+/** 构造事件时省略信封的两个固定字段。 */
+type EventInput = DistributiveOmit<AgentEvent, "threadId" | "runId">;
+
+/** 一次工具调用的公共字段(与后端开步/进度/收尾共用的口径一致)。 */
+const CALL = {
+  toolName: "exec",
+  category: "read_only" as const,
+  argsJson: "{}",
+};
+
+/** 构造事件(载荷必须与后端判别联合同形,字段拼错就编译不过)。 */
+function event(input: EventInput): AgentEvent {
+  return { threadId: "t1", runId: "r1", ...input };
 }
 
 /** 时间线里所有回答段拼起来(断言用)。 */
@@ -125,15 +132,15 @@ describe("时间线合并", () => {
     fragment = applyEvent(fragment, event({ seq: 1, kind: "reasoning_delta", text: "先看磁盘" }));
     fragment = applyEvent(
       fragment,
-      event({ seq: 2, kind: "tool_call", callId: "a", toolName: "exec" }),
+      event({ seq: 2, kind: "tool_call", ...CALL, callId: "a", toolName: "exec" }),
     );
     fragment = applyEvent(
       fragment,
-      event({ seq: 3, kind: "target_state", callId: "a", connId: "k1", connName: "web-01", toolName: "exec", targetStatus: "ok" }),
+      event({ seq: 3, kind: "target_state", ...CALL, callId: "a", connId: "k1", connName: "web-01", toolName: "exec", status: "ok" }),
     );
     fragment = applyEvent(
       fragment,
-      event({ seq: 4, kind: "tool_result", callId: "a", toolName: "exec", targetStatus: "ok" }),
+      event({ seq: 4, kind: "tool_result", ...CALL, callId: "a", status: "ok", summary: "1 台完成" }),
     );
     fragment = applyEvent(fragment, event({ seq: 5, kind: "reasoning_delta", text: "再确认服务" }));
     // 两段思考各自成段,中间夹着那一步 —— 顺序就是发生顺序。
@@ -151,11 +158,12 @@ describe("时间线合并", () => {
   it("终态事件替换最后一段回答并标记结束", () => {
     let fragment = emptyFragment();
     fragment = applyEvent(fragment, event({ seq: 1, kind: "text_delta", text: "半成品" }));
-    fragment = applyEvent(fragment, event({ seq: 2, kind: "final_response", text: "完整答案" }));
+    fragment = applyEvent(fragment, event({ seq: 2, kind: "final_response", text: "完整答案", usage: {} }));
     expect(textOf(fragment)).toBe("完整答案");
     expect(fragment.parts).toHaveLength(1);
     expect(fragment.settled).toBe(true);
-    expect(fragment.usage).toBeUndefined();
+    // 终态事件一定带用量字段;provider 没报就是空对象,界面按"无数字"处理而不是伪造 0。
+    expect(fragment.usage).toEqual({});
   });
 
   it("用量与取消事件都可见", () => {
@@ -165,14 +173,14 @@ describe("时间线合并", () => {
       event({ seq: 1, kind: "usage", usage: { inputTokens: 10, outputTokens: 4, totalTokens: 14 } }),
     );
     expect(fragment.usage?.totalTokens).toBe(14);
-    fragment = applyEvent(fragment, event({ seq: 2, kind: "run_cancelled", text: "已取消" }));
+    fragment = applyEvent(fragment, event({ seq: 2, kind: "run_cancelled", text: "已取消", usage: {} }));
     expect(fragment.settled).toBe(true);
     expect(textOf(fragment)).toBe("已取消");
   });
 
   it("记录最近一条事件类别供界面显示进度", () => {
     let fragment = emptyFragment();
-    fragment = applyEvent(fragment, event({ seq: 1, kind: "tool_call" }));
+    fragment = applyEvent(fragment, event({ seq: 1, kind: "tool_call", ...CALL, callId: "a" }));
     expect(fragment.lastKind).toBe("tool_call");
     fragment = applyEvent(fragment, event({ seq: 2, kind: "text_delta", text: "好" }));
     expect(fragment.lastKind).toBe("text_delta");
@@ -182,19 +190,19 @@ describe("时间线合并", () => {
     let fragment = emptyFragment();
     fragment = applyEvent(
       fragment,
-      event({ seq: 1, kind: "tool_call", callId: "a", toolName: "exec", argsJson: '{"argv":["df","-h"]}' }),
+      event({ seq: 1, kind: "tool_call", ...CALL, callId: "a", toolName: "exec", argsJson: '{"argv":["df","-h"]}' }),
     );
     fragment = applyEvent(
       fragment,
-      event({ seq: 2, kind: "target_state", callId: "a", connId: "k1", connName: "web-01", toolName: "exec", targetStatus: "running" }),
+      event({ seq: 2, kind: "target_state", ...CALL, callId: "a", connId: "k1", connName: "web-01", toolName: "exec", status: "running" }),
     );
     fragment = applyEvent(
       fragment,
-      event({ seq: 3, kind: "target_state", callId: "a", connId: "k2", connName: "web-02", toolName: "exec", targetStatus: "pending" }),
+      event({ seq: 3, kind: "target_state", ...CALL, callId: "a", connId: "k2", connName: "web-02", toolName: "exec", status: "pending" }),
     );
     fragment = applyEvent(
       fragment,
-      event({ seq: 4, kind: "target_state", callId: "a", connId: "k1", connName: "web-01", toolName: "exec", targetStatus: "ok" }),
+      event({ seq: 4, kind: "target_state", ...CALL, callId: "a", connId: "k1", connName: "web-01", toolName: "exec", status: "ok" }),
     );
     expect(fragment.parts).toEqual([
       {
@@ -213,15 +221,15 @@ describe("时间线合并", () => {
 
   it("并行发出的同名调用各归各步(实测过按工具名并会串成一步)", () => {
     let fragment = emptyFragment();
-    fragment = applyEvent(fragment, event({ seq: 1, kind: "tool_call", callId: "a", toolName: "exec" }));
-    fragment = applyEvent(fragment, event({ seq: 2, kind: "tool_call", callId: "b", toolName: "exec" }));
+    fragment = applyEvent(fragment, event({ seq: 1, kind: "tool_call", ...CALL, callId: "a", toolName: "exec" }));
+    fragment = applyEvent(fragment, event({ seq: 2, kind: "tool_call", ...CALL, callId: "b", toolName: "exec" }));
     fragment = applyEvent(
       fragment,
-      event({ seq: 3, kind: "target_state", callId: "a", connId: "k1", connName: "web-01", toolName: "exec", targetStatus: "ok" }),
+      event({ seq: 3, kind: "target_state", ...CALL, callId: "a", connId: "k1", connName: "web-01", toolName: "exec", status: "ok" }),
     );
     fragment = applyEvent(
       fragment,
-      event({ seq: 4, kind: "target_state", callId: "b", connId: "k1", connName: "web-01", toolName: "exec", targetStatus: "failed" }),
+      event({ seq: 4, kind: "target_state", ...CALL, callId: "b", connId: "k1", connName: "web-01", toolName: "exec", status: "failed" }),
     );
     const steps = fragment.parts.filter((part): part is AgentToolPart => part.type === "tool");
     expect(steps.map((part) => part.id)).toEqual(["a", "b"]);
@@ -231,10 +239,10 @@ describe("时间线合并", () => {
 
   it("收尾事件结束那一步:没有逐台进度的工具也留得下结论", () => {
     let fragment = emptyFragment();
-    fragment = applyEvent(fragment, event({ seq: 1, kind: "tool_call", callId: "a", toolName: "list_connections" }));
+    fragment = applyEvent(fragment, event({ seq: 1, kind: "tool_call", ...CALL, callId: "a", toolName: "list_connections" }));
     fragment = applyEvent(
       fragment,
-      event({ seq: 2, kind: "tool_result", callId: "a", toolName: "list_connections", targetStatus: "ok", text: "列出 9 台" }),
+      event({ seq: 2, kind: "tool_result", ...CALL, toolName: "list_connections", callId: "a", status: "ok", summary: "列出 9 台" }),
     );
     expect(fragment.parts[0]).toMatchObject({ done: true, ok: true, summary: "列出 9 台" });
   });
@@ -244,14 +252,14 @@ describe("时间线合并", () => {
     // 开步事件落在订阅游标之前(重挂只补发游标之后的事件)。
     fragment = applyEvent(
       fragment,
-      event({ seq: 8, kind: "target_state", callId: "a", connId: "k1", connName: "web-01", toolName: "tail_log", targetStatus: "ok" }),
+      event({ seq: 8, kind: "target_state", ...CALL, callId: "a", connId: "k1", connName: "web-01", toolName: "tail_log", status: "ok" }),
     );
     expect(fragment.parts).toEqual([
       {
         type: "tool",
         id: "a",
         toolName: "tail_log",
-        argsJson: undefined,
+        argsJson: "{}",
         done: false,
         targets: { k1: { connName: "web-01", status: "ok" } },
       },
@@ -260,7 +268,7 @@ describe("时间线合并", () => {
     const settledParts = fragment.parts;
     fragment = applyEvent(
       fragment,
-      event({ seq: 8, kind: "target_state", callId: "a", connId: "k1", connName: "web-01", toolName: "tail_log", targetStatus: "ok" }),
+      event({ seq: 8, kind: "target_state", ...CALL, callId: "a", connId: "k1", connName: "web-01", toolName: "tail_log", status: "ok" }),
     );
     expect(fragment.parts).toBe(settledParts);
   });
@@ -276,7 +284,7 @@ describe("时间线合并", () => {
 
   it("结算后旧序号的迟到包被丢弃", () => {
     let fragment = emptyFragment();
-    fragment = applyEvent(fragment, event({ seq: 5, kind: "final_response", text: "答案" }));
+    fragment = applyEvent(fragment, event({ seq: 5, kind: "final_response", text: "答案", usage: {} }));
     fragment = applyEvent(fragment, event({ seq: 3, kind: "text_delta", text: "迟到" }));
     expect(textOf(fragment)).toBe("答案");
   });
@@ -295,58 +303,71 @@ describe("时间线合并", () => {
     // 结算前流式增量如实呈现:三段回答夹着被劈开的思考。
     expect(fragment.parts.filter((part) => part.type === "text")).toHaveLength(3);
     // 结算后与落库历史一致:一份回答,思考段合并回一整段。
-    fragment = applyEvent(fragment, event({ seq: 6, kind: "final_response", text: answer }));
+    fragment = applyEvent(fragment, event({ seq: 6, kind: "final_response", text: answer, usage: {} }));
     expect(textOf(fragment)).toBe(answer);
     expect(fragment.parts.filter((part) => part.type === "text")).toHaveLength(1);
     expect(fragment.parts.map((part) => part.type)).toEqual(["reasoning", "reasoning", "text"]);
     expect(fragment.settled).toBe(true);
   });
 
+  it("步骤之间的过程旁白在结算后保留(流式途中读过的字不许消失)", () => {
+    let fragment = emptyFragment();
+    fragment = applyEvent(fragment, event({ seq: 1, kind: "text_delta", text: "先看磁盘占用：" }));
+    fragment = applyEvent(fragment, event({ seq: 2, kind: "tool_call", ...CALL, callId: "a" }));
+    fragment = applyEvent(fragment, event({ seq: 3, kind: "text_delta", text: "磁盘满了。" }));
+    fragment = applyEvent(fragment, event({ seq: 4, kind: "reasoning_delta", text: "再确认一下挂载点" }));
+    fragment = applyEvent(fragment, event({ seq: 5, kind: "text_delta", text: "磁盘满了。" }));
+    // 收尾全文对应最后那段回答;seq 3 是它被原样重述出来的副本,收掉。
+    fragment = applyEvent(fragment, event({ seq: 6, kind: "final_response", text: "磁盘满了。", usage: {} }));
+    expect(fragment.parts.map((part) => part.type)).toEqual(["text", "tool", "reasoning", "text"]);
+    expect(textOf(fragment)).toBe("先看磁盘占用：磁盘满了。");
+  });
+
   it("没有回答段时终态全文新开一段", () => {
     let fragment = emptyFragment();
     fragment = applyEvent(fragment, event({ seq: 1, kind: "reasoning_delta", text: "想了想" }));
-    fragment = applyEvent(fragment, event({ seq: 2, kind: "final_response", text: "答案" }));
+    fragment = applyEvent(fragment, event({ seq: 2, kind: "final_response", text: "答案", usage: {} }));
     expect(fragment.parts.map((part) => part.type)).toEqual(["reasoning", "text"]);
     expect(textOf(fragment)).toBe("答案");
   });
 });
 
-describe("结算后回答由谁呈现", () => {
-  /** 按事件序列拼出片段(走真实的合并路径,不手搓 parts)。 */
-  const byEvents = (events: AgentEvent[]) =>
-    events.reduce<AgentStreamFragment>((acc, item) => applyEvent(acc, item), emptyFragment());
+describe("已发布日志与流式增量归并结果一致", () => {
+  /** 一条典型轮次:思考 → 工具 → 又思考 → 回答,终态带权威全文。 */
+  const events = [
+    event({ seq: 1, kind: "reasoning_delta", text: "先看磁盘" }),
+    event({ seq: 2, kind: "tool_call", ...CALL, callId: "c1" }),
+    event({ seq: 3, kind: "tool_result", ...CALL, callId: "c1", status: "ok", summary: "1 台完成" }),
+    event({ seq: 4, kind: "reasoning_delta", text: "再确认一下" }),
+    event({ seq: 5, kind: "text_delta", text: "磁盘" }),
+    event({ seq: 6, kind: "text_delta", text: "满了" }),
+  ];
 
-  it("完成且时间线带着回答全文:历史尾部那条助手消息是副本,交给时间线", () => {
-    expect(
-      answerInTimeline(
-        byEvents([
-          event({ seq: 1, kind: "reasoning_delta", text: "先看容器" }),
-          event({ seq: 2, kind: "tool_call", toolName: "exec", callId: "c1" }),
-          event({ seq: 3, kind: "text_delta", text: "有 3 个在跑" }),
-          event({ seq: 4, kind: "final_response", text: "有 3 个在跑" }),
-        ]),
-      ),
-    ).toBe(true);
+  it("foldEvents 与逐条 applyEvent 得到同一条时间线", () => {
+    const folded = foldEvents(events);
+    const streamed = events.reduce(applyEvent, emptyFragment());
+    expect(folded.parts).toEqual(streamed.parts);
+    expect(folded.parts.map((part) => part.type)).toEqual([
+      "reasoning",
+      "tool",
+      "reasoning",
+      "text",
+    ]);
+    expect(textOf(folded)).toBe("磁盘满了");
   });
 
-  it("失败与取消的错误说明只存在于时间线上,不交出历史副本", () => {
-    expect(
-      answerInTimeline(byEvents([event({ seq: 1, kind: "run_failed", text: "超时了" })])),
-    ).toBe(false);
-    expect(
-      answerInTimeline(byEvents([event({ seq: 1, kind: "run_cancelled", text: "停了" })])),
-    ).toBe(false);
+  it("落库日志里被合并成一条的回答,归并后仍是一段", () => {
+    const folded = foldEvents([
+      event({ seq: 2, kind: "tool_call", ...CALL, callId: "c1" }),
+      event({ seq: 6, kind: "text_delta", text: "磁盘满了" }),
+    ]);
+    expect(folded.parts.map((part) => part.type)).toEqual(["tool", "text"]);
+    expect(textOf(folded)).toBe("磁盘满了");
   });
 
-  it("没收尾、或收尾时没有回答文本,都不算时间线已承载", () => {
-    expect(
-      answerInTimeline(byEvents([event({ seq: 1, kind: "text_delta", text: "半句话" })])),
-    ).toBe(false);
-    expect(
-      answerInTimeline(byEvents([event({ seq: 1, kind: "final_response", text: "   " })])),
-    ).toBe(false);
-    expect(answerInTimeline(emptyFragment())).toBe(false);
-    expect(answerInTimeline(null)).toBe(false);
+  it("重复投递与迟到包在日志里同样被序号挡掉", () => {
+    const folded = foldEvents([...events, ...events]);
+    expect(folded.parts).toEqual(events.reduce(applyEvent, emptyFragment()).parts);
   });
 });
 

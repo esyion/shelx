@@ -167,6 +167,9 @@ export function chainStepView(step: AgentToolPart): ChainStepView {
 /**
  * 摘要行文案与时态:进行中说"现在在做什么",结束后报步数,有没完成的步必须报出来。
  *
+ * 措辞说的是**这一段**,不是整轮:一轮里思考与工具交替出现,工具因此被切成多段,
+ * 每段都写"这一轮走了 N 步"就会在同一轮里报出 2/4/1/1/4 五个互相矛盾的步数。
+ *
  * @param input.steps 这一段里的步数(一次工具调用算一步)。
  * @param input.running 本轮是否仍在进行。
  * @param input.activity 中文"现在在做什么"(取自事件映射,为空时用兜底文案)。
@@ -182,16 +185,18 @@ export function chainSummary(input: {
 }): ChainSummary {
   if (input.running) return { title: input.activity ?? "正在处理", status: "running" };
   if (input.terminal === "run_failed") {
-    return { title: `走到第 ${input.steps} 步时失败`, status: "error" };
+    return { title: `这一段走到第 ${input.steps} 步时失败`, status: "error" };
   }
-  if (input.terminal === "run_cancelled") return { title: `走了 ${input.steps} 步后停止` };
+  if (input.terminal === "run_cancelled") {
+    return { title: `这一段走了 ${input.steps} 步后停止` };
+  }
   if (input.failedSteps > 0) {
     return {
-      title: `这一轮走了 ${input.steps} 步,其中 ${input.failedSteps} 步没完成`,
+      title: `这一段走了 ${input.steps} 步,其中 ${input.failedSteps} 步没完成`,
       status: "error",
     };
   }
-  return { title: `这一轮走了 ${input.steps} 步` };
+  return { title: `这一段走了 ${input.steps} 步` };
 }
 
 /**

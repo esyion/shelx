@@ -264,12 +264,21 @@ impl AgentService {
                     .collect(),
             })
             .collect();
+        let running = self.runs.running_of_thread(thread_id);
+        let mut runs = self.store.runs(thread_id)?;
+        // 仍在跑的那一轮还没有落库日志,直接取中枢手里的那一份:
+        // 重开面板也能看到此前已经流出的思考与步骤,而不是只看到"进行中"。
+        for run in &mut runs {
+            if run.timeline.is_empty() && running.iter().any(|id| id == &run.run_id) {
+                run.timeline = self.hub.run_events(&run.run_id);
+            }
+        }
         Ok(ThreadSnapshot {
             thread,
             messages: self.store.messages(thread_id, limit.max(50))?,
-            runs: self.store.runs(thread_id)?,
+            runs,
             pending,
-            running: self.runs.running_of_thread(thread_id),
+            running,
             latest_seq: self.hub.latest_seq(thread_id),
         })
     }

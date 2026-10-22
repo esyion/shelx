@@ -15,13 +15,17 @@ use rig::tool::{DynamicTool, ToolOutput};
 
 use super::memory_store::ThreadMemoryStore;
 use super::provider;
-use crate::application::agent::events::{AgentEvent, AgentEventKind, AgentUsage};
+use crate::application::agent::events::{AgentEvent, AgentEventPayload, AgentUsage};
 use crate::application::agent::hub::{ApprovalCenter, ThreadEventHub};
 use crate::application::agent::tools::{tools_for, ToolHost};
 use crate::application::agent::types::{AgentStore, LlmGateway, RunContext, RunOutcome, RunPlan};
 use crate::domain::agent::RunState;
 
 /// 文本增量聚合:达到该字符数或时间间隔才推一条 IPC 事件(AGENTS.md §6 不阻塞 UI)。
+///
+/// 阈值只决定**块大小**;一段增量在哪里断开一律由 [`DeltaAggregator`] 按 rig 的部件
+/// 身份决定。让缓冲跨部件存活,尾巴会被下一段带走 —— 实测形状是一句话被劈成两块
+/// (「…或直接从宿」/「主机查询：…」),以及答案下面还挂着上一段思考的半句「`)`」。
 const FLUSH_CHARS: usize = 512;
 const FLUSH_INTERVAL: Duration = Duration::from_millis(32);
 
@@ -88,19 +92,84 @@ impl DeltaBatcher {
     }
 }
 
-/// 事件发射器:序号分配与广播的唯一出口(避免各处重复 next_seq + broadcast)。
+/// 时间线上一个增量段的身份:rig 的部件序号 + 内容类别。
+///
+/// 只有会带文字的部件进这里 —— 工具调用与图片部件不产生增量事件。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DeltaPart {
+    /// 回答文本部件(括号内是部件序号)。
+    Text(usize),
+    /// 推理部件。
+    Reasoning(usize),
+}
+
+impl DeltaPart {
+    /// 缓冲内容成型为哪一类事件。
+    fn payload(self, text: String) -> AgentEventPayload {
+        match self {
+            Self::Text(_) => AgentEventPayload::TextDelta { text },
+            Self::Reasoning(_) => AgentEventPayload::ReasoningDelta { text },
+        }
+    }
+}
+
+/// 单路增量聚合:同一时刻只累积一个部件,部件一开一合就是段边界。
+///
+/// 只有一路缓冲、且换部件先清缓冲,所以「上一段的尾巴」在结构上不可能被下一段带走。
+/// `push` 里的换部件判断是第二道:provider 漏发 `End` 时边界仍然成立。
+struct DeltaAggregator {
+    /// 当前正在累积的部件(`None` = 缓冲已交出,没有段开着)。
+    part: Option<DeltaPart>,
+    batch: DeltaBatcher,
+}
+
+impl DeltaAggregator {
+    /// 新建(还没有任何部件打开)。
+    fn new() -> Self {
+        Self {
+            part: None,
+            batch: DeltaBatcher::new(),
+        }
+    }
+
+    /// 追加一段增量:换部件先把上一段尾巴发出,再按阈值决定本段是否下发。
+    fn push(&mut self, em: &Emitter, part: DeltaPart, text: &str) {
+        if self.part != Some(part) {
+            self.flush(em);
+            self.part = Some(part);
+        }
+        if let Some(chunk) = self.batch.push(text) {
+            em.emit(part.payload(chunk));
+        }
+    }
+
+    /// 交出缓冲尾巴(空缓冲不发事件),并把当前部件置为已结束。
+    fn flush(&mut self, em: &Emitter) {
+        let Some(chunk) = self.batch.take() else {
+            return;
+        };
+        let Some(part) = self.part.take() else {
+            tracing::warn!("增量缓冲没有归属部件,丢弃 {} 字符", chunk.chars().count());
+            return;
+        };
+        em.emit(part.payload(chunk));
+    }
+}
+
+/// 事件发射器:网关侧事件的唯一出口(序号与投递顺序由中枢原子分配)。
 struct Emitter<'a> {
     hub: &'a Arc<ThreadEventHub>,
     context: &'a Arc<RunContext>,
 }
 
 impl Emitter<'_> {
-    /// 发一条事件;`build` 负责填业务字段。
-    fn emit(&self, kind: AgentEventKind, build: impl FnOnce(&mut AgentEvent)) {
-        let seq = self.hub.next_seq(&self.context.thread_id);
-        let mut event = AgentEvent::new(&self.context.thread_id, &self.context.run_id, seq, kind);
-        build(&mut event);
-        self.hub.broadcast(event);
+    /// 发一条载荷已成型的事件(序号与投递顺序由中枢原子分配)。
+    fn emit(&self, payload: AgentEventPayload) {
+        self.hub.publish(AgentEvent::new(
+            &self.context.thread_id,
+            &self.context.run_id,
+            payload,
+        ));
     }
 }
 
@@ -191,8 +260,7 @@ impl LlmGateway for RigGateway {
         let mut turns = 0usize;
         let mut error: Option<String> = None;
         let mut cancelled = false;
-        let mut text_batch = DeltaBatcher::new();
-        let mut reason_batch = DeltaBatcher::new();
+        let mut deltas = DeltaAggregator::new();
 
         while let Some(item) = stream.next().await {
             if context.cancel.is_cancelled() {
@@ -201,24 +269,18 @@ impl LlmGateway for RigGateway {
             }
             match item {
                 Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(event))) => match event {
-                    StreamEvent::Text { text, .. } => {
+                    // 部件开与合就是段边界:上一段的尾巴必须在这里交出去,
+                    // 留到下一段再发就会把一句话劈成两块。
+                    StreamEvent::Start { .. } | StreamEvent::End { .. } => deltas.flush(&em),
+                    StreamEvent::Text { part, text } => {
                         answer.push_str(&text);
-                        if let Some(chunk) = text_batch.push(&text) {
-                            let chunk_owned = chunk;
-                            em.emit(AgentEventKind::TextDelta, move |event| {
-                                event.text = Some(chunk_owned);
-                            });
-                        }
+                        deltas.push(&em, DeltaPart::Text(part.index()), &text);
                     }
-                    StreamEvent::Reasoning { text, .. } => {
-                        if let Some(chunk) = reason_batch.push(&text) {
-                            em.emit(AgentEventKind::ReasoningDelta, move |event| {
-                                event.text = Some(chunk);
-                            });
-                        }
+                    StreamEvent::Reasoning { part, text } => {
+                        deltas.push(&em, DeltaPart::Reasoning(part.index()), &text);
                     }
-                    // 部件起止与参数增量:工具结果由执行器逐台广播,这里不重复发。
-                    _ => {}
+                    // 参数增量不进时间线:工具结果由执行器逐台广播,这里不重复发。
+                    StreamEvent::Arguments { .. } => {}
                 },
                 // 工具调用不在这条路径上发事件:rig 不会把调用身份交给执行器,在这里发的话
                 // 前端只能靠工具名猜归属,一轮里并行的同名调用会串到同一步。
@@ -228,13 +290,13 @@ impl LlmGateway for RigGateway {
                     turns += 1;
                     let usage = Self::map_usage(&call.usage);
                     usage_total = accumulate(usage_total, usage);
-                    em.emit(AgentEventKind::Usage, move |event| {
-                        event.usage = Some(usage);
-                    });
+                    em.emit(AgentEventPayload::Usage { usage });
                 }
                 Ok(MultiTurnStreamItem::ModelTurnRetried { turn }) => {
-                    em.emit(AgentEventKind::RunFailed, move |event| {
-                        event.text = Some(format!("第 {turn} 轮回答不合格,模型正在重来"));
+                    // 非终态:这一轮不合格、模型正在重来。用独立类别承载,
+                    // 不复用 run_failed —— 那会让前端把"还在跑"读成"已经失败"。
+                    em.emit(AgentEventPayload::RunRetry {
+                        text: format!("第 {turn} 轮回答不合格,模型正在重来"),
                     });
                 }
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => {
@@ -255,17 +317,10 @@ impl LlmGateway for RigGateway {
             }
         }
 
-        // 收尾把未满阈值的增量也发出去,避免"最后半句话看不见"。
-        if let Some(chunk) = text_batch.take() {
-            em.emit(AgentEventKind::TextDelta, move |event| {
-                event.text = Some(chunk);
-            });
-        }
-        if let Some(chunk) = reason_batch.take() {
-            em.emit(AgentEventKind::ReasoningDelta, move |event| {
-                event.text = Some(chunk);
-            });
-        }
+        // 兜底:正常收尾时每个部件都发过 `End`,这里只捞取消或断流留下的半句话。
+        // 单路缓冲意味着"先推理还是先回答"不再需要排序技巧 —— 尾巴只可能属于
+        // 最后一个还没结束的部件。
+        deltas.flush(&em);
 
         let state = if cancelled {
             RunState::Cancelled
@@ -298,6 +353,8 @@ fn accumulate(mut total: AgentUsage, item: AgentUsage) -> AgentUsage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::application::agent::hub::CancelToken;
+    use crate::domain::agent::ApprovalMode;
 
     /// 增量批处理按字符阈值下发。
     #[test]
@@ -316,6 +373,89 @@ mod tests {
         let mut batch = DeltaBatcher::new();
         assert!(batch.take().is_none());
         assert!(batch.push("").is_none());
+    }
+
+    /// 造一对空的事件中枢与运行上下文,用于断言增量事件的到达顺序与内容。
+    fn test_run() -> (Arc<ThreadEventHub>, Arc<RunContext>) {
+        let hub = Arc::new(ThreadEventHub::new());
+        let context = Arc::new(RunContext {
+            thread_id: "t1".to_owned(),
+            run_id: "r1".to_owned(),
+            approval: ApprovalMode::ReadOnlyAuto,
+            bound_conn_id: None,
+            batch_limit: 4,
+            parallel_hosts: 2,
+            exec_timeout_secs: 5,
+            cancel: CancelToken::new(),
+        });
+        (hub, context)
+    }
+
+    /// 取出一轮已发布事件的「类别 + 文字」形状(增量事件才带文字)。
+    fn shapes(hub: &ThreadEventHub) -> Vec<(&'static str, String)> {
+        hub.run_events("r1")
+            .iter()
+            .map(|event| {
+                let text = match &event.payload {
+                    AgentEventPayload::TextDelta { text }
+                    | AgentEventPayload::ReasoningDelta { text } => text.clone(),
+                    other => String::from(other.kind()),
+                };
+                (event.payload.kind(), text)
+            })
+            .collect()
+    }
+
+    /// 回归:换部件时必须先把上一段的尾巴发出。
+    ///
+    /// 出过的形状是一句话被劈成两块 —— 「…改用 wget 或直接从宿」留在缓冲里,
+    /// 等下一轮的字符攒够才一起发出,中间已经夹进了工具步和一段思考。
+    #[test]
+    fn aggregator_flushes_tail_before_next_part() {
+        let (hub, context) = test_run();
+        let em = Emitter {
+            hub: &hub,
+            context: &context,
+        };
+        let mut deltas = DeltaAggregator::new();
+        deltas.push(&em, DeltaPart::Text(1), "改用 wget 或直接从宿");
+        deltas.push(&em, DeltaPart::Reasoning(2), "下一段思考");
+        deltas.flush(&em);
+
+        assert_eq!(
+            shapes(&hub),
+            vec![
+                ("text_delta", "改用 wget 或直接从宿".to_owned()),
+                ("reasoning_delta", "下一段思考".to_owned()),
+            ],
+            "上一段尾巴先出,且不带下一段的字符"
+        );
+    }
+
+    /// 回归:部件合上(`End`)就是段边界,答案之后不许再挂思考尾巴。
+    ///
+    /// 出过的形状是落库日志里完整答案之后还跟着一条只含「`)`」的推理增量。
+    #[test]
+    fn part_boundary_closes_the_segment() {
+        let (hub, context) = test_run();
+        let em = Emitter {
+            hub: &hub,
+            context: &context,
+        };
+        let mut deltas = DeltaAggregator::new();
+        deltas.push(&em, DeltaPart::Reasoning(0), "先使其在线(ensure_session");
+        deltas.flush(&em);
+        deltas.push(&em, DeltaPart::Text(1), "取证完成。");
+        deltas.flush(&em);
+
+        assert_eq!(
+            shapes(&hub),
+            vec![
+                ("reasoning_delta", "先使其在线(ensure_session".to_owned()),
+                ("text_delta", "取证完成。".to_owned()),
+            ],
+            "思考的收尾留在思考里,答案单独成段且是最后一条"
+        );
     }
 
     /// 用量累加对缺失字段容错。

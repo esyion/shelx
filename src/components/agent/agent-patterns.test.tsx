@@ -167,7 +167,7 @@ describe("思维链(Chain of Thought)", () => {
     cleanup();
     view({ running: false, activity: null });
     // 三次主机进度、两次调用 → 两步;有失败必须说出来。
-    expect(screen.getByText("这一轮走了 2 步,其中 1 步没完成")).toBeTruthy();
+    expect(screen.getByText("这一段走了 2 步,其中 1 步没完成")).toBeTruthy();
     expect(screen.getByText("执行命令：1 台完成，1 台失败")).toBeTruthy();
   });
 

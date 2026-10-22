@@ -99,6 +99,11 @@ pub struct RunRecord {
     pub created_at: i64,
     /// 更新时间。
     pub updated_at: i64,
+    /// 这一轮已发布的事件(思考增量、工具步、回答增量…按 seq 正序)。
+    ///
+    /// 界面的时间线只从这份日志归并出来:它是"这一轮做了什么"的唯一耐久真源,
+    /// 因此不再需要判断"回答该由历史消息还是由流式缓冲呈现"(AGENTS.md §5)。
+    pub timeline: Vec<crate::application::agent::events::AgentEvent>,
 }
 
 /// 一条工具审计记录(界面"展开查看"与事后追溯的数据源)。

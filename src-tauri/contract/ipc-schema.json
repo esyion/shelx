@@ -35,187 +35,360 @@
           "type": "object"
         },
         "AgentEvent": {
-          "description": "一条对外事件。",
-          "properties": {
-            "approvalRequestId": {
-              "description": "批准请求标识(应答复用)。",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "argsJson": {
-              "description": "入参 JSON 原文(批准弹窗展示)。",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "callId": {
-              "description": "调用标识。",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "category": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/ToolCategory"
+          "description": "一条对外事件:信封 + 载荷。\n\n序号不由调用方给:发布时由中枢在同一临界区内分配(见\n[`crate::application::agent::hub::ThreadEventHub::publish`])。",
+          "oneOf": [
+            {
+              "description": "运行开始(带用户原文,界面立刻把这一轮的问题立起来,不等快照)。",
+              "properties": {
+                "kind": {
+                  "const": "run_started",
+                  "type": "string"
                 },
-                {
-                  "type": "null"
+                "prompt": {
+                  "description": "用户这一轮的输入。",
+                  "type": "string"
                 }
+              },
+              "required": [
+                "kind",
+                "prompt"
               ],
-              "description": "工具类别。"
+              "type": "object"
             },
-            "connId": {
-              "description": "目标主机 ID。",
-              "type": [
-                "string",
-                "null"
-              ]
+            {
+              "description": "回答文本增量。",
+              "properties": {
+                "kind": {
+                  "const": "text_delta",
+                  "type": "string"
+                },
+                "text": {
+                  "description": "增量文本。",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "text"
+              ],
+              "type": "object"
             },
-            "connName": {
-              "description": "目标主机显示名。",
-              "type": [
-                "string",
-                "null"
-              ]
+            {
+              "description": "推理过程增量(仅当 provider 返回思考内容)。",
+              "properties": {
+                "kind": {
+                  "const": "reasoning_delta",
+                  "type": "string"
+                },
+                "text": {
+                  "description": "增量原文(模型的话,不改写)。",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "text"
+              ],
+              "type": "object"
             },
-            "kind": {
-              "$ref": "#/$defs/AgentEventKind",
-              "description": "事件类别。"
+            {
+              "description": "需要用户批准工具调用(每台一个决定)。",
+              "properties": {
+                "approvalRequestId": {
+                  "description": "批准请求标识(应答复用)。",
+                  "type": "string"
+                },
+                "argsJson": {
+                  "description": "入参 JSON 原文。",
+                  "type": "string"
+                },
+                "category": {
+                  "$ref": "#/$defs/ToolCategory",
+                  "description": "工具类别。"
+                },
+                "kind": {
+                  "const": "approval_required",
+                  "type": "string"
+                },
+                "reason": {
+                  "description": "为什么要批准。",
+                  "type": "string"
+                },
+                "toolName": {
+                  "description": "工具名。",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "approvalRequestId",
+                "toolName",
+                "category",
+                "argsJson",
+                "reason"
+              ],
+              "type": "object"
             },
-            "outputExcerpt": {
-              "description": "结果摘要(截断后)。",
-              "type": [
-                "string",
-                "null"
-              ]
+            {
+              "description": "一次工具调用开始:开步,与逐台进度、收尾共用同一个 `callId`。",
+              "properties": {
+                "argsJson": {
+                  "description": "入参 JSON 原文。",
+                  "type": "string"
+                },
+                "callId": {
+                  "description": "调用标识(归步身份,不按工具名配对)。",
+                  "type": "string"
+                },
+                "category": {
+                  "$ref": "#/$defs/ToolCategory",
+                  "description": "工具类别。"
+                },
+                "kind": {
+                  "const": "tool_call",
+                  "type": "string"
+                },
+                "toolName": {
+                  "description": "工具名。",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "callId",
+                "toolName",
+                "category",
+                "argsJson"
+              ],
+              "type": "object"
             },
+            {
+              "description": "一次工具调用收尾:没有逐台进度的工具靠它结束,不留\"准备执行\"的死状态。",
+              "properties": {
+                "callId": {
+                  "description": "调用标识。",
+                  "type": "string"
+                },
+                "category": {
+                  "$ref": "#/$defs/ToolCategory",
+                  "description": "工具类别。"
+                },
+                "kind": {
+                  "const": "tool_result",
+                  "type": "string"
+                },
+                "status": {
+                  "$ref": "#/$defs/TargetStatus",
+                  "description": "收尾状态(成功 / 失败 / 还在等批准)。"
+                },
+                "summary": {
+                  "description": "结论摘要原文(后端的话,不改写)。",
+                  "type": "string"
+                },
+                "toolName": {
+                  "description": "工具名。",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "callId",
+                "toolName",
+                "category",
+                "status",
+                "summary"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "批量执行中某台主机的状态变化。",
+              "properties": {
+                "argsJson": {
+                  "description": "入参 JSON 原文。",
+                  "type": "string"
+                },
+                "callId": {
+                  "description": "调用标识(该台属于哪一步)。",
+                  "type": "string"
+                },
+                "category": {
+                  "$ref": "#/$defs/ToolCategory",
+                  "description": "工具类别。"
+                },
+                "connId": {
+                  "description": "主机 ID。",
+                  "type": "string"
+                },
+                "connName": {
+                  "description": "主机显示名(用户起的名字)。",
+                  "type": "string"
+                },
+                "error": {
+                  "description": "失败原因原文;成功不上线。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "kind": {
+                  "const": "target_state",
+                  "type": "string"
+                },
+                "outputExcerpt": {
+                  "description": "输出摘要(截断后);无输出不上线。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "status": {
+                  "$ref": "#/$defs/TargetStatus",
+                  "description": "该台当前状态。"
+                },
+                "toolName": {
+                  "description": "工具名。",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "callId",
+                "toolName",
+                "category",
+                "argsJson",
+                "connId",
+                "connName",
+                "status"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "一次模型调用的 token 用量。",
+              "properties": {
+                "kind": {
+                  "const": "usage",
+                  "type": "string"
+                },
+                "usage": {
+                  "$ref": "#/$defs/AgentUsage",
+                  "description": "该次调用的用量。"
+                }
+              },
+              "required": [
+                "kind",
+                "usage"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "最终回答(整轮结束,`text` 是与落库同源的权威全文)。",
+              "properties": {
+                "kind": {
+                  "const": "final_response",
+                  "type": "string"
+                },
+                "text": {
+                  "description": "权威全文。",
+                  "type": "string"
+                },
+                "usage": {
+                  "$ref": "#/$defs/AgentUsage",
+                  "description": "整轮累计用量。"
+                }
+              },
+              "required": [
+                "kind",
+                "text",
+                "usage"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "某一轮回答不合格、模型正在重来(**非终态**)。",
+              "properties": {
+                "kind": {
+                  "const": "run_retry",
+                  "type": "string"
+                },
+                "text": {
+                  "description": "说明文字。",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "text"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "运行失败(终态)。",
+              "properties": {
+                "kind": {
+                  "const": "run_failed",
+                  "type": "string"
+                },
+                "text": {
+                  "description": "失败原因原文。",
+                  "type": "string"
+                },
+                "usage": {
+                  "$ref": "#/$defs/AgentUsage",
+                  "description": "已产生的用量。"
+                }
+              },
+              "required": [
+                "kind",
+                "text",
+                "usage"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "运行被取消(终态)。",
+              "properties": {
+                "kind": {
+                  "const": "run_cancelled",
+                  "type": "string"
+                },
+                "text": {
+                  "description": "取消说明(含\"已发出的命令不会自动撤回\")。",
+                  "type": "string"
+                },
+                "usage": {
+                  "$ref": "#/$defs/AgentUsage",
+                  "description": "已产生的用量。"
+                }
+              },
+              "required": [
+                "kind",
+                "text",
+                "usage"
+              ],
+              "type": "object"
+            }
+          ],
+          "properties": {
             "runId": {
               "description": "所属运行 ID。",
               "type": "string"
             },
             "seq": {
-              "description": "线程内单调递增序号(重连时按此去重)。",
+              "description": "线程内单调递增序号(重连与去重按此)。",
               "format": "int64",
               "type": "integer"
-            },
-            "targetStatus": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/TargetStatus"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "单主机状态。"
-            },
-            "text": {
-              "description": "文本增量 / 错误原文 / 标题等。",
-              "type": [
-                "string",
-                "null"
-              ]
             },
             "threadId": {
               "description": "所属线程 ID。",
               "type": "string"
-            },
-            "toolName": {
-              "description": "工具名。",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "usage": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/AgentUsage"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "用量。"
             }
           },
           "required": [
             "threadId",
             "runId",
-            "seq",
-            "kind"
+            "seq"
           ],
           "type": "object"
-        },
-        "AgentEventKind": {
-          "description": "事件类别。",
-          "oneOf": [
-            {
-              "const": "run_started",
-              "description": "运行开始。",
-              "type": "string"
-            },
-            {
-              "const": "text_delta",
-              "description": "回答文本增量。",
-              "type": "string"
-            },
-            {
-              "const": "reasoning_delta",
-              "description": "推理过程增量(仅当 provider 返回思考内容)。",
-              "type": "string"
-            },
-            {
-              "const": "approval_required",
-              "description": "需要用户批准工具调用。",
-              "type": "string"
-            },
-            {
-              "const": "target_state",
-              "description": "批量执行中某台主机的状态变化(与开步事件同一个 `call_id` 才归为一步)。",
-              "type": "string"
-            },
-            {
-              "const": "tool_call",
-              "description": "一次工具调用开始:带调用 ID、工具名、类别与入参。",
-              "type": "string"
-            },
-            {
-              "const": "tool_result",
-              "description": "一次工具调用收尾:带调用 ID 与结果摘要(没有逐台进度的工具靠它结束)。",
-              "type": "string"
-            },
-            {
-              "const": "usage",
-              "description": "一次模型调用的 token 用量。",
-              "type": "string"
-            },
-            {
-              "const": "final_response",
-              "description": "最终回答(整轮结束)。",
-              "type": "string"
-            },
-            {
-              "const": "run_failed",
-              "description": "运行失败。",
-              "type": "string"
-            },
-            {
-              "const": "run_cancelled",
-              "description": "运行被取消。",
-              "type": "string"
-            },
-            {
-              "const": "thread_title",
-              "description": "线程标题由模型归纳生成。",
-              "type": "string"
-            }
-          ]
         },
         "AgentIdRequestDto": {
           "additionalProperties": false,
@@ -802,6 +975,13 @@
               "$ref": "#/$defs/RunState",
               "description": "状态。"
             },
+            "timeline": {
+              "description": "这一轮的过程日志(已发布事件,按 seq 正序;界面时间线的唯一来源)。",
+              "items": {
+                "$ref": "#/$defs/AgentEvent"
+              },
+              "type": "array"
+            },
             "turns": {
               "description": "工具轮次。",
               "format": "int64",
@@ -827,7 +1007,8 @@
             "error",
             "usage",
             "turns",
-            "createdAt"
+            "createdAt",
+            "timeline"
           ],
           "type": "object"
         },
@@ -1383,9 +1564,6 @@
         "AgentEvent": {
           "$ref": "#/$defs/AgentEvent"
         },
-        "AgentEventKind": {
-          "$ref": "#/$defs/AgentEventKind"
-        },
         "AgentIdRequestDto": {
           "$ref": "#/$defs/AgentIdRequestDto"
         },
@@ -1497,7 +1675,6 @@
         "MemoryScope",
         "TargetScope",
         "MessageRole",
-        "AgentEventKind",
         "AgentUsage",
         "AgentEvent",
         "ThreadDto",

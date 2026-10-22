@@ -11,7 +11,7 @@
 import type { ReactNode } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ThreadSnapshotDto } from "@/types";
+import type { AgentEvent, ThreadSnapshotDto } from "@/types";
 import { AppShell } from "@/components/layout/app-shell";
 import { Sidebar } from "@/components/layout/sidebar";
 import { AgentThread } from "./agent-thread";
@@ -59,7 +59,7 @@ vi.mock("@/components/monitor/monitor-view", () => ({ MonitorView: () => null })
 vi.mock("@/components/monitor/process-view", () => ({ ProcessView: () => null }));
 vi.mock("@/components/transfers/transfer-center", () => ({ TransferCenter: () => null }));
 
-/** 一份「有历史、没在跑」的线程快照。 */
+/** 一份「有历史、没在跑」的线程快照(轮次时间线由已发布事件构成)。 */
 const snapshot = {
   thread: {
     id: "t1",
@@ -74,10 +74,49 @@ const snapshot = {
     { id: "m1", role: "user", content: "web-01 为什么慢", createdAt: 1 },
     { id: "m2", role: "assistant", content: "磁盘满了", createdAt: 2 },
   ],
-  runs: [],
+  runs: [
+    {
+      runId: "r1",
+      state: "completed",
+      prompt: "web-01 为什么慢",
+      finalText: "磁盘满了",
+      error: null,
+      usage: null,
+      turns: 1,
+      createdAt: 2,
+      timeline: [
+        { threadId: "t1", runId: "r1", seq: 1, kind: "reasoning_delta", text: "先看磁盘占用" },
+        {
+          threadId: "t1",
+          runId: "r1",
+          seq: 2,
+          kind: "tool_call",
+          toolName: "exec",
+          category: "read_only",
+          argsJson: '{"argv":["df","-h"]}'
+,
+          callId: "c1",
+        },
+        {
+          threadId: "t1",
+          runId: "r1",
+          seq: 3,
+          kind: "tool_result",
+          toolName: "exec",
+          category: "read_only",
+          argsJson: '{"argv":["df","-h"]}'
+,
+          callId: "c1",
+          status: "ok",
+          summary: "1 台完成",
+        },
+        { threadId: "t1", runId: "r1", seq: 4, kind: "text_delta", text: "磁盘满了" },
+      ],
+    },
+  ],
   pending: [],
   running: [],
-  latestSeq: 0,
+  latestSeq: 4,
 } as unknown as ThreadSnapshotDto;
 
 beforeEach(() => {
@@ -161,7 +200,7 @@ describe("AI 助手停靠右栏形态", () => {
     await screen.findByLabelText("向 Agent 提问");
     useUiStore.setState({ agentOpen: false });
     await waitFor(() => expect(screen.queryByLabelText("向 Agent 提问")).toBeNull());
-    expect(useAgentStore.getState().snapshots.t1?.messages).toHaveLength(2);
+    expect(useAgentStore.getState().snapshots.t1?.runs).toHaveLength(1);
     useUiStore.setState({ agentOpen: true });
     expect(await screen.findByLabelText("向 Agent 提问")).toBeTruthy();
     expect(screen.getByText("磁盘满了")).toBeTruthy();
@@ -177,44 +216,91 @@ describe("AI 助手停靠右栏形态", () => {
   });
 });
 
-describe("本轮回答的位置", () => {
-  /** 落库的助手回答与时间线里的回答同源(同一个 `RunOutcome.final_text`)。 */
-  const settledSnapshot = {
-    ...snapshot,
-    messages: [
-      { id: "m1", role: "user", content: "有哪些容器", createdAt: 1 },
-      { id: "m2", role: "assistant", content: "共 3 个在跑", createdAt: 2 },
-    ],
-  } as unknown as ThreadSnapshotDto;
+describe("一轮的渲染顺序", () => {
+  /** 取某段文字在文档流里的位置(渲染顺序就是断言对象)。 */
+  const at = (container: HTMLElement, needle: string) => container.textContent?.indexOf(needle) ?? -1;
 
-  beforeEach(() => {
-    api.getAgentThread.mockResolvedValue(settledSnapshot);
-    useAgentStore.setState({
-      snapshots: { t1: settledSnapshot },
-      streams: {
-        t1: {
-          seq: 4,
-          settled: true,
-          lastKind: "final_response",
-          parts: [
-            { type: "reasoning", id: "p1", text: "先看 docker ps" },
-            { type: "tool", id: "c1", toolName: "exec", done: true, ok: true, targets: {} },
-            { type: "text", id: "p2", text: "共 3 个在跑" },
-          ],
-        },
-      },
-    });
-  });
-
-  it("结算后回答排在思考与步骤之下,且全文只有时间线那一份", async () => {
+  it("回答排在思考与步骤之下,且全文只有一份", async () => {
+    useAgentStore.setState({ streams: {} });
     const { container } = render(<AgentThread threadId="t1" />);
     expect(await screen.findByText("执行命令完成")).toBeTruthy();
-    // 历史尾部那条副本不再渲染,同一段回答只有一份。
-    expect(screen.getAllByText("共 3 个在跑")).toHaveLength(1);
-    const at = (needle: string) => container.textContent?.indexOf(needle) ?? -1;
-    expect(at("有哪些容器")).toBeLessThan(at("思考过程"));
-    expect(at("思考过程")).toBeLessThan(at("执行命令完成"));
-    expect(at("执行命令完成")).toBeLessThan(at("共 3 个在跑"));
+    expect(at(container, "web-01 为什么慢")).toBeLessThan(at(container, "思考过程"));
+    expect(at(container, "思考过程")).toBeLessThan(at(container, "执行命令完成"));
+    expect(at(container, "执行命令完成")).toBeLessThan(at(container, "磁盘满了"));
+    // 界面只读这一轮的事件日志,不再读 messages 投影,所以回答不会有两份。
+    expect(screen.getAllByText("磁盘满了")).toHaveLength(1);
+    // 一轮只有一个 Agent 外壳:思考、步骤、回答排在同一个 Message 里,不各带一份头像。
+    expect(container.querySelectorAll('[data-slot="message-scroller-item"]')).toHaveLength(2);
+    expect(container.querySelectorAll('[data-slot="message-avatar"]')).toHaveLength(1);
+  });
+
+  it("重开面板先按该轮已发布日志铺底,再续上后到的增量", async () => {
+    const inflight = {
+      ...snapshot,
+      running: ["r1"],
+      runs: [
+        {
+          ...snapshot.runs[0],
+          state: "running",
+          timeline: snapshot.runs[0].timeline.slice(0, 3),
+        },
+      ],
+    } as unknown as ThreadSnapshotDto;
+    api.getAgentThread.mockResolvedValue(inflight);
+    useAgentStore.setState({ snapshots: { t1: null }, streams: {} });
+    render(<AgentThread threadId="t1" />);
+    await screen.findByText("执行命令完成");
+    expect(screen.queryByText("磁盘满了")).toBeNull();
+
+    useAgentStore
+      .getState()
+      .applyEvent({
+        threadId: "t1",
+        runId: "r1",
+        seq: 4,
+        kind: "text_delta",
+        text: "磁盘满了",
+      } as AgentEvent);
+
+    expect(await screen.findByText("磁盘满了")).toBeTruthy();
+    expect(screen.getAllByText("磁盘满了")).toHaveLength(1);
+  });
+
+  it("多轮时每一轮读自己的日志,不把当前缓冲套到历史轮次上", async () => {
+    const twoTurns = {
+      ...snapshot,
+      running: ["r2"],
+      latestSeq: 5,
+      runs: [
+        snapshot.runs[0],
+        {
+          ...snapshot.runs[0],
+          runId: "r2",
+          state: "running",
+          prompt: "再看一眼内存",
+          timeline: [],
+        },
+      ],
+    } as unknown as ThreadSnapshotDto;
+    api.getAgentThread.mockResolvedValue(twoTurns);
+    useAgentStore.setState({ snapshots: { t1: twoTurns }, streams: {} });
+    render(<AgentThread threadId="t1" />);
+    await screen.findByText("磁盘满了");
+
+    useAgentStore
+      .getState()
+      .applyEvent({
+        threadId: "t1",
+        runId: "r2",
+        seq: 5,
+        kind: "text_delta",
+        text: "内存正常",
+      } as AgentEvent);
+
+    expect(await screen.findByText("内存正常")).toBeTruthy();
+    // 第一轮的回答来自它自己的日志,不会被第二轮的缓冲顶掉。
+    expect(screen.getByText("磁盘满了")).toBeTruthy();
+    expect(screen.getByText("再看一眼内存")).toBeTruthy();
   });
 });
 

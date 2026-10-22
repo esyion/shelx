@@ -10,6 +10,7 @@ import type {
   AgentPart,
   AgentStreamFragment,
   AgentToolPart,
+  AgentUsage,
   ApprovalDecision,
   ApprovalMode,
   ApprovalDto,
@@ -51,9 +52,13 @@ export const EVENT_KIND_DISPLAY: Record<AgentEventKind, AgentDisplay> = {
   tool_result: { label: "工具结果", description: "取证或改动动作的返回内容", tone: "neutral" },
   usage: { label: "用量", description: "正在统计本轮用量", tone: "neutral" },
   final_response: { label: "完成", description: "这一轮已经答完", tone: "success" },
+  run_retry: {
+    label: "正在重来",
+    description: "上一轮回答不合格,模型正在重试",
+    tone: "warning",
+  },
   run_failed: { label: "失败", description: "这一轮没有完成", tone: "danger" },
   run_cancelled: { label: "已取消", description: "你中止了这一轮", tone: "warning" },
-  thread_title: { label: "标题", description: "对话标题已更新", tone: "neutral" },
 };
 
 /** 运行状态 → 中文。 */
@@ -204,18 +209,15 @@ export function emptyFragment(): AgentStreamFragment {
 }
 
 /**
- * 本轮回答由谁呈现:结算后的时间线已经带着权威全文,历史里那条助手消息就是它的副本。
+ * 把一份已发布的事件日志归并成时间线。
  *
- * 两条来源同源 —— 落库的 `MessageRole::Assistant` 与 `final_response` 事件带的是同一个
- * `RunOutcome.final_text`(见 `src-tauri/src/application/agent/run.rs` 的 `finish_run`),
- * 所以只留一份。留时间线那份:回答排在思考与步骤之下,与用户看到的先后一致
- * (AGENTS.md §4.1.1)。换成留历史那份,结算那一帧回答会跳到过程上面。
+ * 落库的轮次日志与流式途中走的是**同一个** `applyEvent`:同一批事件在任何时刻
+ * 喂进来都得到同样的段,所以"历史"与"正在进行"之间不需要再判断谁是谁的副本。
+ *
+ * @param events 该轮已发布的事件(按 seq 正序)。
  */
-export function answerInTimeline(
-  stream: Pick<AgentStreamFragment, "settled" | "lastKind" | "parts"> | null | undefined,
-): boolean {
-  if (!stream?.settled || stream.lastKind !== "final_response") return false;
-  return stream.parts.some((part) => part.type === "text" && part.text.trim() !== "");
+export function foldEvents(events: AgentEvent[]): AgentStreamFragment {
+  return events.reduce(applyEvent, emptyFragment());
 }
 
 /**
@@ -247,22 +249,29 @@ function replaceLastText(parts: AgentPart[], text: string, seq: number): AgentPa
 }
 
 /**
- * 结算时把回答收敛成权威单份:丢弃之前的回答段,全文落到最后一段回答的位置
- * (没有就新开一段)。流式途中网关可能把已流出的回答整段重述多遍,时间线上
- * 会留下重复副本;落库的历史消息只有权威一份,结算后的视图必须与它一致。
+ * 结算时把最后一段回答覆盖成权威全文,并收掉被它原样重述出来的副本。
+ *
+ * 更早的回答段**保留**:那是模型在步骤之间说过的话,流式途中用户已经读到,结算后
+ * 不许凭空消失(AGENTS.md §5:流式与落库同源、一轮只有一条时间线)。只覆盖最后一段,
+ * 是因为收尾全文对应的就是最后那段;网关偶尔把整段回答重述一遍,那种副本由包含判断收掉。
  */
 function settleAnswerText(parts: AgentPart[], text: string, seq: number): AgentPart[] {
-  let lastTextIndex = -1;
+  let last = -1;
   for (let index = parts.length - 1; index >= 0; index -= 1) {
     if (parts[index]?.type === "text") {
-      lastTextIndex = index;
+      last = index;
       break;
     }
   }
-  if (lastTextIndex < 0) return [...parts, { type: "text", id: `p${seq}`, text }];
+  if (last < 0) return [...parts, { type: "text", id: `p${seq}`, text }];
+  const answer = text.trim();
   return parts
-    .filter((part, index) => part.type !== "text" || index === lastTextIndex)
-    .map((part) => (part.type === "text" ? { ...part, text } : part));
+    .map((part, index) => (index === last && part.type === "text" ? { ...part, text } : part))
+    .filter((part, index) => {
+      if (part.type !== "text" || index === last) return true;
+      const spoken = part.text.trim();
+      return spoken.length === 0 || !answer.includes(spoken);
+    });
 }
 
 /**
@@ -284,93 +293,82 @@ export function applyEvent(
   next.lastKind = event.kind;
   switch (event.kind) {
     case "text_delta":
-      next.parts = appendRun(next.parts, "text", event.text ?? "", event.seq);
+      next.parts = appendRun(next.parts, "text", event.text, event.seq);
       break;
     case "reasoning_delta":
-      next.parts = appendRun(next.parts, "reasoning", event.text ?? "", event.seq);
+      next.parts = appendRun(next.parts, "reasoning", event.text, event.seq);
       break;
-    case "tool_call": {
-      if (!event.toolName) break;
+    case "tool_call":
       next.parts = [
         ...next.parts,
         {
           type: "tool",
-          id: event.callId ?? `c${event.seq}`,
+          id: event.callId,
           toolName: event.toolName,
-          argsJson: event.argsJson ?? undefined,
+          argsJson: event.argsJson,
           done: false,
           targets: {},
         },
       ];
       break;
-    }
-    case "tool_result": {
+    case "tool_result":
       // 收尾:没有逐台进度的工具(列连接、记记忆)靠它结束,
       // 否则界面上会留下一行永远停在"准备执行"的死状态。
-      const id = event.callId ?? `c${event.seq}`;
       next.parts = next.parts.map((part) =>
-        part.type === "tool" && part.id === id
-          ? {
-              ...part,
-              done: true,
-              ok: event.targetStatus === "ok",
-              summary: event.text ?? undefined,
-            }
+        part.type === "tool" && part.id === event.callId
+          ? { ...part, done: true, ok: event.status === "ok", summary: event.summary }
           : part,
       );
       break;
-    }
     case "target_state": {
-      // 键用 connId(连接名可能重名),没有 connId 时才退回显示名。
-      const connKey = event.connId ?? event.connName;
-      if (!connKey) break;
-      const target: ChainTarget = {
-        connName: event.connName ?? connKey,
-        status: event.targetStatus ?? "pending",
-      };
+      // 键用 connId(连接名可能重名)。
+      const target: ChainTarget = { connName: event.connName, status: event.status };
       // 归步靠调用身份,不靠工具名:模型一轮里并行发多个同名调用时,
       // 按名字并会把它们塞进同一步(实测出现过三行永远停在"准备执行")。
-      const index = event.callId
-        ? next.parts.findIndex((part) => part.type === "tool" && part.id === event.callId)
-        : -1;
+      const index = next.parts.findIndex((part) => part.type === "tool" && part.id === event.callId);
       if (index < 0) {
         // 重挂补发时开步事件可能落在订阅游标之前看不见:就地补一步,进度不无处安放。
         next.parts = [
           ...next.parts,
           {
             type: "tool",
-            id: event.callId ?? `t${event.seq}`,
-            toolName: event.toolName ?? "",
-            argsJson: event.argsJson ?? undefined,
+            id: event.callId,
+            toolName: event.toolName,
+            argsJson: event.argsJson,
             done: false,
-            targets: { [connKey]: target },
+            targets: { [event.connId]: target },
           },
         ];
         break;
       }
       const open = next.parts[index] as AgentToolPart;
       next.parts = next.parts.map((part, position) =>
-        position === index ? { ...open, targets: { ...open.targets, [connKey]: target } } : part,
+        position === index
+          ? { ...open, targets: { ...open.targets, [event.connId]: target } }
+          : part,
       );
       break;
     }
     case "usage":
-      next.usage = event.usage ?? next.usage;
+      next.usage = event.usage;
       break;
     case "final_response":
       next.settled = true;
-      // 完成态的全文是权威回答(与落库一致),把流式途中重述出的副本收敛掉;
-      // 失败/取消带的是说明文字,只落最后一段,不抹掉已流出的内容。
-      if (event.text) next.parts = settleAnswerText(next.parts, event.text, event.seq);
-      next.usage = event.usage ?? next.usage;
+      // 完成态的全文是权威回答(与落库一致),把流式途中重述出的副本收敛掉。
+      next.parts = settleAnswerText(next.parts, event.text, event.seq);
+      next.usage = event.usage;
       break;
     case "run_failed":
     case "run_cancelled":
+      // 失败/取消带的是说明文字,只落最后一段,不抹掉已流出的内容。
       next.settled = true;
-      if (event.text) next.parts = replaceLastText(next.parts, event.text, event.seq);
-      next.usage = event.usage ?? next.usage;
+      next.parts = replaceLastText(next.parts, event.text, event.seq);
+      next.usage = event.usage;
       break;
-    default:
+    case "run_started":
+    case "approval_required":
+    case "run_retry":
+      // 不改动时间线:问题与待批准由快照承载,重试只是"现在在做什么"的措辞来源。
       break;
   }
   return next;
@@ -381,7 +379,7 @@ export function applyEvent(
  *
  * @param usage 用量。
  */
-export function formatUsage(usage?: AgentEvent["usage"]): string {
+export function formatUsage(usage?: AgentUsage): string {
   if (!usage) return "";
   const parts: string[] = [];
   if (usage.inputTokens != null) parts.push(`输入 ${usage.inputTokens}`);

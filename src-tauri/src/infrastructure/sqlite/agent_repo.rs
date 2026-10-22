@@ -10,6 +10,8 @@ use rusqlite::{params, types::Type, Connection, OptionalExtension};
 use serde::de::DeserializeOwned;
 
 use crate::application::agent::events::AgentUsage;
+#[cfg(test)]
+use crate::application::agent::events::{AgentEvent, AgentEventPayload};
 use crate::application::agent::types::{
     AgentMemory, AgentStore, ApprovalRecord, MessageRecord, ProfileRecord, RunRecord, StoreFault,
     ThreadRecord,
@@ -128,6 +130,13 @@ fn row_to_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<RunRecord> {
         total_tokens: row.get(8)?,
         cached_input_tokens: row.get(9)?,
     };
+    let timeline: Option<String> = row.get(13)?;
+    let timeline = timeline.map(|raw| {
+        serde_json::from_str(&raw).unwrap_or_else(|err| {
+            tracing::warn!("运行日志解析失败,这一轮按「没有过程」呈现: {err}");
+            Vec::new()
+        })
+    });
     Ok(RunRecord {
         run_id: row.get(0)?,
         thread_id: row.get(1)?,
@@ -139,6 +148,7 @@ fn row_to_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<RunRecord> {
         turns: row.get(10)?,
         created_at: row.get(11)?,
         updated_at: row.get(12)?,
+        timeline: timeline.unwrap_or_default(),
     })
 }
 
@@ -234,11 +244,20 @@ impl AgentStore for SqliteAgentStore {
     fn upsert_run(&self, run: &RunRecord) -> Result<(), StoreFault> {
         let state = wire_string(&run.state)?;
         let usage = run.usage.unwrap_or_default();
+        // 空日志写成 NULL 而不是 "[]":COALESCE 靠 NULL 保住已落库的那一份。
+        let timeline = if run.timeline.is_empty() {
+            None
+        } else {
+            Some(
+                serde_json::to_string(&run.timeline)
+                    .map_err(|err| StoreFault(format!("运行日志序列化失败: {err}")))?,
+            )
+        };
         self.with_conn(|conn| {
             conn.execute(
                 "INSERT INTO agent_runs (run_id,thread_id,state,prompt,final_text,error,
-                   input_tokens,output_tokens,total_tokens,cached_input_tokens,turns,created_at,updated_at)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)
+                   input_tokens,output_tokens,total_tokens,cached_input_tokens,turns,created_at,updated_at,timeline)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)
                  ON CONFLICT(run_id) DO UPDATE SET
                    state=excluded.state,
                    prompt=CASE WHEN excluded.prompt='' THEN agent_runs.prompt ELSE excluded.prompt END,
@@ -249,6 +268,7 @@ impl AgentStore for SqliteAgentStore {
                    total_tokens=COALESCE(excluded.total_tokens, agent_runs.total_tokens),
                    cached_input_tokens=COALESCE(excluded.cached_input_tokens, agent_runs.cached_input_tokens),
                    turns=MAX(excluded.turns, agent_runs.turns),
+                   timeline=COALESCE(excluded.timeline, agent_runs.timeline),
                    updated_at=excluded.updated_at",
                 params![
                     run.run_id,
@@ -263,7 +283,8 @@ impl AgentStore for SqliteAgentStore {
                     usage.cached_input_tokens,
                     run.turns,
                     run.created_at,
-                    run.updated_at
+                    run.updated_at,
+                    timeline
                 ],
             )
         })?;
@@ -274,7 +295,7 @@ impl AgentStore for SqliteAgentStore {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
                 "SELECT run_id,thread_id,state,prompt,final_text,error,input_tokens,output_tokens,
-                        total_tokens,cached_input_tokens,turns,created_at,updated_at
+                        total_tokens,cached_input_tokens,turns,created_at,updated_at,timeline
                  FROM agent_runs WHERE thread_id = ?1 ORDER BY created_at ASC",
             )?;
             let rows = stmt.query_map(params![thread_id], row_to_run)?;
@@ -683,8 +704,23 @@ mod tests {
                 turns: 0,
                 created_at: 1,
                 updated_at: 1,
+                timeline: Vec::new(),
             })
             .unwrap();
+        let written = vec![
+            run_event(
+                1,
+                AgentEventPayload::ReasoningDelta {
+                    text: "先看磁盘".into(),
+                },
+            ),
+            run_event(
+                2,
+                AgentEventPayload::TextDelta {
+                    text: "因为磁盘满了".into(),
+                },
+            ),
+        ];
         store
             .upsert_run(&RunRecord {
                 run_id: "r1".into(),
@@ -702,6 +738,7 @@ mod tests {
                 turns: 3,
                 created_at: 1,
                 updated_at: 2,
+                timeline: written.clone(),
             })
             .unwrap();
         let runs = store.runs("t1").unwrap();
@@ -711,6 +748,29 @@ mod tests {
         assert_eq!(runs[0].state, RunState::Completed);
         assert_eq!(runs[0].turns, 3);
         assert_eq!(runs[0].usage.unwrap().total_tokens, Some(15));
+        assert_eq!(
+            runs[0].timeline, written,
+            "过程日志按序原样读回,界面时间线才有唯一真源"
+        );
+        store
+            .upsert_run(&RunRecord {
+                timeline: Vec::new(),
+                error: Some("用户取消".into()),
+                ..runs[0].clone()
+            })
+            .unwrap();
+        assert_eq!(
+            store.runs("t1").unwrap()[0].timeline.len(),
+            2,
+            "空日志不能把已落库的过程抹掉"
+        );
+    }
+
+    /// 构造一条属于 r1/t1 的运行事件(测试用)。
+    fn run_event(seq: i64, payload: AgentEventPayload) -> AgentEvent {
+        let mut event = AgentEvent::new("t1", "r1", payload);
+        event.seq = seq;
+        event
     }
 
     /// 启动清理只影响未结束的运行。
@@ -735,6 +795,7 @@ mod tests {
                     turns: 0,
                     created_at: index,
                     updated_at: index,
+                    timeline: Vec::new(),
                 })
                 .unwrap();
         }

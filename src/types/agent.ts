@@ -5,7 +5,6 @@
 export type {
   AgentEnumsDto,
   AgentEvent,
-  AgentEventKind,
   AgentIdRequestDto,
   AgentUsage,
   ApprovalDecision,
@@ -43,7 +42,7 @@ export type {
 
 import type {
   AgentEvent,
-  AgentEventKind,
+  AgentUsage,
   ApprovalDecision,
   MemoryDto,
   MessageDto,
@@ -55,6 +54,11 @@ import type {
 
 /** 对话线程(前端别名)。 */
 export type AgentThread = ThreadDto;
+/**
+ * 事件类别:从生成的判别联合直接取 `kind` 的闭集,不另抄一份枚举
+ * (后端加一类事件时,界面的中文映射表会立刻缺键而编译失败)。
+ */
+export type AgentEventKind = import("./gen/agent").AgentEvent["kind"];
 /** 一条消息(前端别名)。 */
 export type AgentMessage = MessageDto;
 /** 模型接入点(前端别名)。 */
@@ -89,7 +93,7 @@ export type AgentStreamFragment = {
   /** 最近一条事件类别(界面用它显示"现在在做什么",不显示英文原值)。 */
   lastKind?: AgentEventKind;
   /** 本轮用量。 */
-  usage?: AgentEvent["usage"];
+  usage?: AgentUsage;
   /** 是否已收到终态事件。 */
   settled: boolean;
 };
