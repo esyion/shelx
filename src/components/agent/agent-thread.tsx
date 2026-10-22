@@ -14,13 +14,14 @@
 
 import { Fragment, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowDown, Sparkles } from "lucide-react";
+import { ArrowDown } from "lucide-react";
 import type { RunDto } from "@/types";
 import { EVENT_KIND_DISPLAY, MESSAGE_ROLE_DISPLAY, foldEvents } from "@/lib/agent-events";
 import { chainSegments, type AgentSegment } from "@/lib/agent-chain";
 import { resolveAgentTargets } from "@/app/api";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ShelxMark } from "@/components/brand/shelx-mark";
 import { Button } from "@/components/ui/button";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
@@ -51,19 +52,19 @@ const SUGGESTIONS = [
   "这台机器的 nginx 配置里 upstream 长什么样",
 ];
 
-/** Agent 侧一段的外壳(助手的答案不套气泡)。 */
-function AgentRow({ caption, children }: { caption: string; children: ReactNode }) {
+/** Agent 侧一段的外壳(助手的答案不套气泡);身份由头像标记,caption 为空时不渲染抬头。 */
+function AgentRow({ caption, children }: { caption: string | null; children: ReactNode }) {
   return (
     <Message align="start">
       <MessageAvatar>
         <Avatar size="sm">
           <AvatarFallback>
-            <Sparkles className="size-3.5 text-primary" />
+            <ShelxMark className="size-3.5" />
           </AvatarFallback>
         </Avatar>
       </MessageAvatar>
       <MessageContent>
-        <MessageHeader>{caption}</MessageHeader>
+        {caption && <MessageHeader>{caption}</MessageHeader>}
         {children}
       </MessageContent>
     </Message>
@@ -235,9 +236,7 @@ export function AgentThread({ threadId }: { threadId: string }) {
                         // 一轮的回答是一个 `Message`:思考、步骤、答案按发生顺序排在同一个
                         // `MessageContent` 里(官方 chat 形态),头像与标题不重复出现。
                         <MessageScrollerItem messageId={`${turn.run.runId}:agent`}>
-                          <AgentRow
-                            caption={answering ? "正在回答" : MESSAGE_ROLE_DISPLAY.assistant.label}
-                          >
+                          <AgentRow caption={answering ? "正在回答" : null}>
                             {turn.segments.map((segment, index) => {
                               if (segment.kind === "reasoning") {
                                 if (!showReasoning) return null;

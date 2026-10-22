@@ -9,11 +9,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Sparkles, X } from "lucide-react";
+import { X } from "lucide-react";
 import type { ApprovalDto } from "@/types";
 import { listPendingApprovals } from "@/app/api";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { ShelxMark } from "@/components/brand/shelx-mark";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
@@ -100,7 +101,7 @@ export function AgentPanel() {
     >
       <header className="flex shrink-0 flex-col gap-0.5 border-b px-4 py-3 pr-14">
         <h2 className="flex items-center gap-2 text-sm font-medium">
-          <Sparkles className="size-4 text-primary" />
+          <ShelxMark className="size-4 shrink-0" />
           AI 助手
           {elsewhere.length > 0 && (
             <Badge

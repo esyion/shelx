@@ -19,10 +19,10 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
-  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TONE_BADGE } from "@/lib/agent-events";
+import { ShelxMark } from "@/components/brand/shelx-mark";
 import { SidebarMonitor } from "@/components/monitor/sidebar-monitor";
 import { UpdateButton } from "@/components/layout/update-button";
 import { useAgentStore } from "@/stores/agent";
@@ -219,7 +219,7 @@ function SidebarFooter() {
         title="让 Agent 帮你排查和处理服务器(停靠右侧栏,终端自动让位不被遮挡)"
         onClick={() => toggleAgent()}
       >
-        <Sparkles className="size-4" />
+        <ShelxMark className="size-4 shrink-0" />
         AI 助手
         {pendingCount > 0 && (
           <Badge
