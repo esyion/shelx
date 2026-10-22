@@ -1,21 +1,30 @@
 /**
- * 共享记忆管理(设置 → AI → 记忆):列出、启用/停用、编辑、删除。
+ * 共享记忆管理(设置 → AI → 记忆):列出、启用/停用、删除 + 弹窗新增/编辑。
  *
- * 布局是「列表优先 + 按需展开的创建器」:看与启停是高频动作,创建与编辑
- * 点「新增记忆 / 编辑」才展开,空态直接把创建器摆出来(AGENTS.md §4.1.1
- * 「主动帮用户做」)。新建一律立即生效,启停只发生在列表行 —— 新建时问
- * 「是否生效」是个没人需要的假决策,已删除(原「立即生效」开关)。
+ * 列表是主体(看与启停是高频动作,计数与启用数就地可见);新增与编辑共用
+ * 一份创建器,点「新增记忆 / 编辑 / 写下第一条」弹 shadcn Dialog,
+ * 取消/关闭即丢弃草稿(用户要求弹窗交互)。空态给「写下第一条」入口,
+ * 不预填表单。新建一律立即生效,启停只发生在列表行 —— 新建时问「是否生效」
+ * 是个没人需要的假决策,已删除(原「立即生效」开关)。
  * 作用域候选取自后端枚举(界面不抄一份取值,AGENTS.md §5);
  * 只有「全局 / 这台主机」两档,用 ToggleGroup 而不是下拉。
- * 保存失败保留草稿并把后端原文显示在页内,不用固定文案吞错。
+ * 保存失败弹窗保持打开、草稿保留,后端原文在弹窗内可见,不用固定文案吞错。
  */
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Brain, Plus, Trash2 } from "lucide-react";
 import type { AgentMemoryEntry, MemoryScope } from "@/types";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Empty,
   EmptyContent,
@@ -24,6 +33,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { FieldError } from "@/components/ui/field";
 import {
   Item,
   ItemActions,
@@ -37,7 +47,6 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { MEMORY_SCOPE_DISPLAY } from "@/lib/agent-events";
-import { cn } from "@/lib/utils";
 import { useAgentStore } from "@/stores/agent";
 import { useConnectionsStore, listConnectionLeaves } from "@/stores/connections";
 import { useUiStore } from "@/stores/ui";
@@ -45,7 +54,7 @@ import { useUiStore } from "@/stores/ui";
 /** 记忆内容长度上限(与后端校验同源:超长由 maxLength 在源头拦下)。 */
 const MEMORY_CONTENT_MAX = 500;
 
-/** 创建器/编辑器共用的草稿(不含「是否生效」:新建一律生效,启停在列表行做)。 */
+/** 弹窗创建器/编辑器共用的草稿(不含「是否生效」:新建一律生效,启停在列表行做)。 */
 type Draft = { id: string | null; scope: MemoryScope; connId: string; content: string };
 
 /** 空草稿(作用域默认第一档由界面渲染时兜底)。 */
@@ -67,17 +76,9 @@ export function MemoryManager() {
   const tree = useConnectionsStore((state) => state.tree);
   const toast = useUiStore((state) => state.toast);
   const hosts = useMemo(() => listConnectionLeaves(tree), [tree]);
-  /** `null` = 创建器收起;否则是新建/编辑中的草稿。 */
+  /** `null` = 弹窗关闭;否则是新建/编辑中的草稿。 */
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
-  const composerClosed = draft === null;
-
-  /** 空态下创建器常开:还没有记忆时,写下第一条就是唯一要做的下一步。 */
-  useEffect(() => {
-    if (!loading && memories.length === 0 && composerClosed && scopes.length > 0) {
-      setDraft(emptyDraft());
-    }
-  }, [loading, memories.length, composerClosed, scopes.length]);
 
   /** 主机未选/已失效:提交按钮禁用,并在选择器下方就地说明原因。 */
   const hostReason =
@@ -91,7 +92,7 @@ export function MemoryManager() {
   const saveBlockReason = !draft?.content.trim() ? "先写要记的内容" : hostReason;
   const canSave = Boolean(draft) && !saving && !saveBlockReason && scopes.length > 0;
 
-  /** 保存草稿(新建或覆盖):失败保留草稿,由页内错误提示接住。 */
+  /** 保存草稿(新建或覆盖):失败保留草稿,由弹窗内错误提示接住。 */
   async function submit(): Promise<void> {
     if (!draft || !canSave) return;
     setSaving(true);
@@ -109,116 +110,7 @@ export function MemoryManager() {
     }
   }
 
-  /**
-   * 创建器(空态与列表态共用一个实例,状态都挂在管理器上,
-   * 两个位置切换不会丢草稿)。
-   */
-  function composer(): React.ReactNode {
-    if (!draft) return null;
-    return (
-      <section
-        aria-label={draft.id ? "编辑记忆" : "新增记忆"}
-        className="flex flex-col gap-4 rounded-lg border bg-muted/40 p-4"
-      >
-        <div className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">这条记忆给谁用</span>
-          <ToggleGroup
-            size="sm"
-            variant="outline"
-            aria-label="这条记忆给谁用"
-            value={[draft.scope]}
-            onValueChange={(value) => {
-              const next = value[0] as MemoryScope | undefined;
-              if (!next) return;
-              setDraft((previous) => (previous ? { ...previous, scope: next } : previous));
-            }}
-          >
-            {scopes.map((scope) => (
-              <ToggleGroupItem key={scope} value={scope} className="px-3 text-xs">
-                {MEMORY_SCOPE_DISPLAY[scope].label}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-          <p className="text-xs text-muted-foreground">
-            {MEMORY_SCOPE_DISPLAY[draft.scope].description}
-          </p>
-        </div>
-        {draft.scope === "connection" && (
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="memory-host" className="text-sm font-medium">
-              哪台服务器
-            </label>
-            <NativeSelect
-              id="memory-host"
-              value={draft.connId}
-              onChange={(event) =>
-                setDraft((previous) =>
-                  previous ? { ...previous, connId: event.target.value } : previous,
-                )
-              }
-            >
-              <NativeSelectOption value="">选择服务器…</NativeSelectOption>
-              {hosts.map((host) => (
-                <NativeSelectOption key={host.id} value={host.id}>
-                  {host.name}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-            <p
-              className={cn(
-                "text-xs",
-                hostReason ? "text-destructive" : "text-muted-foreground",
-              )}
-            >
-              {hostReason ?? "只在和这台主机相关的问题里参考"}
-            </p>
-          </div>
-        )}
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="memory-content" className="text-sm font-medium">
-            要记住的事
-          </label>
-          <Textarea
-            id="memory-content"
-            rows={2}
-            maxLength={MEMORY_CONTENT_MAX}
-            placeholder="例:日志在 /data/logs,不要看 /var/log"
-            value={draft.content}
-            onChange={(event) =>
-              setDraft((previous) =>
-                previous ? { ...previous, content: event.target.value } : previous,
-              )
-            }
-          />
-          <div className="flex items-start justify-between gap-3">
-            <p className="text-xs text-muted-foreground">
-              写机器的固定事实,不要写口令、密钥这类凭据(会被直接拒收)。
-            </p>
-            <span className="shrink-0 text-xs text-muted-foreground">
-              {`${draft.content.length}/${MEMORY_CONTENT_MAX}`}
-            </span>
-          </div>
-        </div>
-        <div className="flex items-center justify-end gap-2">
-          {memories.length > 0 && (
-            <Button size="sm" variant="ghost" onClick={() => setDraft(null)}>
-              取消
-            </Button>
-          )}
-          <Button
-            size="sm"
-            onClick={() => void submit()}
-            disabled={!canSave}
-            title={saveBlockReason ?? undefined}
-          >
-            {draft.id ? "保存修改" : "记住这条"}
-          </Button>
-        </div>
-      </section>
-    );
-  }
-
-  /** 空态:说明 + 创建器一体,写下第一条就是下一步。 */
+  /** 空态:给「写下第一条」入口,点开就是弹窗创建器。 */
   if (memories.length === 0) {
     return (
       <div className="flex flex-col gap-3">
@@ -249,22 +141,151 @@ export function MemoryManager() {
               </EmptyMedia>
               <EmptyTitle>{loading ? "正在加载记忆…" : "还没有记忆"}</EmptyTitle>
               <EmptyDescription>
-                写下机器的固定事实(日志位置、服务名、不要碰的目录),Agent
-                每次回答都会参考。
+                在工作区中保存并复用长期上下文，新会话生效。开启后可能增加模型调用和 Token 成本。
               </EmptyDescription>
             </EmptyHeader>
-            <EmptyContent>{composer()}</EmptyContent>
+            <EmptyContent>
+              <Button
+                size="sm"
+                onClick={() => setDraft(emptyDraft())}
+                disabled={scopes.length === 0}
+              >
+                <Plus data-icon="inline-start" />
+                写下第一条
+              </Button>
+            </EmptyContent>
           </Empty>
         )}
+        {draft !== null && memoryDialog()}
       </div>
     );
   }
 
   const enabledCount = memories.filter((memory) => memory.enabled).length;
 
+  /** 弹窗:新增/编辑共用一份创建器;动作按钮在页脚,禁用原因就地可见。 */
+  function memoryDialog(): React.ReactNode {
+    if (!draft) return null;
+    return (
+      <Dialog
+        open
+        onOpenChange={(open) => {
+          if (!open) setDraft(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{draft.id ? "编辑记忆" : "新增记忆"}</DialogTitle>
+            <DialogDescription>
+              保存后立即生效:下一次提问就会把这条事实带进背景。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium">这条记忆给谁用</span>
+              <ToggleGroup
+                size="sm"
+                variant="outline"
+                aria-label="这条记忆给谁用"
+                value={[draft.scope]}
+                onValueChange={(value) => {
+                  const next = value[0] as MemoryScope | undefined;
+                  if (!next) return;
+                  setDraft((previous) => (previous ? { ...previous, scope: next } : previous));
+                }}
+              >
+                {scopes.map((scope) => (
+                  <ToggleGroupItem key={scope} value={scope} className="px-3 text-xs">
+                    {MEMORY_SCOPE_DISPLAY[scope].label}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+              <p className="text-xs text-muted-foreground">
+                {MEMORY_SCOPE_DISPLAY[draft.scope].description}
+              </p>
+            </div>
+            {draft.scope === "connection" && (
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="memory-host" className="text-sm font-medium">
+                  哪台服务器
+                </label>
+                <NativeSelect
+                  id="memory-host"
+                  value={draft.connId}
+                  onChange={(event) =>
+                    setDraft((previous) =>
+                      previous ? { ...previous, connId: event.target.value } : previous,
+                    )
+                  }
+                >
+                  <NativeSelectOption value="">选择服务器…</NativeSelectOption>
+                  {hosts.map((host) => (
+                    <NativeSelectOption key={host.id} value={host.id}>
+                      {host.name}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+                {hostReason ? (
+                  <FieldError>{hostReason}</FieldError>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    只在和这台主机相关的问题里参考
+                  </p>
+                )}
+              </div>
+            )}
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="memory-content" className="text-sm font-medium">
+                要记住的事
+              </label>
+              <Textarea
+                id="memory-content"
+                rows={2}
+                maxLength={MEMORY_CONTENT_MAX}
+                placeholder="例:日志在 /data/logs,不要看 /var/log"
+                value={draft.content}
+                onChange={(event) =>
+                  setDraft((previous) =>
+                    previous ? { ...previous, content: event.target.value } : previous,
+                  )
+                }
+              />
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-xs text-muted-foreground">
+                  写机器的固定事实,不要写口令、密钥这类凭据(会被直接拒收)。
+                </p>
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {`${draft.content.length}/${MEMORY_CONTENT_MAX}`}
+                </span>
+              </div>
+            </div>
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+          </div>
+          <DialogFooter>
+            <Button size="sm" variant="ghost" onClick={() => setDraft(null)}>
+              取消
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void submit()}
+              disabled={!canSave}
+              title={saveBlockReason ?? undefined}
+            >
+              {draft.id ? "保存修改" : "记住这条"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-3">
-      {error && (
+      {error && !draft && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
           <AlertAction>
@@ -293,19 +314,13 @@ export function MemoryManager() {
           </AlertAction>
         </Alert>
       )}
-      {composer()}
       <ItemGroup className="gap-2">
         {memories.map((memory: AgentMemoryEntry) => {
           const host = memory.connId
             ? (hosts.find((item) => item.id === memory.connId)?.name ?? "已删除的连接")
             : null;
           return (
-            <Item
-              key={memory.id}
-              variant="outline"
-              size="sm"
-              className={cn(draft?.id === memory.id && "ring-1 ring-ring")}
-            >
+            <Item key={memory.id} variant="outline" size="sm">
               <ItemContent>
                 <ItemTitle>{memory.content}</ItemTitle>
                 <ItemDescription>
@@ -359,6 +374,7 @@ export function MemoryManager() {
           );
         })}
       </ItemGroup>
+      {draft !== null && memoryDialog()}
     </div>
   );
 }

@@ -250,10 +250,32 @@ describe("批准与取消", () => {
 });
 
 describe("接入点与记忆", () => {
-  it("协议探测失败时错误可见且不落库为可用", async () => {
+  it("协议探测失败:结论写进 error 供弹窗展示,返回 false", async () => {
     api.testAgentProfile.mockResolvedValue({ supported: false, message: "只实现旧接口", usage: null });
-    const result = await useAgentStore.getState().probeProfile("p1");
-    expect(result).toBeNull();
+    useAgentStore.setState({ error: null });
+    const result = await useAgentStore.getState().probeProfile({
+      id: "p1",
+      protocol: "openai_responses",
+      model: "some-model",
+      baseUrl: "https://gateway.example/v1",
+      apiKey: null,
+    });
+    expect(result).toBe(false);
+    expect(useAgentStore.getState().error).toBe("只实现旧接口");
+  });
+
+  it("协议探测成功:返回 true 并清掉上一次的错误", async () => {
+    api.testAgentProfile.mockResolvedValue({ supported: true, message: "接入点支持要求的协议", usage: null });
+    useAgentStore.setState({ error: "上一次保存失败的旧错误" });
+    const result = await useAgentStore.getState().probeProfile({
+      id: null,
+      protocol: "openai_responses",
+      model: "some-model",
+      baseUrl: null,
+      apiKey: "sk-test",
+    });
+    expect(result).toBe(true);
+    expect(useAgentStore.getState().error).toBeNull();
   });
 
   it("模型窗口按名缓存:同一个模型两次查只发一次 IPC", async () => {

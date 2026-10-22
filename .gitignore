@@ -33,3 +33,4 @@ dist-ssr
 
 # wasm codec crate 构建产物
 src-tauri/crates/shelx-codec/target/
+.zcodeignore

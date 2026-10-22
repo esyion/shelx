@@ -20,8 +20,7 @@ export default function MemorySettingsPage() {
     <div className="flex flex-col gap-4 pb-6">
       <PageHeader
         title="记忆"
-        description="写下机器的固定事实(日志位置、服务名、不要碰的目录),Agent
-          每次回答都会参考;在这里改动立即生效,不用重开对话。"
+        description="在工作区中保存并复用长期上下文，新会话生效。开启后可能增加模型调用和 Token 成本。"
       />
       <MemoryManager />
     </div>

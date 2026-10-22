@@ -1,28 +1,38 @@
 /**
  * shadcn base 对话组件的行为回归测试(AGENTS.md §9:测用户可见行为)。
  *
- * 锁六件事:
+ * 锁九件事:
  * 1. 审计轨迹说人话(中文动作 + 连接名 + 耗时),不出现内部工具名与裸 ID;
  * 2. 待批准是"每台一个决定",默认拒绝,提交出去的逐台决策与界面选择一致;
  * 3. 命令与输出用 CodeBlock,不回退成手写 `<pre>`;
  * 4. 思维链一步 = 一次工具调用(扇出的多台合成一步),摘要按时态报步数与未完成的步数;
  * 5. 思考原文整段走 Reasoning 折叠,不被拆成一行行假步骤;
- * 6. 上下文用量按设置里的预算报百分比,没有分母就不报百分比、不留空壳。
+ * 6. 上下文用量按设置里的预算报百分比,没有分母就不报百分比、不留空壳;
+ * 7. 新对话还没有用量、徽标不渲染时,输入区发送键仍右对齐 —— 对齐寄存在永远
+ *    在场的发送/停止键上,不寄存在按需渲染的用量徽标上(4578753 引入的回归);
+ * 8. 模型选择跟输入区走:键上回显线程当前接入点,选中即按线程落库;
+ * 9. 模式切换跟输入区走:档位候选取设置契约,每档说清"选了会发生什么",
+ *    选中即按线程落库;+ 占位键没能力就禁用,不摆可点的假开关。
  */
+
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentToolPart, ApprovalDto, AuditDto } from "@/types";
+import type { AgentToolPart, ApprovalDto, AuditDto, AgentProfile, SettingSpec } from "@/types";
 import { ApprovalCard } from "./approval-card";
 import { AuditList } from "./audit-list";
 import { ChainOfThought } from "./chain-of-thought";
 import { ContextUsage } from "./context-usage";
 import { Reasoning } from "./reasoning";
+import { ThreadComposer } from "./thread-composer";
 import { useAgentStore } from "@/stores/agent";
 import { useConnectionsStore } from "@/stores/connections";
+import { useSettingsStore } from "@/stores/settings";
 
 const api = vi.hoisted(() => ({
   listAgentAudit: vi.fn(),
   respondToolApproval: vi.fn(),
+  updateAgentThread: vi.fn(),
+  getAgentThread: vi.fn(),
 }));
 
 vi.mock("@/app/api", () => api);
@@ -79,6 +89,10 @@ beforeEach(() => {
       protocols: ["openai_responses", "anthropic_messages"],
       approvalDecisions: ["denied", "allowed_once", "allowed_always"],
       memoryScopes: ["global", "connection"],
+      profileLimits: {
+        contextWindow: { min: 1_000, max: 10_000_000 },
+        maxOutputTokens: { min: 1, max: 10_000_000 },
+      },
     },
   });
   // 连接树只用来把 connId 翻成用户起的名字。
@@ -270,5 +284,180 @@ describe("上下文用量(Context pattern)", () => {
     cleanup();
     const { container } = render(<ContextUsage used={0} contextWindow={1000} budget={0} />);
     expect(container.textContent).toBe("");
+  });
+});
+
+describe("对话输入区(ThreadComposer)", () => {
+  it("新对话还没有用量、徽标不渲染时,发送键所在一组仍右对齐", () => {
+    cleanup();
+    render(
+      <ThreadComposer
+        threadId="t1"
+        busy={false}
+        runningId={null}
+        profileId=""
+        approvalMode="read_only_auto"
+        used={0}
+        contextWindow={1000}
+        budget={0}
+      />,
+    );
+    expect(screen.queryByText(/上下文/)).toBeNull();
+    const send = screen.getByLabelText("发送");
+    expect((send.parentElement as HTMLElement).className).toContain("ml-auto");
+  });
+
+  it("运行中的停止键同组右对齐,不随状态切换掉对齐", () => {
+    cleanup();
+    render(
+      <ThreadComposer
+        threadId="t1"
+        busy
+        runningId="r1"
+        profileId=""
+        approvalMode="read_only_auto"
+        used={400}
+        contextWindow={1000}
+        budget={0}
+      />,
+    );
+    const stop = screen.getByLabelText("取消这一轮");
+    expect((stop.parentElement as HTMLElement).className).toContain("ml-auto");
+  });
+
+  it("+ 是占位键:能力没落地就禁用并说明,不摆可点的假开关", () => {
+    cleanup();
+    render(
+      <ThreadComposer
+        threadId="t1"
+        busy={false}
+        runningId={null}
+        profileId=""
+        approvalMode="read_only_auto"
+        used={0}
+        contextWindow={1000}
+        budget={0}
+      />,
+    );
+    const plus = screen.getByLabelText("更多能力(准备中)") as HTMLButtonElement;
+    expect(plus.disabled).toBe(true);
+    expect(plus.title).toContain("准备中");
+  });
+
+  it("键盘提示走占位文案,底行不再另放提示被挤换行", () => {
+    cleanup();
+    render(
+      <ThreadComposer
+        threadId="t1"
+        busy={false}
+        runningId={null}
+        profileId=""
+        approvalMode="read_only_auto"
+        used={0}
+        contextWindow={1000}
+        budget={0}
+      />,
+    );
+    const textarea = screen.getByLabelText("向 Agent 提问") as HTMLTextAreaElement;
+    expect(textarea.placeholder).toBe("Enter 发送，Shift+Enter 换行");
+    expect(screen.queryByText(/Enter 发送/)).toBeNull();
+  });
+});
+
+describe("输入区的模型选择(Model Selector pattern)", () => {
+  /** 两档接入点:p1 是线程当前选中的,p2 用来验证切换。 */
+  const profiles = [
+    { id: "p1", label: "Gem", model: "glm-5.3" },
+    { id: "p2", label: "Gem", model: "glm-5.2" },
+  ] as unknown as AgentProfile[];
+
+  function renderComposer(): void {
+    render(
+      <ThreadComposer
+        threadId="t1"
+        busy={false}
+        runningId={null}
+        profileId="p1"
+        approvalMode="read_only_auto"
+        used={0}
+        contextWindow={1000}
+        budget={0}
+      />,
+    );
+  }
+
+  it("键上回显线程当前选中的接入点", () => {
+    cleanup();
+    useAgentStore.setState({ profiles });
+    renderComposer();
+    expect(screen.getByRole("button", { name: "Gem · glm-5.3" })).toBeTruthy();
+  });
+
+  it("菜单列出全部接入点,选中即按线程落库", async () => {
+    cleanup();
+    useAgentStore.setState({ profiles });
+    api.updateAgentThread.mockResolvedValue({ id: "t1" });
+    api.getAgentThread.mockResolvedValue(null);
+    renderComposer();
+    fireEvent.click(screen.getByRole("button", { name: "Gem · glm-5.3" }));
+    const option = await screen.findByRole("menuitemradio", { name: "Gem · glm-5.2" });
+    expect(screen.getAllByRole("menuitemradio")).toHaveLength(2);
+    fireEvent.click(option);
+    await waitFor(() =>
+      expect(api.updateAgentThread).toHaveBeenCalledWith(
+        expect.objectContaining({ threadId: "t1", profileId: "p2" }),
+      ),
+    );
+  });
+});
+
+describe("输入区的模式切换(审批档位)", () => {
+  /** 档位候选照设置契约形状登记,界面不自带一份枚举。 */
+  const approvalSpec: SettingSpec = {
+    default: "read_only_auto",
+    group: "agent",
+    kind: { kind: "enum", options: ["read_only_auto", "all_confirm", "read_only_only"] },
+    path: "agent.approvalMode",
+    unit: null,
+  };
+
+  function renderComposer(): void {
+    render(
+      <ThreadComposer
+        threadId="t1"
+        busy={false}
+        runningId={null}
+        profileId=""
+        approvalMode="read_only_auto"
+        used={0}
+        contextWindow={1000}
+        budget={0}
+      />,
+    );
+  }
+
+  it("键上回显线程当前档位", () => {
+    cleanup();
+    useSettingsStore.setState({ schema: [approvalSpec] });
+    renderComposer();
+    expect(screen.getByRole("button", { name: "只读自动,改动需批准" })).toBeTruthy();
+  });
+
+  it("每档说清选了会发生什么,选中即按线程落库", async () => {
+    cleanup();
+    useSettingsStore.setState({ schema: [approvalSpec] });
+    api.updateAgentThread.mockResolvedValue({ id: "t1" });
+    api.getAgentThread.mockResolvedValue(null);
+    renderComposer();
+    fireEvent.click(screen.getByRole("button", { name: "只读自动,改动需批准" }));
+    const option = await screen.findByRole("menuitemradio", { name: /每一步都要批准/ });
+    expect(screen.getAllByRole("menuitemradio")).toHaveLength(3);
+    expect(screen.getByText(/包括只读取证,每个操作都先经你确认/)).toBeTruthy();
+    fireEvent.click(option);
+    await waitFor(() =>
+      expect(api.updateAgentThread).toHaveBeenCalledWith(
+        expect.objectContaining({ threadId: "t1", approvalMode: "all_confirm" }),
+      ),
+    );
   });
 });

@@ -1,18 +1,32 @@
 /**
- * 模型配置表单(草稿态)。
+ * 「新增/编辑接入点」弹窗的表单(标题、字段区与页脚动作都在这里)。
  *
- * 只允许两种新协议;密钥只写不回显;自建网关必须先通过协议确认才允许保存,
- * 前置条件在点按钮之前就说清(AGENTS.md §4.1.1「必填与前置条件要事前拦」)。
- * 由「模型配置」页按需展开(新增/编辑),取消即收起不保存。
+ * 表单用 zod + React Hook Form(schema 与草稿映射在 `profile-draft.ts`):
+ * 字段级错误就地显示,提交时聚焦第一个错误控件。字段一律竖排
+ * (label 在上、输入在下,shadcn Field 默认 vertical 朝向),说明跟在输入框下。
+ * 「协议确认」不是可手拨的开关 —— 它只是「测试并确认协议」跑完后的结果状态
+ * (AGENTS.md §4.1.1:不放假开关);密钥只写不回显。
  */
 "use client";
 
-import type { AgentProfile, ProtocolKind } from "@/types";
+import { useMemo } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Controller, useForm } from "react-hook-form";
+import type { ProtocolKind, TestProfileRequestDto, UpsertProfileRequestDto } from "@/types";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Field,
+  FieldContent,
   FieldDescription,
+  FieldError,
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
@@ -21,292 +35,363 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Switch } from "@/components/ui/switch";
 import { PROTOCOL_DISPLAY } from "@/lib/agent-events";
 import { useAgentStore } from "@/stores/agent";
+import {
+  buildProfileSchema,
+  draftToRequest,
+  draftToTestRequest,
+  formatTokens,
+  type ProfileFormValues,
+} from "./profile-draft";
 
-/** 接入点草稿。 */
-export type ProfileDraft = {
-  id: string | null;
-  label: string;
-  protocol: ProtocolKind;
-  model: string;
-  baseUrl: string;
-  responsesVerified: boolean;
-  apiKey: string;
-  enabled: boolean;
-  /** 上下文窗口覆盖(文本态,空 = 用模型目录的值)。 */
-  contextWindow: string;
-  /** 单次回复上限覆盖(文本态,空 = 用模型目录的值)。 */
-  maxOutputTokens: string;
+/** 数据层公开类型与映射(列表启停也用),保持模块单一出口。 */
+export {
+  blankDraft,
+  draftFromProfile,
+  draftToRequest,
+  type ProfileFormValues,
+} from "./profile-draft";
+
+/** 弹窗内的异步动作,由页面接 store(表单不直接碰 IPC)。 */
+export type ProfileFormActions = {
+  /** 保存;成功返回 true,表单随之请求关闭弹窗。 */
+  save: (request: UpsertProfileRequestDto) => Promise<boolean>;
+  /** 对表单当前值直接探测(不落库);true = 支持要求的协议。 */
+  probe: (request: TestProfileRequestDto) => Promise<boolean>;
 };
 
-/** 空草稿。 */
-export function blankDraft(): ProfileDraft {
-  return {
-    id: null,
-    label: "",
-    protocol: "openai_responses",
-    model: "",
-    baseUrl: "",
-    responsesVerified: false,
-    apiKey: "",
-    enabled: true,
-    contextWindow: "",
-    maxOutputTokens: "",
-  };
-}
-
-/** 由已有配置填草稿(密钥留空表示不改动)。 */
-export function draftFromProfile(profile: AgentProfile): ProfileDraft {
-  return {
-    id: profile.id,
-    label: profile.label,
-    protocol: profile.protocol,
-    model: profile.model,
-    baseUrl: profile.baseUrl ?? "",
-    responsesVerified: profile.responsesVerified,
-    apiKey: "",
-    enabled: profile.enabled,
-    contextWindow: profile.contextWindow == null ? "" : String(profile.contextWindow),
-    maxOutputTokens:
-      profile.maxOutputTokens == null ? "" : String(profile.maxOutputTokens),
-  };
-}
-
-/** 手填的 token 数:空串 = 未填(用目录值),非法值返回 `undefined` 供界面拦下。 */
-function parseTokens(raw: string): number | null | undefined {
-  const text = raw.trim();
-  if (!text) return null;
-  const value = Number(text.replace(/[_,\s]/g, ""));
-  return Number.isInteger(value) && value > 0 ? value : undefined;
-}
-
-/** 千分位读数(目录带出的窗口是六位数,不给分隔符读不动)。 */
-function formatTokens(value: number): string {
-  return new Intl.NumberFormat("zh-CN").format(value);
-}
-
-/** 草稿里的窗口/上限是否填得下手(非法时保存按钮要禁用并说明)。 */
-export function draftTokenError(draft: ProfileDraft): string | null {
-  const window = parseTokens(draft.contextWindow);
-  const output = parseTokens(draft.maxOutputTokens);
-  if (window === undefined) return "上下文窗口要填大于 0 的整数(tokens)";
-  if (output === undefined) return "单次回复上限要填大于 0 的整数(tokens)";
-  if (window != null && output != null && output >= window) {
-    return "单次回复上限必须小于上下文窗口,否则请求没有留给历史的位置";
-  }
-  return null;
-}
-
-/** 草稿 → 保存请求(地址为空表示用官方地址;密钥为空表示不改动)。 */
-export function draftToRequest(draft: ProfileDraft): {
-  id: string | null;
-  label: string;
-  protocol: ProtocolKind;
-  model: string;
-  baseUrl: string | null;
-  responsesVerified: boolean;
-  apiKey: string | null;
-  enabled: boolean;
-  contextWindow: number | null;
-  maxOutputTokens: number | null;
-} {
-  const baseUrl = draft.baseUrl.trim();
-  const apiKey = draft.apiKey.trim();
-  return {
-    id: draft.id,
-    label: draft.label,
-    protocol: draft.protocol,
-    model: draft.model.trim(),
-    baseUrl: baseUrl ? baseUrl : null,
-    responsesVerified: draft.responsesVerified,
-    apiKey: apiKey ? apiKey : null,
-    enabled: draft.enabled,
-    contextWindow: parseTokens(draft.contextWindow) ?? null,
-    maxOutputTokens: parseTokens(draft.maxOutputTokens) ?? null,
-  };
-}
+/** 弹窗表单属性。 */
+export type ProfileFormProps = {
+  /** 初始值(新增空草稿或由已有配置填入);弹窗每次打开都按它重挂表单。 */
+  initialValues: ProfileFormValues;
+  /** 保存/探测进行中(两个动作共用,页脚按钮一并禁用)。 */
+  busy: boolean;
+  /** store 层错误原文(保存/探测失败的原因,弹窗内可见,不用固定文案吞错)。 */
+  storeError: string | null;
+  /** 异步动作。 */
+  actions: ProfileFormActions;
+  /** 关闭弹窗(取消或保存成功后由表单请求)。 */
+  onClose: () => void;
+};
 
 /**
- * 渲染模型配置表单。
+ * 渲染「新增/编辑接入点」弹窗的全部内容(标题、字段区与页脚动作)。
  *
- * @param draft 当前草稿。
- * @param onChange 草稿变更回调。
- * @param busy 保存/探测进行中。
- * @param onProbe 先落库再探测协议。
- * @param onSave 保存草稿。
- * @param onCancel 取消编辑并收起表单。
+ * 校验即时可见:改动过的字段就地亮错,保存按钮在整表合法前禁用并说明原因
+ * (禁用原因与行内错误同出一份 schema,不会两套规则各说各话);
+ * 提交时聚焦第一个错误控件。探测不跑整表校验 —— 它只要求模型名与密钥,
+ * 其余字段交后端拦,两个动作的前置条件互不牵连。
  */
 export function ProfileForm({
-  draft,
-  onChange,
+  initialValues,
   busy,
-  onProbe,
-  onSave,
-  onCancel,
-}: {
-  draft: ProfileDraft;
-  onChange: (draft: ProfileDraft) => void;
-  busy: boolean;
-  onProbe: () => void;
-  onSave: () => void;
-  onCancel: () => void;
-}) {
-  /** 协议候选来自后端枚举(AGENTS.md §5:前端不抄候选清单)。 */
+  storeError,
+  actions,
+  onClose,
+}: ProfileFormProps) {
+  /** 协议候选与 token 区间都来自后端枚举(AGENTS.md §5)。 */
   const protocols = useAgentStore((state) => state.enums.protocols);
+  const limits = useAgentStore((state) => state.enums.profileLimits);
   const lookupModelWindow = useAgentStore((state) => state.lookupModelWindow);
   const modelWindows = useAgentStore((state) => state.modelWindows);
-  const custom = draft.baseUrl.trim().length > 0;
-  const verifiedBlocked = draft.protocol === "openai_responses" && custom && !draft.responsesVerified;
-  const modelKey = draft.model.trim().toLowerCase();
+
+  const schema = useMemo(() => buildProfileSchema(limits), [limits]);
+  const form = useForm<ProfileFormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: initialValues,
+  });
+  const { control, formState, getValues, handleSubmit, setFocus, setValue } =
+    form;
+  /** 订阅全表:模型名驱动目录提示,当前值驱动「为什么不能保存」。 */
+  const values = form.watch();
+
+  /** 契约区间没到位(进页首帧)前不开放动作,避免拿 0 当档位。 */
+  const limitsReady = limits.contextWindow.max > 0;
+  /** 全表按 schema 复算:保存按钮的禁用原因与字段行内错误同出一处。 */
+  const issues = useMemo(() => {
+    const result = schema.safeParse(values);
+    return result.success ? [] : result.error.issues;
+  }, [schema, values]);
+  const issueMessage = (path: string) =>
+    issues.find((issue) => issue.path[0] === path)?.message;
+  const saveBlockReason = limitsReady
+    ? issues[0]?.message
+    : "模型配置还在加载,稍候再试";
+
+  const verified = values.responsesVerified;
+  const customEndpoint =
+    values.protocol === "openai_responses" && values.baseUrl.trim().length > 0;
+  const modelKey = values.model.trim().toLowerCase();
   /** `undefined` = 还没查过;`known === false` = 目录没有这条模型;否则是目录里的事实。 */
   const catalog = modelKey ? modelWindows[modelKey] : undefined;
-  const tokenError = draftTokenError(draft);
   const windowHint =
-    catalog === undefined || !modelKey
+    !modelKey || catalog === undefined
       ? "留空则用模型目录里的窗口;目录没有这条模型时必须手填。"
       : catalog?.contextWindow
         ? `目录里是 ${formatTokens(catalog.contextWindow)} tokens,留空就用这个数。`
         : "模型目录没有这条记录,窗口需要你填。";
 
+  /** 校验并保存;成功关闭弹窗,失败把后端原因留在弹窗里(storeError)。 */
+  const submit = handleSubmit(async (formValues) => {
+    const saved = await actions.save(draftToRequest(formValues));
+    if (saved) onClose();
+  });
+
+  /**
+   * 直接对表单当前值探测(不落库);支持则「协议确认」翻亮,保存解锁。
+   * 探测只要求模型名(密钥编辑态可回落已存的),不跑整表校验。
+   */
+  async function probe(): Promise<void> {
+    const current = getValues();
+    if (!current.model.trim()) {
+      setFocus("model");
+      return;
+    }
+    const supported = await actions.probe(draftToTestRequest(current));
+    if (supported) {
+      setValue("responsesVerified", true, { shouldValidate: true });
+    }
+  }
+
+  /** 探测的前置:模型名必填;新建态还没有已存密钥可回落,必须先填。 */
+  const probeBlockReason = !limitsReady
+    ? "模型配置还在加载,稍候再试"
+    : !values.model.trim()
+      ? "先填模型名才能测试"
+      : initialValues.id === null && !values.apiKey.trim()
+        ? "新建接入点要先填 API 密钥才能测试"
+        : null;
+
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-3 py-3">
-        <FieldGroup>
-          <Field orientation="responsive">
-            <FieldLabel htmlFor="profile-label">名称</FieldLabel>
-            <Input
-              id="profile-label"
-              placeholder="例如「公司网关」"
-              value={draft.label}
-              onChange={(event) => onChange({ ...draft, label: event.target.value })}
-            />
-            <FieldDescription>只用来在自己机器上认出这一档。</FieldDescription>
-          </Field>
-          <Field orientation="responsive">
-            <FieldLabel htmlFor="profile-protocol">协议</FieldLabel>
-            <NativeSelect
-              id="profile-protocol"
-              value={draft.protocol}
-              onChange={(event) =>
-                onChange({ ...draft, protocol: event.target.value as ProtocolKind })
-              }
-            >
-              {protocols.map((protocol) => (
-                <NativeSelectOption key={protocol} value={protocol}>
-                  {PROTOCOL_DISPLAY[protocol].label}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-            <FieldDescription>只支持这两种新协议,旧协议没有选项。</FieldDescription>
-          </Field>
-          <Field orientation="responsive">
-            <FieldLabel htmlFor="profile-model">模型名</FieldLabel>
-            <Input
-              id="profile-model"
-              placeholder="例如 gpt-5.6"
-              value={draft.model}
-              onChange={(event) => onChange({ ...draft, model: event.target.value })}
-              onBlur={() => void lookupModelWindow(draft.model)}
-            />
-            <FieldDescription>离开输入框时去模型目录查这一档的窗口。</FieldDescription>
-          </Field>
-          <Field orientation="responsive">
-            <FieldLabel htmlFor="profile-window">上下文窗口</FieldLabel>
-            <Input
-              id="profile-window"
-              inputMode="numeric"
-              placeholder={catalog?.contextWindow ? String(catalog.contextWindow) : "例如 200000"}
-              value={draft.contextWindow}
-              onChange={(event) => onChange({ ...draft, contextWindow: event.target.value })}
-            />
-            <FieldDescription>{windowHint}</FieldDescription>
-          </Field>
-          <Field orientation="responsive">
-            <FieldLabel htmlFor="profile-output">单次回复上限</FieldLabel>
-            <Input
-              id="profile-output"
-              inputMode="numeric"
-              placeholder={
-                catalog?.maxOutputTokens ? String(catalog.maxOutputTokens) : "例如 8192"
-              }
-              value={draft.maxOutputTokens}
-              onChange={(event) => onChange({ ...draft, maxOutputTokens: event.target.value })}
-            />
-            <FieldDescription>模型一次回复最多写多少 tokens;留空用目录值。</FieldDescription>
-          </Field>
-          <Field orientation="responsive">
-            <FieldLabel htmlFor="profile-key">API 密钥</FieldLabel>
-            <Input
-              id="profile-key"
-              type="password"
-              placeholder={draft.id ? "留空表示不改动密钥" : "API 密钥"}
-              value={draft.apiKey}
-              onChange={(event) => onChange({ ...draft, apiKey: event.target.value })}
-            />
-            <FieldDescription>密钥只存系统安全存储,不会写进日志、备份或同步到别处。</FieldDescription>
-          </Field>
-          <Field orientation="responsive">
-            <FieldLabel htmlFor="profile-base-url">自建接入点地址</FieldLabel>
-            <Input
-              id="profile-base-url"
-              placeholder="留空用官方地址"
-              value={draft.baseUrl}
-              onChange={(event) => onChange({ ...draft, baseUrl: event.target.value })}
-            />
-            <FieldDescription>
-              只支持旧协议的网关填了也连不上:先点「测试并确认协议」,不支持会直接说明。
-            </FieldDescription>
-          </Field>
-          <Field orientation="horizontal">
-            <FieldLabel htmlFor="profile-verified">
-              <Switch
-                id="profile-verified"
-                checked={draft.responsesVerified}
-                onCheckedChange={(checked) => onChange({ ...draft, responsesVerified: checked })}
+    <form
+      onSubmit={(event) => void submit(event)}
+      noValidate
+      className="flex flex-col gap-4"
+    >
+      <DialogHeader>
+        <DialogTitle>
+          {initialValues.id ? "编辑接入点" : "新增接入点"}
+        </DialogTitle>
+        <DialogDescription>
+          对话用哪一档模型由这里决定;对话中可在会话标题栏随时切换。
+        </DialogDescription>
+      </DialogHeader>
+      <FieldGroup className="gap-4">
+        <Controller
+          name="label"
+          control={control}
+          render={({ field, fieldState }) => (
+            <Field>
+              <FieldLabel htmlFor="profile-label">名称</FieldLabel>
+              <Input
+                {...field}
+                id="profile-label"
+                aria-invalid={Boolean(issueMessage("label"))}
+                placeholder="例如「公司网关」"
+                autoComplete="off"
               />
-              已通过测试确认协议
-            </FieldLabel>
-          </Field>
-          <Field orientation="horizontal">
-            <FieldLabel htmlFor="profile-enabled">
+              {(fieldState.isDirty || formState.isSubmitted) && (
+                <FieldError>{issueMessage("label")}</FieldError>
+              )}
+            </Field>
+          )}
+        />
+        <Controller
+          name="protocol"
+          control={control}
+          render={({ field }) => (
+            <Field>
+              <FieldLabel htmlFor="profile-protocol">协议</FieldLabel>
+              <NativeSelect
+                id="profile-protocol"
+                value={field.value}
+                onChange={(event) =>
+                  field.onChange(event.target.value as ProtocolKind)
+                }
+                onBlur={field.onBlur}
+                name={field.name}
+              >
+                {protocols.map((protocol) => (
+                  <NativeSelectOption key={protocol} value={protocol}>
+                    {PROTOCOL_DISPLAY[protocol].label}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+              <FieldDescription>
+                只支持这两种新协议,旧协议没有选项。
+              </FieldDescription>
+            </Field>
+          )}
+        />
+        <Controller
+          name="model"
+          control={control}
+          render={({ field, fieldState }) => (
+            <Field>
+              <FieldLabel htmlFor="profile-model">模型名</FieldLabel>
+              <Input
+                {...field}
+                id="profile-model"
+                aria-invalid={Boolean(issueMessage("model"))}
+                placeholder="例如 gpt-5.6"
+                autoComplete="off"
+                onBlur={() => {
+                  field.onBlur();
+                  void lookupModelWindow(field.value);
+                }}
+              />
+              <FieldDescription>
+                离开输入框时去模型目录查这一档的窗口。
+              </FieldDescription>
+              {(fieldState.isDirty || formState.isSubmitted) && (
+                <FieldError>{issueMessage("model")}</FieldError>
+              )}
+            </Field>
+          )}
+        />
+        <Controller
+          name="contextWindow"
+          control={control}
+          render={({ field, fieldState }) => (
+            <Field>
+              <FieldLabel htmlFor="profile-window">上下文窗口</FieldLabel>
+              <Input
+                {...field}
+                id="profile-window"
+                inputMode="numeric"
+                aria-invalid={Boolean(issueMessage("contextWindow"))}
+                placeholder={
+                  catalog?.contextWindow
+                    ? formatTokens(catalog.contextWindow)
+                    : "例如 1,000,000"
+                }
+              />
+              <FieldDescription>{windowHint}</FieldDescription>
+              {(fieldState.isDirty || formState.isSubmitted) && (
+                <FieldError>{issueMessage("contextWindow")}</FieldError>
+              )}
+            </Field>
+          )}
+        />
+        <Controller
+          name="maxOutputTokens"
+          control={control}
+          render={({ field, fieldState }) => (
+            <Field>
+              <FieldLabel htmlFor="profile-output">单次回复上限</FieldLabel>
+              <Input
+                {...field}
+                id="profile-output"
+                inputMode="numeric"
+                aria-invalid={Boolean(issueMessage("maxOutputTokens"))}
+                placeholder={
+                  catalog?.maxOutputTokens
+                    ? formatTokens(catalog.maxOutputTokens)
+                    : "例如 8,192"
+                }
+              />
+              <FieldDescription>
+                模型一次回复最多写多少 tokens;留空用目录值。
+              </FieldDescription>
+              {(fieldState.isDirty || formState.isSubmitted) && (
+                <FieldError>{issueMessage("maxOutputTokens")}</FieldError>
+              )}
+            </Field>
+          )}
+        />
+        <Controller
+          name="apiKey"
+          control={control}
+          render={({ field }) => (
+            <Field>
+              <FieldLabel htmlFor="profile-key">API 密钥</FieldLabel>
+              <Input
+                {...field}
+                id="profile-key"
+                type="password"
+                placeholder={initialValues.id ? "留空表示不改动密钥" : "API 密钥"}
+                autoComplete="new-password"
+              />
+              <FieldDescription>
+                密钥只存系统安全存储,不会写进日志、备份或同步到别处。
+              </FieldDescription>
+            </Field>
+          )}
+        />
+        <Controller
+          name="baseUrl"
+          control={control}
+          render={({ field }) => (
+            <Field>
+              <FieldLabel htmlFor="profile-base-url">自建接入点地址</FieldLabel>
+              <Input
+                {...field}
+                id="profile-base-url"
+                aria-invalid={Boolean(issueMessage("baseUrl"))}
+                placeholder="留空用官方地址"
+                autoComplete="off"
+              />
+              <FieldDescription>以 /v1 结尾,留空用官方地址。</FieldDescription>
+              {customEndpoint && (
+                <FieldDescription className="flex items-center gap-2">
+                  <Badge variant={verified ? "secondary" : "outline"}>
+                    {verified ? "已通过测试" : "未确认"}
+                  </Badge>
+                  {verified ? "自建端点已确认支持 Responses,可以保存。" : null}
+                </FieldDescription>
+              )}
+              {customEndpoint && !verified && (
+                <FieldError>{issueMessage("baseUrl")}</FieldError>
+              )}
+            </Field>
+          )}
+        />
+        <Controller
+          name="enabled"
+          control={control}
+          render={({ field }) => (
+            <Field orientation="horizontal">
+              <FieldContent>
+                <FieldLabel htmlFor="profile-enabled">启用该接入点</FieldLabel>
+                <FieldDescription>停用后对话里选不到这个接入点。</FieldDescription>
+              </FieldContent>
               <Switch
                 id="profile-enabled"
-                checked={draft.enabled}
-                onCheckedChange={(checked) => onChange({ ...draft, enabled: checked })}
+                name={field.name}
+                checked={field.value}
+                onCheckedChange={field.onChange}
               />
-              启用该接入点
-            </FieldLabel>
-          </Field>
-        </FieldGroup>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" onClick={onProbe} disabled={busy || !draft.model.trim()}>
-            测试并确认协议
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onSave}
-            disabled={
-              busy || !draft.label.trim() || !draft.model.trim() || verifiedBlocked || Boolean(tokenError)
-            }
-            title={
-              verifiedBlocked
-                ? "自建网关要先确认协议"
-                : (tokenError ?? undefined)
-            }
-          >
-            {draft.id ? "保存修改" : "新增接入点"}
-          </Button>
-          <Button size="sm" variant="ghost" onClick={onCancel}>
-            取消
-          </Button>
-        </div>
-        {verifiedBlocked && (
-          <p className="text-xs text-destructive">
-            这是自建地址:必须先点「测试并确认协议」,确认它支持 Responses 才能保存。
-          </p>
-        )}
-        {tokenError && <p className="text-xs text-destructive">{tokenError}</p>}
-      </CardContent>
-    </Card>
+            </Field>
+          )}
+        />
+      </FieldGroup>
+      {storeError && (
+        <Alert variant="destructive">
+          <AlertDescription>{storeError}</AlertDescription>
+        </Alert>
+      )}
+      <DialogFooter>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => void probe()}
+          disabled={busy || probeBlockReason !== null}
+          title={probeBlockReason ?? undefined}
+        >
+          测试并确认协议
+        </Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onClose}>
+          取消
+        </Button>
+        <Button
+          type="submit"
+          size="sm"
+          disabled={busy || saveBlockReason !== undefined}
+          title={saveBlockReason ?? undefined}
+        >
+          {initialValues.id ? "保存修改" : "新增接入点"}
+        </Button>
+      </DialogFooter>
+    </form>
   );
 }

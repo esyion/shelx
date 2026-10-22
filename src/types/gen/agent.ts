@@ -235,7 +235,7 @@ export type RunState = "running" | "awaiting_approval" | "completed" | "failed" 
 /**
  * 界面候选枚举的单点来源(AGENTS.md §5:前端禁止自己抄一份取值)。
  *
- * 一次取回三类候选,避免抽屉每次打开都发多条 IPC;审批模式档位不在这里,
+ * 一次取回候选与区间,避免抽屉每次打开都发多条 IPC;审批模式档位不在这里,
  * 它由设置契约 `agent.approvalMode` 提供(校验与界面档位同源)。
  */
 export interface AgentEnumsDto {
@@ -247,10 +247,31 @@ export interface AgentEnumsDto {
    * 共享记忆作用域。
    */
   memoryScopes: MemoryScope[];
+  profileLimits: ProfileLimitsDto;
   /**
    * 可用协议(只有两种新协议)。
    */
   protocols: ProtocolKind[];
+}
+/**
+ * 接入点表单的 token 区间,由领域常量推导,前端不抄一份数字。
+ */
+export interface ProfileLimitsDto {
+  contextWindow: TokenRangeDto;
+  maxOutputTokens: TokenRangeDto;
+}
+/**
+ * 一段 token 数值区间(闭区间),界面档位与前端校验同源用(AGENTS.md §5)。
+ */
+export interface TokenRangeDto {
+  /**
+   * 最大值(tokens)。
+   */
+  max: number;
+  /**
+   * 最小值(tokens)。
+   */
+  min: number;
 }
 /**
  * token 用量(全部可空:provider 不上报时不伪造 0)。
@@ -671,6 +692,32 @@ export interface SendMessageRequestDto {
    * 线程 ID。
    */
   threadId: string;
+}
+/**
+ * 测试接入点请求:直接对表单当前值探测,不落库。
+ *
+ * 探测是「未验证自定义端点」变成「已验证」的唯一途径;若先落库再探测,
+ * 未验证状态在领域构造时就会被拒(自定义 + Responses + 未验证 = 拒绝保存),
+ * 探测请求永远发不出去 —— 因此这里携带待测事实本身,而不是已存配置的 ID。
+ */
+export interface TestProfileRequestDto {
+  /**
+   * 本轮填写的密钥(优先);空则回落已存密钥,两者都没有时拒绝。永不回显、不入日志。
+   */
+  apiKey: string | null;
+  /**
+   * 自定义端点;空表示官方地址。
+   */
+  baseUrl: string | null;
+  /**
+   * 已存配置的 ID;编辑态密钥留空时用它在后端取已保存的密钥,新建为空。
+   */
+  id: string | null;
+  /**
+   * 模型名。
+   */
+  model: string;
+  protocol: ProtocolKind;
 }
 /**
  * 线程。

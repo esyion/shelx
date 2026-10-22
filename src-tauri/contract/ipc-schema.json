@@ -3,7 +3,7 @@
     "agent": {
       "$defs": {
         "AgentEnumsDto": {
-          "description": "界面候选枚举的单点来源(AGENTS.md §5:前端禁止自己抄一份取值)。\n\n一次取回三类候选,避免抽屉每次打开都发多条 IPC;审批模式档位不在这里,\n它由设置契约 `agent.approvalMode` 提供(校验与界面档位同源)。",
+          "description": "界面候选枚举的单点来源(AGENTS.md §5:前端禁止自己抄一份取值)。\n\n一次取回候选与区间,避免抽屉每次打开都发多条 IPC;审批模式档位不在这里,\n它由设置契约 `agent.approvalMode` 提供(校验与界面档位同源)。",
           "properties": {
             "approvalDecisions": {
               "description": "逐台批准的可选决策。",
@@ -19,6 +19,10 @@
               },
               "type": "array"
             },
+            "profileLimits": {
+              "$ref": "#/$defs/ProfileLimitsDto",
+              "description": "接入点表单的 token 区间(上下文窗口 / 单次回复上限)。"
+            },
             "protocols": {
               "description": "可用协议(只有两种新协议)。",
               "items": {
@@ -30,7 +34,8 @@
           "required": [
             "protocols",
             "approvalDecisions",
-            "memoryScopes"
+            "memoryScopes",
+            "profileLimits"
           ],
           "type": "object"
         },
@@ -983,6 +988,24 @@
           ],
           "type": "object"
         },
+        "ProfileLimitsDto": {
+          "description": "接入点表单的 token 区间,由领域常量推导,前端不抄一份数字。",
+          "properties": {
+            "contextWindow": {
+              "$ref": "#/$defs/TokenRangeDto",
+              "description": "上下文窗口允许区间。"
+            },
+            "maxOutputTokens": {
+              "$ref": "#/$defs/TokenRangeDto",
+              "description": "单次回复上限允许区间(上界与窗口一致;另须小于窗口,规则在领域层)。"
+            }
+          },
+          "required": [
+            "contextWindow",
+            "maxOutputTokens"
+          ],
+          "type": "object"
+        },
         "ProtocolKind": {
           "description": "Provider 协议种类。\n\n取值即协议本身:OpenAI 侧只允许 Responses API(`POST /responses`),\nAnthropic 侧只允许 Messages API(`POST /v1/messages`)。Chat Completions\n不存在于本枚举中 —— 旧协议在领域层就没有表达位置(AGENTS.md §13)。",
           "oneOf": [
@@ -1352,6 +1375,52 @@
             }
           ]
         },
+        "TestProfileRequestDto": {
+          "additionalProperties": false,
+          "description": "测试接入点请求:直接对表单当前值探测,不落库。\n\n探测是「未验证自定义端点」变成「已验证」的唯一途径;若先落库再探测,\n未验证状态在领域构造时就会被拒(自定义 + Responses + 未验证 = 拒绝保存),\n探测请求永远发不出去 —— 因此这里携带待测事实本身,而不是已存配置的 ID。",
+          "properties": {
+            "apiKey": {
+              "default": null,
+              "description": "本轮填写的密钥(优先);空则回落已存密钥,两者都没有时拒绝。永不回显、不入日志。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "baseUrl": {
+              "default": null,
+              "description": "自定义端点;空表示官方地址。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "default": null,
+              "description": "已存配置的 ID;编辑态密钥留空时用它在后端取已保存的密钥,新建为空。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "model": {
+              "description": "模型名。",
+              "type": "string"
+            },
+            "protocol": {
+              "$ref": "#/$defs/ProtocolKind",
+              "description": "协议。"
+            }
+          },
+          "required": [
+            "id",
+            "protocol",
+            "model",
+            "baseUrl",
+            "apiKey"
+          ],
+          "type": "object"
+        },
         "ThreadDto": {
           "description": "线程。",
           "properties": {
@@ -1462,6 +1531,28 @@
             "pending",
             "running",
             "latestSeq"
+          ],
+          "type": "object"
+        },
+        "TokenRangeDto": {
+          "description": "一段 token 数值区间(闭区间),界面档位与前端校验同源用(AGENTS.md §5)。",
+          "properties": {
+            "max": {
+              "description": "最大值(tokens)。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "min": {
+              "description": "最小值(tokens)。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "min",
+            "max"
           ],
           "type": "object"
         },
@@ -1760,6 +1851,9 @@
         "TargetStatus": {
           "$ref": "#/$defs/TargetStatus"
         },
+        "TestProfileRequestDto": {
+          "$ref": "#/$defs/TestProfileRequestDto"
+        },
         "ThreadDto": {
           "$ref": "#/$defs/ThreadDto"
         },
@@ -1815,6 +1909,7 @@
         "RespondApprovalRequestDto",
         "DetachRequestDto",
         "UpsertProfileRequestDto",
+        "TestProfileRequestDto",
         "LookupModelRequestDto",
         "ModelWindowDto",
         "AgentIdRequestDto",
@@ -3574,7 +3669,7 @@
               "type": "boolean"
             },
             "tokenBudget": {
-              "default": 200000,
+              "default": 1000000,
               "description": "单对话 token 预算;0 表示不限。",
               "format": "uint32",
               "minimum": 0,
@@ -3608,7 +3703,7 @@
                 "maxTurns": 12,
                 "parallelHosts": 4,
                 "showReasoning": true,
-                "tokenBudget": 200000
+                "tokenBudget": 1000000
               },
               "description": "AI Agent(M5)。"
             },

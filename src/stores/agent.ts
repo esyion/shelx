@@ -81,8 +81,8 @@ export interface AgentStore {
   saveProfile(request: Parameters<typeof api.upsertAgentProfile>[0]): Promise<AgentProfile | null>;
   /** 删除模型接入点。 */
   removeProfile(id: string): Promise<void>;
-  /** 测试接入点协议。 */
-  probeProfile(id: string): Promise<AgentProfile | null>;
+  /** 测试接入点协议(直接探测表单当前值,不落库;成功返回 true 供界面置「已确认」)。 */
+  probeProfile(request: Parameters<typeof api.testAgentProfile>[0]): Promise<boolean>;
   /** 查模型目录里该模型的窗口事实(接入点表单自动带出);同一模型名只查一次。 */
   lookupModelWindow(model: string): Promise<ModelWindowDto | null>;
   /** 保存记忆(成功返回 true;失败把原因写入 error 并返回 false,供界面保留草稿)。 */
@@ -124,7 +124,16 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   threads: [],
   profiles: [],
   memories: [],
-  enums: { protocols: [], approvalDecisions: [], memoryScopes: [] },
+  // 枚举进页时由 load() 拉取;区间在到位前是 0,表单据此知道"还没加载完"。
+  enums: {
+    protocols: [],
+    approvalDecisions: [],
+    memoryScopes: [],
+    profileLimits: {
+      contextWindow: { min: 0, max: 0 },
+      maxOutputTokens: { min: 0, max: 0 },
+    },
+  },
   modelWindows: {},
   activeThreadId: null,
   snapshots: {},
@@ -314,14 +323,17 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     }
   },
 
-  async probeProfile(id) {
+  async probeProfile(request) {
+    set({ error: null });
     try {
-      const probe = await api.testAgentProfile(id);
+      const probe = await api.testAgentProfile(request);
       useUiStore.getState().toast(probe.message, probe.supported ? "info" : "error");
-      if (!probe.supported) return null;
-      const profiles = await api.listAgentProfiles();
-      set({ profiles });
-      return profiles.find((profile) => profile.id === id) ?? null;
+      if (!probe.supported) {
+        // 结论要能边读边改,不能只活在几秒的 toast 里(弹窗内 Alert 渲染它)。
+        set({ error: probe.message });
+        return false;
+      }
+      return true;
     } catch (error) {
       if (error instanceof GatewayError) {
         useUiStore.getState().toast(error.message, "error");
@@ -329,7 +341,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       } else {
         set({ error: messageOf(error) });
       }
-      return null;
+      return false;
     }
   },
 

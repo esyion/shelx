@@ -384,9 +384,41 @@ pub struct SendAcceptedDto {
     pub subscription_id: String,
 }
 
+/// 一段 token 数值区间(闭区间),界面档位与前端校验同源用(AGENTS.md §5)。
+#[derive(Debug, Clone, Copy, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenRangeDto {
+    /// 最小值(tokens)。
+    pub min: u32,
+    /// 最大值(tokens)。
+    pub max: u32,
+}
+
+/// 接入点表单的 token 区间,由领域常量推导,前端不抄一份数字。
+#[derive(Debug, Clone, Copy, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileLimitsDto {
+    /// 上下文窗口允许区间。
+    pub context_window: TokenRangeDto,
+    /// 单次回复上限允许区间(上界与窗口一致;另须小于窗口,规则在领域层)。
+    pub max_output_tokens: TokenRangeDto,
+}
+
+impl ProfileLimitsDto {
+    /// 由领域层 [`crate::domain::agent::CONTEXT_WINDOW_RANGE`] 推导:
+    /// 窗口与回复上限共用同一个上界,回复上限下界是 1。
+    pub fn from_domain() -> Self {
+        let (min, max) = crate::domain::agent::CONTEXT_WINDOW_RANGE;
+        Self {
+            context_window: TokenRangeDto { min, max },
+            max_output_tokens: TokenRangeDto { min: 1, max },
+        }
+    }
+}
+
 /// 界面候选枚举的单点来源(AGENTS.md §5:前端禁止自己抄一份取值)。
 ///
-/// 一次取回三类候选,避免抽屉每次打开都发多条 IPC;审批模式档位不在这里,
+/// 一次取回候选与区间,避免抽屉每次打开都发多条 IPC;审批模式档位不在这里,
 /// 它由设置契约 `agent.approvalMode` 提供(校验与界面档位同源)。
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -397,6 +429,8 @@ pub struct AgentEnumsDto {
     pub approval_decisions: Vec<ApprovalDecision>,
     /// 共享记忆作用域。
     pub memory_scopes: Vec<MemoryScope>,
+    /// 接入点表单的 token 区间(上下文窗口 / 单次回复上限)。
+    pub profile_limits: ProfileLimitsDto,
 }
 
 /// 协议探测结果。
@@ -409,6 +443,29 @@ pub struct ProbeDto {
     pub message: String,
     /// 本次探测用量。
     pub usage: Option<AgentUsage>,
+}
+
+/// 测试接入点请求:直接对表单当前值探测,不落库。
+///
+/// 探测是「未验证自定义端点」变成「已验证」的唯一途径;若先落库再探测,
+/// 未验证状态在领域构造时就会被拒(自定义 + Responses + 未验证 = 拒绝保存),
+/// 探测请求永远发不出去 —— 因此这里携带待测事实本身,而不是已存配置的 ID。
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TestProfileRequestDto {
+    /// 已存配置的 ID;编辑态密钥留空时用它在后端取已保存的密钥,新建为空。
+    #[serde(default)]
+    pub id: Option<String>,
+    /// 协议。
+    pub protocol: ProtocolKind,
+    /// 模型名。
+    pub model: String,
+    /// 自定义端点;空表示官方地址。
+    #[serde(default)]
+    pub base_url: Option<String>,
+    /// 本轮填写的密钥(优先);空则回落已存密钥,两者都没有时拒绝。永不回显、不入日志。
+    #[serde(default)]
+    pub api_key: Option<String>,
 }
 
 /// 新建线程请求。
@@ -719,6 +776,7 @@ mod tests {
             protocols: ProtocolKind::ALL.to_vec(),
             approval_decisions: Decision::ALL.to_vec(),
             memory_scopes: MemoryScope::ALL.to_vec(),
+            profile_limits: ProfileLimitsDto::from_domain(),
         })
         .unwrap();
         assert_eq!(
@@ -736,6 +794,15 @@ mod tests {
         assert_eq!(
             json["approvalDecisions"].as_array().unwrap().len(),
             Decision::ALL.len()
+        );
+        // 区间必须与领域常量一致:前端按这份数字做档位与校验(AGENTS.md §5)。
+        let (window_min, window_max) = crate::domain::agent::CONTEXT_WINDOW_RANGE;
+        assert_eq!(
+            json["profileLimits"],
+            serde_json::json!({
+                "contextWindow": { "min": window_min, "max": window_max },
+                "maxOutputTokens": { "min": 1, "max": window_max },
+            })
         );
     }
 

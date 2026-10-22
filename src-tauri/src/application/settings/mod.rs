@@ -305,7 +305,7 @@ pub struct AgentSettings {
 }
 
 impl Default for AgentSettings {
-    /// Agent 分组默认值:只读自动、批量 5 台、并发 4、超时 30s、预算 20 万 token。
+    /// Agent 分组默认值:只读自动、批量 5 台、并发 4、超时 30s、预算 100 万 token。
     fn default() -> Self {
         Self {
             max_turns: 12,
@@ -314,7 +314,7 @@ impl Default for AgentSettings {
             parallel_hosts: 4,
             exec_timeout_secs: 30,
             approval_mode: crate::domain::agent::ApprovalMode::ReadOnlyAuto,
-            token_budget: 200_000,
+            token_budget: 1_000_000,
             inject_memories: true,
             show_reasoning: true,
         }

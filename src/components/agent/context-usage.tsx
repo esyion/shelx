@@ -47,9 +47,9 @@ export function ContextUsage({
       <HoverCardTrigger
         delay={10}
         closeDelay={100}
-        render={<Button variant="outline" size="sm" className="ml-auto" />}
+        render={<Button variant="outline" size="sm" />}
       >
-        {percent === null ? `${tokens(used)} tokens` : `${percent}% 上下文`}
+        {percent === null ? `${tokens(used)} tokens` : `${percent}%`}
       </HoverCardTrigger>
       <HoverCardContent className="flex w-72 flex-col gap-3">
         <div className="flex items-center justify-between gap-3 text-sm">

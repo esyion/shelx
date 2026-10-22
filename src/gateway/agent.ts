@@ -20,6 +20,7 @@ import type {
   SendAcceptedDto,
   TargetDto,
   TargetScope,
+  TestProfileRequestDto,
   ThreadSnapshotDto,
   UpsertMemoryRequestDto,
   UpsertProfileRequestDto,
@@ -175,9 +176,11 @@ export function deleteAgentProfile(id: string): Promise<void> {
   return invokeUnwrapped("delete_agent_profile", { request: { id } });
 }
 
-/** 测试接入点协议(真发一次最小请求)。 */
-export function testAgentProfile(id: string): Promise<ProbeDto> {
-  return invokeUnwrapped("test_agent_profile", { request: { id } });
+/** 测试接入点协议(直接对表单当前值发一次最小补全,不落库)。 */
+export function testAgentProfile(
+  request: TestProfileRequestDto,
+): Promise<ProbeDto> {
+  return invokeUnwrapped("test_agent_profile", { request });
 }
 
 /** 界面候选枚举(协议、批准决策、记忆作用域),取值全部来自后端。 */

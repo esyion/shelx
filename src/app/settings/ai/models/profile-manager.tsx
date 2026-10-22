@@ -1,19 +1,21 @@
 /**
- * 模型配置管理(设置 → AI → 模型配置):列表 + 启停 + 按需展开的表单。
+ * 模型配置管理(设置 → AI → 模型配置):列表 + 启停 + 弹窗编辑。
  *
- * 列表是主体(看状态、启停、编辑、删除),新增与编辑共用一份表单,
- * 点「新增接入点 / 编辑」才展开,取消即收起 —— 配置页整宽下不再让
- * 表单常驻压住列表(原「模型接入点」页签的表单是常驻的)。
- * 密钥只写不回显;保存/探测失败的原因由 store 落 toast 与页内错误。
+ * 列表是主体(看状态、启停、删除);新增与编辑共用一份表单
+ * (`ProfileForm` 自带页脚动作与校验),这里只提供弹窗壳、store 动作
+ * 与页面级错误提示。取消/关闭即丢弃草稿,不在页面上常驻表单。
+ * 密钥只写不回显;保存失败的原因在弹窗内可见(store error 同步渲染),
+ * 不用固定文案吞错(AGENTS.md §4.1.1)。
  */
 "use client";
 
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import type { AgentProfile } from "@/types";
+import type { AgentProfile, UpsertProfileRequestDto } from "@/types";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   Empty,
   EmptyContent,
@@ -38,7 +40,8 @@ import {
   draftFromProfile,
   draftToRequest,
   ProfileForm,
-  type ProfileDraft,
+  type ProfileFormActions,
+  type ProfileFormValues,
 } from "./profile-form";
 
 /** 模型配置管理。 */
@@ -49,45 +52,37 @@ export function ProfileManager() {
   const probeProfile = useAgentStore((state) => state.probeProfile);
   const error = useAgentStore((state) => state.error);
   const dismissError = useAgentStore((state) => state.dismissError);
-  /** `null` = 表单收起;否则是新增/编辑中的草稿。 */
-  const [draft, setDraft] = useState<ProfileDraft | null>(null);
+  /** `null` = 弹窗关闭;否则是新增/编辑中的表单初始值。 */
+  const [draft, setDraft] = useState<ProfileFormValues | null>(null);
   const [busy, setBusy] = useState(false);
 
-  /** 校验并保存(自定义端点必须先通过协议确认);成功收起表单。 */
-  async function submit(): Promise<void> {
-    if (!draft) return;
-    const custom = draft.baseUrl.trim().length > 0;
-    if (!draft.label.trim() || !draft.model.trim()) return;
-    if (draft.protocol === "openai_responses" && custom && !draft.responsesVerified) return;
+  /** 保存(表单校验通过后才会调用);成功返回 true,弹窗随之关闭。 */
+  async function save(request: UpsertProfileRequestDto): Promise<boolean> {
     setBusy(true);
-    const saved = await saveProfile(draftToRequest(draft));
-    setBusy(false);
-    if (saved) setDraft(null);
+    try {
+      return (await saveProfile(request)) !== null;
+    } finally {
+      setBusy(false);
+    }
   }
 
-  /** 用当前草稿先落库再探测:新建的接入点也能一次做完,不必先保存再回来点。 */
-  async function probe(): Promise<void> {
-    if (!draft || !draft.model.trim()) return;
+  /** 直接对表单当前值探测(不落库);true = 支持要求协议,表单随即翻亮「已确认」。 */
+  async function probe(
+    request: Parameters<typeof probeProfile>[0],
+  ): Promise<boolean> {
     setBusy(true);
-    const saved = await saveProfile(draftToRequest({ ...draft, responsesVerified: false }));
-    if (saved) {
-      const confirmed = await probeProfile(saved.id);
-      setDraft((previous) =>
-        previous
-          ? {
-              ...previous,
-              id: saved.id,
-              responsesVerified: previous.responsesVerified || Boolean(confirmed?.responsesVerified),
-            }
-          : previous,
-      );
+    try {
+      return await probeProfile(request);
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
+
+  const actions: ProfileFormActions = { save, probe };
 
   return (
     <div className="flex flex-col gap-3">
-      {error && (
+      {error && !draft && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>
           <AlertAction>
@@ -132,12 +127,7 @@ export function ProfileManager() {
       ) : (
         <ItemGroup className="gap-2">
           {profiles.map((profile: AgentProfile) => (
-            <Item
-              key={profile.id}
-              variant="outline"
-              size="sm"
-              className={draft?.id === profile.id ? "ring-1 ring-ring" : undefined}
-            >
+            <Item key={profile.id} variant="outline" size="sm">
               <ItemContent>
                 <ItemTitle>{profile.label}</ItemTitle>
                 <ItemDescription>
@@ -185,16 +175,24 @@ export function ProfileManager() {
         </ItemGroup>
       )}
 
-      {draft && (
-        <ProfileForm
-          draft={draft}
-          onChange={setDraft}
-          busy={busy}
-          onProbe={() => void probe()}
-          onSave={() => void submit()}
-          onCancel={() => setDraft(null)}
-        />
-      )}
+      <Dialog
+        open={draft !== null}
+        onOpenChange={(open) => {
+          if (!open) setDraft(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          {draft && (
+            <ProfileForm
+              initialValues={draft}
+              busy={busy}
+              storeError={error}
+              actions={actions}
+              onClose={() => setDraft(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

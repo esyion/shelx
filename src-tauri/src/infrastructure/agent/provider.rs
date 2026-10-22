@@ -68,25 +68,46 @@ pub fn build_model(
     profile: &ModelProfile,
     api_key: &str,
 ) -> Result<DynModel<Completion>, ProviderError> {
+    build_completion(
+        profile.protocol,
+        profile.model.clone(),
+        profile.base_url.as_deref(),
+        api_key,
+    )
+}
+
+/// 由协议、模型与端点直接构造可执行补全(正式对话与连通性探测共用)。
+///
+/// 不经过 [`ModelProfile`]:探测必须在「未验证」状态下发生,而领域构造
+/// 会拒绝未验证的自定义端点 —— 那道守卫管落库,不管探测。
+///
+/// # Errors
+/// 密钥空白 → [`ProviderError::MissingApiKey`]。
+pub fn build_completion(
+    protocol: ProtocolKind,
+    model: String,
+    base_url: Option<&str>,
+    api_key: &str,
+) -> Result<DynModel<Completion>, ProviderError> {
     let key = api_key.trim();
     if key.is_empty() {
         return Err(ProviderError::MissingApiKey);
     }
-    Ok(match profile.protocol {
+    Ok(match protocol {
         ProtocolKind::OpenAiResponses => {
             let mut config = OpenAIConfig::new(key).with_route(enforced_openai_route());
-            if let Some(base_url) = profile.base_url.as_deref() {
+            if let Some(base_url) = base_url {
                 config = config.with_base_url(base_url.to_owned());
             }
             debug_assert_eq!(config.completion_route(), Route::Responses);
-            config.client().completion(profile.model.clone()).into()
+            config.client().completion(model).into()
         }
         ProtocolKind::AnthropicMessages => {
             let mut config = AnthropicConfig::new(key);
-            if let Some(base_url) = profile.base_url.as_deref() {
+            if let Some(base_url) = base_url {
                 config = config.with_base_url(base_url);
             }
-            config.client().completion(profile.model.clone()).into()
+            config.client().completion(model).into()
         }
     })
 }
@@ -94,15 +115,18 @@ pub fn build_model(
 /// 发一次最小补全请求,确认端点真的实现了要求的协议。
 ///
 /// 只用于 profile 保存前的探测;失败按语义分类,便于界面把错误定位到具体原因。
+/// 直接收协议、模型与端点事实:探测对象可以尚未通过验证、尚未落库。
 ///
 /// # Errors
 /// 密钥空白 → [`ProviderError::MissingApiKey`]。
 pub async fn probe_protocol(
-    profile: &ModelProfile,
+    protocol: ProtocolKind,
+    model: &str,
+    base_url: Option<&str>,
     api_key: &str,
 ) -> Result<ProbeOutcome, ProviderError> {
-    let model = build_model(profile, api_key)?;
-    match model.call(CompletionRequest::new("ping")).await {
+    let completion = build_completion(protocol, model.to_owned(), base_url, api_key)?;
+    match completion.call(CompletionRequest::new("ping")).await {
         Ok(_) => Ok(ProbeOutcome::Supported),
         Err(err) => Ok(classify_probe_error(&err)),
     }
@@ -197,7 +221,7 @@ mod tests {
         let err =
             build_model(&profile(ProtocolKind::OpenAiResponses, None, true), "   ").unwrap_err();
         assert!(matches!(err, ProviderError::MissingApiKey));
-        let probe = probe_protocol(&profile(ProtocolKind::AnthropicMessages, None, true), "")
+        let probe = probe_protocol(ProtocolKind::AnthropicMessages, "some-model", None, " ")
             .await
             .unwrap_err();
         assert!(matches!(probe, ProviderError::MissingApiKey));

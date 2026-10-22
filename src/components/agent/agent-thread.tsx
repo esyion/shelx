@@ -328,8 +328,11 @@ export function AgentThread({ threadId }: { threadId: string }) {
       )}
 
       <ThreadComposer
+        threadId={threadId}
         busy={busy}
         runningId={running[0] ?? null}
+        profileId={snapshot?.thread.profileId ?? ""}
+        approvalMode={snapshot?.thread.approvalMode ?? "read_only_auto"}
         used={usedTokens}
         contextWindow={contextWindow}
         budget={settings?.agent?.tokenBudget ?? 0}

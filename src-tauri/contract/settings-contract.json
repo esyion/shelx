@@ -403,7 +403,7 @@
           5000000
         ]
       },
-      "default": 200000.0
+      "default": 1000000.0
     },
     {
       "path": "agent.injectMemories",
@@ -481,7 +481,7 @@
       "parallelHosts": 4,
       "execTimeoutSecs": 30,
       "approvalMode": "read_only_auto",
-      "tokenBudget": 200000,
+      "tokenBudget": 1000000,
       "injectMemories": true,
       "showReasoning": true
     },

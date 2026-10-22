@@ -5,8 +5,8 @@ use tauri::State;
 use crate::domain::agent::{ApprovalDecision, MemoryScope, ProtocolKind};
 use crate::dto::agent::{
     AgentEnumsDto, AgentIdRequestDto, LookupModelRequestDto, MemoryDto, ModelWindowDto, ProbeDto,
-    ProfileDto, ResolveTargetsRequestDto, TargetDto, UpsertMemoryRequestDto,
-    UpsertProfileRequestDto,
+    ProfileDto, ProfileLimitsDto, ResolveTargetsRequestDto, TargetDto, TestProfileRequestDto,
+    UpsertMemoryRequestDto, UpsertProfileRequestDto,
 };
 use crate::dto::common::IpcResult;
 use crate::shared::error::{IpcError, IpcErrorCode};
@@ -99,29 +99,65 @@ pub fn delete_agent_profile(state: State<AppState>, request: AgentIdRequestDto) 
     map_err(state.agent.delete_profile(&request.id))
 }
 
-/// 测试接入点:真发一次最小请求,确认它支持要求的协议。
+/// 测试接入点:对表单当前值真发一次最小补全("ping"),支持即确认协议。
+///
+/// 不落库:探测是未验证端点变已验证的唯一途径,先落库会被领域守卫
+/// (自定义 + Responses + 未验证 = 拒绝保存)挡住,请求永远发不出去。
+/// 密钥优先用本轮填写的;编辑态密钥留空时回落已保存的密钥;都不给则拒绝。
 #[tauri::command]
 pub async fn test_agent_profile(
     state: State<'_, AppState>,
-    request: AgentIdRequestDto,
+    request: TestProfileRequestDto,
 ) -> Result<IpcResult<ProbeDto>, String> {
-    let Some(record) = state.agent.profile(&request.id) else {
+    let model = request.model.trim().to_owned();
+    if model.is_empty() {
         return Ok(IpcResult::err(IpcError::new(
-            IpcErrorCode::NotFound,
-            "模型配置不存在",
+            IpcErrorCode::InvalidArgument,
+            "先填模型名才能测试",
         )));
+    }
+    let base_url = request
+        .base_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned);
+    let api_key = match request
+        .api_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(key) => key.to_owned(),
+        None => {
+            let Some(id) = request.id.as_deref() else {
+                return Ok(IpcResult::err(IpcError::new(
+                    IpcErrorCode::AgentKeyMissing,
+                    "先填 API 密钥再测试",
+                )));
+            };
+            let Some(record) = state.agent.profile(id) else {
+                return Ok(IpcResult::err(IpcError::new(
+                    IpcErrorCode::NotFound,
+                    "模型配置不存在,取不到已保存的密钥",
+                )));
+            };
+            let Some(key) = state.agent.profile_key(&record) else {
+                return Ok(IpcResult::err(IpcError::new(
+                    IpcErrorCode::AgentKeyMissing,
+                    "该接入点还没有保存 API 密钥",
+                )));
+            };
+            key
+        }
     };
-    let profile = match state.agent.profile_domain(&record.id) {
-        Ok(profile) => profile,
-        Err(err) => return Ok(IpcResult::err(to_ipc_error(err))),
-    };
-    let Some(api_key) = state.agent.profile_key(&record) else {
-        return Ok(IpcResult::err(IpcError::new(
-            IpcErrorCode::AgentKeyMissing,
-            "还没有保存该接入点的 API 密钥",
-        )));
-    };
-    let outcome = crate::infrastructure::agent::probe_protocol(&profile, &api_key).await;
+    let outcome = crate::infrastructure::agent::probe_protocol(
+        request.protocol,
+        &model,
+        base_url.as_deref(),
+        &api_key,
+    )
+    .await;
     let outcome = match outcome {
         Ok(outcome) => outcome,
         Err(err) => {
@@ -184,13 +220,15 @@ pub fn delete_agent_memory(state: State<AppState>, request: AgentIdRequestDto) -
     map_err(state.agent.delete_memory(&request.id))
 }
 
-/// 界面候选枚举(协议、批准决策、记忆作用域)一次取回,避免前端抄一份取值(AGENTS.md §5)。
+/// 界面候选枚举(协议、批准决策、记忆作用域与 token 区间)一次取回,
+/// 避免前端抄一份取值(AGENTS.md §5)。
 #[tauri::command]
 pub fn list_agent_enums() -> IpcResult<AgentEnumsDto> {
     IpcResult::ok(AgentEnumsDto {
         protocols: ProtocolKind::ALL.to_vec(),
         approval_decisions: ApprovalDecision::ALL.to_vec(),
         memory_scopes: MemoryScope::ALL.to_vec(),
+        profile_limits: ProfileLimitsDto::from_domain(),
     })
 }
 
