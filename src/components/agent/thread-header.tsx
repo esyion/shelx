@@ -1,22 +1,17 @@
 /**
- * 对话抬头:作用域可见性 + 本轮状态 + 三个选择器 + 上下文用量。
+ * 对话抬头:作用域可见性 + 本轮状态 + 三个选择器。
  *
  * 数值都来自后端(可操作台数取 `resolve_agent_targets`,审批档位候选取设置契约),
  * 界面不复制一份取值(AGENTS.md §5)。选择器按 AI Elements 的 Model Selector pattern
- * 用 `DropdownMenu` + `DropdownMenuRadioGroup`;用量按 Context pattern 用 `HoverCard` + `Progress`,
- * 分母是设置里的单线程 token 预算(后端真实拦截值),不是前端猜的模型上限。
+ * 用 `DropdownMenu` + `DropdownMenuRadioGroup`。上下文用量不在这里 —— 它跟着输入区
+ * (见 `context-usage.tsx`),用户在哪打字就在哪看代价。
  */
 "use client";
 
 import { useMemo } from "react";
-import { ChevronDown, Wallet } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import type { ApprovalMode, ThreadSnapshotDto } from "@/types";
-import {
-  APPROVAL_MODE_DISPLAY,
-  RUN_STATE_DISPLAY,
-  TONE_BADGE,
-  formatUsage,
-} from "@/lib/agent-events";
+import { APPROVAL_MODE_DISPLAY, RUN_STATE_DISPLAY, TONE_BADGE } from "@/lib/agent-events";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,12 +23,6 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
-import {
-  Progress,
-  ProgressLabel,
-  ProgressValue,
-} from "@/components/ui/progress";
 import { useAgentStore } from "@/stores/agent";
 import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
@@ -59,10 +48,8 @@ export function ThreadHeader({
 }) {
   const profiles = useAgentStore((state) => state.profiles);
   const patchThread = useAgentStore((state) => state.patchThread);
-  const stream = useAgentStore((state) => state.streams[threadId]);
   const sessions = useSessionsStore((state) => state.byId);
   const schema = useSettingsStore((state) => state.schema);
-  const settings = useSettingsStore((state) => state.settings);
 
   const running = snapshot?.running ?? [];
   const busy = running.length > 0;
@@ -76,10 +63,6 @@ export function ThreadHeader({
     return kind?.kind === "enum" ? (kind.options as ApprovalMode[]) : [];
   }, [schema]);
 
-  const usage = formatUsage(stream?.usage);
-  // 设置来自磁盘,旧文件可能缺整组新字段,取值一律走可选链(AGENTS.md §7 输入不可信)。
-  const budget = settings?.agent?.tokenBudget ?? 0;
-  const usedTokens = stream?.usage?.totalTokens ?? 0;
   const activeRun = snapshot?.runs.find((run) => run.runId === running[0]);
   const state = activeRun ? RUN_STATE_DISPLAY[activeRun.state] : null;
   const stateBadge = state ? TONE_BADGE[state.tone] : null;
@@ -184,32 +167,6 @@ export function ThreadHeader({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {usage && (
-        <HoverCard>
-          <HoverCardTrigger
-            render={
-              <Button variant="ghost" size="xs" className="text-muted-foreground">
-                <Wallet data-icon="inline-start" />
-                {usage}
-              </Button>
-            }
-          />
-          <HoverCardContent className="w-72 text-xs">
-            <p className="font-medium">这一轮的上下文用量</p>
-            <Progress
-              value={budget > 0 ? Math.min(100, Math.round((usedTokens / budget) * 100)) : 0}
-            >
-              <ProgressLabel>
-                {budget > 0 ? `${usedTokens} / 预算 ${budget} tokens` : `${usedTokens} tokens`}
-              </ProgressLabel>
-              <ProgressValue />
-            </Progress>
-            <p className="mt-2 text-muted-foreground">
-              达到设置里的预算后这一轮会停下并提示,不会继续烧 token。
-            </p>
-          </HoverCardContent>
-        </HoverCard>
-      )}
     </div>
   );
 }

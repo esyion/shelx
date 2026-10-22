@@ -143,6 +143,15 @@ export function AgentThread({ threadId }: { threadId: string }) {
   const showReasoning = settings?.agent?.showReasoning ?? true;
   /** 仍在流出的那一轮:它的时间线是缓冲;其余轮次一律读该轮已发布的日志。 */
   const liveRunId = busy ? running[0] : undefined;
+  /** 与后端 `check_budget` 同口径:整段对话累计 = 已结束各轮落库用量 + 进行中这一轮的实时用量。 */
+  const usedTokens = (snapshot?.runs ?? []).reduce(
+    (sum, run) =>
+      sum +
+      (run.runId === liveRunId
+        ? (stream?.usage?.totalTokens ?? 0)
+        : (run.usage?.totalTokens ?? 0)),
+    0,
+  );
   const turns: TurnView[] = (snapshot?.runs ?? []).map((run) => ({
     run,
     segments: chainSegments(
@@ -314,7 +323,13 @@ export function AgentThread({ threadId }: { threadId: string }) {
         </Alert>
       )}
 
-      <ThreadComposer busy={busy} runningId={running[0] ?? null} />
+      <ThreadComposer
+        busy={busy}
+        runningId={running[0] ?? null}
+        used={usedTokens}
+        budget={settings?.agent?.tokenBudget ?? 0}
+        usage={stream?.usage}
+      />
     </div>
   );
 }

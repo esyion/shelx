@@ -1,12 +1,13 @@
 /**
  * shadcn base 对话组件的行为回归测试(AGENTS.md §9:测用户可见行为)。
  *
- * 锁五件事:
+ * 锁六件事:
  * 1. 审计轨迹说人话(中文动作 + 连接名 + 耗时),不出现内部工具名与裸 ID;
  * 2. 待批准是"每台一个决定",默认拒绝,提交出去的逐台决策与界面选择一致;
  * 3. 命令与输出用 CodeBlock,不回退成手写 `<pre>`;
  * 4. 思维链一步 = 一次工具调用(扇出的多台合成一步),摘要按时态报步数与未完成的步数;
- * 5. 思考原文整段走 Reasoning 折叠,不被拆成一行行假步骤。
+ * 5. 思考原文整段走 Reasoning 折叠,不被拆成一行行假步骤;
+ * 6. 上下文用量按设置里的预算报百分比,没有分母就不报百分比、不留空壳。
  */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +15,7 @@ import type { AgentToolPart, ApprovalDto, AuditDto } from "@/types";
 import { ApprovalCard } from "./approval-card";
 import { AuditList } from "./audit-list";
 import { ChainOfThought } from "./chain-of-thought";
+import { ContextUsage } from "./context-usage";
 import { Reasoning } from "./reasoning";
 import { useAgentStore } from "@/stores/agent";
 import { useConnectionsStore } from "@/stores/connections";
@@ -241,5 +243,32 @@ describe("待批准(每台一个 Item + ToggleGroup)", () => {
     expect(screen.getByLabelText("web-02 的处理方式")).toBeTruthy();
     expect(screen.queryByText(/永久允许/)).toBeNull();
     expect(screen.queryByText(/始终允许/)).toBeNull();
+  });
+});
+
+describe("上下文用量(Context pattern)", () => {
+  it("有预算时报百分比,分母是设置里的预算而不是猜的模型上限", () => {
+    cleanup();
+    render(<ContextUsage used={400} budget={1000} usage={{ totalTokens: 400 }} />);
+    expect(screen.getByText("40% 上下文")).toBeTruthy();
+  });
+
+  it("未设预算时不报百分比,也不伪造分母", () => {
+    cleanup();
+    render(<ContextUsage used={400} budget={0} />);
+    expect(screen.getByText("400 tokens")).toBeTruthy();
+    expect(screen.queryByText(/%/)).toBeNull();
+  });
+
+  it("超出预算封顶 100%,不报出 130% 这种让人误读的数", () => {
+    cleanup();
+    render(<ContextUsage used={1300} budget={1000} />);
+    expect(screen.getByText("100% 上下文")).toBeTruthy();
+  });
+
+  it("还没有用量时整块不渲染,不留空壳", () => {
+    cleanup();
+    const { container } = render(<ContextUsage used={0} budget={1000} />);
+    expect(container.textContent).toBe("");
   });
 });
