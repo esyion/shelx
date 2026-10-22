@@ -63,7 +63,7 @@ export function ContextUsage({
         <p className="text-xs text-muted-foreground">
           {contextWindow
             ? "接近满窗时会自动压缩较早的过程,保留结论与最近几步。"
-            : "这条接入点还没解析出模型窗口:在「模型接入点」里填上下文窗口后才会报百分比。"}
+            : "这条接入点还没解析出模型窗口:在 设置 → AI → 模型配置 里填上下文窗口后才会报百分比。"}
         </p>
         <p className="text-xs text-muted-foreground">
           {budget > 0

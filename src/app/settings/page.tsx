@@ -1,21 +1,16 @@
 /**
- * 设置页(PRD §6.7,快捷键 Ctrl+,):控件、取值区间、档位与单位全部来自
- * 后端契约(`get_settings_schema`),前端只保留分组、中文标签与效果说明。
- * 修改即时保存;终端类设置由消费方订阅热更新。
+ * 设置·通用页(路由 `/settings`,PRD §6.7,快捷键 Ctrl+,):
+ * 控件、取值区间、档位与单位全部来自后端契约(`get_settings_schema`),
+ * 前端只保留分组、中文标签与效果说明。修改即时保存;终端类设置由消费方订阅热更新。
  */
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowLeft } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import type { SettingPath, ThemeMode } from "@/types";
 import { useSettingsStore } from "@/stores/settings";
 import { useUiStore } from "@/stores/ui";
-import { useUpdateStore } from "@/stores/update";
-import { DataSection } from "./data-section";
-import { ShortcutsSection } from "./shortcuts-section";
 import { SchemaForm } from "./schema-form";
 import type { SettingValue } from "./setting-control";
 
@@ -52,14 +47,13 @@ function LoadState({ failed, onRetry }: LoadStateProps) {
   );
 }
 
-/** 设置页。 */
+/** 设置·通用页。 */
 export default function SettingsPage() {
   const settings = useSettingsStore((s) => s.settings);
   const schema = useSettingsStore((s) => s.schema);
   const load = useSettingsStore((s) => s.load);
   const setSetting = useSettingsStore((s) => s.setSetting);
   const toast = useUiStore((s) => s.toast);
-  const currentVersion = useUpdateStore((s) => s.currentVersion);
   const { setTheme } = useTheme();
   const [retryToken, setRetryToken] = useState(0);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -97,37 +91,18 @@ export default function SettingsPage() {
   };
 
   return (
-    <main className="mx-auto flex h-screen max-w-2xl flex-col gap-4 overflow-y-auto p-6">
-      <header className="flex items-center gap-3">
-        <Link
-          href="/"
-          aria-label="返回主界面"
-          className="rounded-md p-2 hover:bg-accent"
-        >
-          <ArrowLeft className="size-4" />
-        </Link>
-        <h1 className="text-lg font-semibold">设置</h1>
-        <span className="text-xs text-muted-foreground">修改即时保存</span>
-      </header>
-
+    <div className="flex flex-col gap-4 pb-6">
+      <p className="text-xs text-muted-foreground">修改即时保存</p>
       {settings && schema ? (
-        <>
-          <SchemaForm
-            schema={schema}
-            settings={settings}
-            onSave={save}
-            sideEffects={sideEffects}
-          />
-          <DataSection />
-          <ShortcutsSection />
-        </>
+        <SchemaForm
+          schema={schema}
+          settings={settings}
+          onSave={save}
+          sideEffects={sideEffects}
+        />
       ) : (
         <LoadState failed={loadFailed} onRetry={() => setRetryToken((n) => n + 1)} />
       )}
-
-      <footer className="pb-6 text-center text-xs text-muted-foreground">
-        shelx{currentVersion ? ` v${currentVersion}` : ""}
-      </footer>
-    </main>
+    </div>
   );
 }

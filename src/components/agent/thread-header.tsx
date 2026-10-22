@@ -95,7 +95,7 @@ export function ThreadHeader({
         />
         <DropdownMenuContent align="start" className="min-w-56">
           <DropdownMenuGroup>
-            <DropdownMenuLabel>模型接入点</DropdownMenuLabel>
+            <DropdownMenuLabel>切换模型</DropdownMenuLabel>
             <DropdownMenuRadioGroup
               value={snapshot?.thread.profileId ?? ""}
               onValueChange={(value) => void patchThread(threadId, { profileId: String(value) })}

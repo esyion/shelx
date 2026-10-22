@@ -404,11 +404,11 @@ CREATE TABLE agent_memories (id TEXT PRIMARY KEY, scope TEXT NOT NULL
 
 落点与既有约束兼容:`ResizablePanelGroup` 跨开关常驻、只增删手柄与右列,主列 DOM 位置不变 —— TerminalView 不因开关重挂,pty 不断,更不会像整页那样把用户从"正在看的那台机器"上拽走;收起只卸载对话组件,后台 run 继续(§12.2)。宽度区间 20%–60%(默认 35%,常量集中在 `src/stores/ui.ts`),拖拽手柄支持键盘方向键;主列最小 40%,终端不会被挤没。`agentOpen` 与拖拽后的占比(`agentPanelSplit`)同 `bottomPanel` 一样落布局(`save_layout`,防抖 500ms,恢复时夹取进区间),重启恢复原样。
 
-1. 组件落点 `src/components/agent/`:`agent-panel.tsx`(面板壳 + 四个页签 + 跨对话待批准横幅)、`agent-thread.tsx`(消息流)、`thread-header.tsx`(作用域/状态/三个选择器/用量)、`thread-composer.tsx`(输入区)、`approval-card.tsx`、`audit-list.tsx`、`memory-panel.tsx`、`profile-panel.tsx`(列表与编排)+ `profile-form.tsx`(草稿表单)、`answer.tsx`。IPC 出口仍走 `src/app/api.ts` → `src/gateway/agent.ts`。面板随 `<AppShell>` 跨路由常驻,属于"跨业务复用的宿主壳",因此不放 `src/app/<feature>/`;单文件 ≤300 行(本轮拆分后最大 `agent-thread.tsx` 294 行)。
+1. 组件落点 `src/components/agent/`:`agent-panel.tsx`(面板壳 + 两个页签 + 跨对话待批准横幅)、`agent-thread.tsx`(消息流)、`thread-header.tsx`(作用域/状态/三个选择器/用量)、`thread-composer.tsx`(输入区)、`approval-card.tsx`、`audit-list.tsx`、`answer.tsx`。记忆管理与模型配置在 `src/app/settings/ai/`(memory/profile,2026-10-22 迁入设置页)。IPC 出口仍走 `src/app/api.ts` → `src/gateway/agent.ts`。面板随 `<AppShell>` 跨路由常驻,属于"跨业务复用的宿主壳",因此不放 `src/app/<feature>/`;单文件 ≤300 行(本轮拆分后最大 `agent-thread.tsx` 294 行)。
 2. 入口:侧栏 footer 追加一项,与既有两项同形(`src/components/layout/sidebar.tsx` `SidebarFooter` 的 `/overview`、`/settings`),并带待批准角标 —— 收起面板也不会丢掉"等你决定"这件事。
 3. **作用域可见且可选**:面板头部常驻「可操作服务器 N 台」「在线会话 N 个」,数值来自后端 `resolve_agent_targets({mode:"allConfigured"})`,与工具侧同源,不能让用户以为 Agent 只能操作当前终端那台。
 4. **可选绑定当前会话**:对话区提供「绑定会话」下拉(数据源 = 在线会话集合),选中则把该 `sessionId`、serverInfo、终端最近输出摘要作为上下文注入;不选则 Agent 只按配置列表自行取证。**绑定必须是用户手动动作**,不做"自动跟随当前标签"(避免切标签时上下文被静默改写)。
-5. 宽度 20%–60%、默认 35%:拖拽手柄(支持键盘方向键)现场调;页签为 对话 / 操作记录 / 共享记忆 / 模型接入点。
+5. 宽度 20%–60%、默认 35%:拖拽手柄(支持键盘方向键)现场调;页签为 对话 / 操作记录(2026-10-22 起:记忆与模型配置迁至 设置 → AI,左右分栏,管理动作低频不该占对话面板;对话空态与新对话拦截提示负责指路)。
 6. "看着这台机器的日志顺手问一句"这条主路径由停靠形态本身成立:侧栏按钮常驻,点开不离开终端也不遮挡它,再在对话区把「绑定会话」选成这台机器即可 —— 不需要额外做"从终端跳一页并预填"的入口。
 
 被放弃的方案留档:

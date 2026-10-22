@@ -5,10 +5,14 @@
  * 打开时终端收窄重排(xterm ResizeObserver → fit → pty window_change),
  * 两边同屏可见 —— 覆盖层抽屉只解决"能点能滚",解决不了"被盖住看不见"。
  * 不占路由,收起也不打断后台运行:事件由 hub 缓冲,重开时按 `seq` 补发。
+ * 只保留对话与操作记录两个页签:记忆与模型配置是低频管理动作,
+ * 在 设置 → AI(它们原本挤在这里的页签里,管理体验受限)。
  */
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { X } from "lucide-react";
 import type { ApprovalDto } from "@/types";
 import { listPendingApprovals } from "@/app/api";
@@ -33,11 +37,10 @@ import { useAgentStore } from "@/stores/agent";
 import { useUiStore } from "@/stores/ui";
 import { AgentThread } from "./agent-thread";
 import { AuditList } from "./audit-list";
-import { MemoryPanel } from "./memory-panel";
-import { ProfilePanel } from "./profile-panel";
 
 /** AI 助手停靠右栏(挂在 AppShell 第三列,跨路由存活)。 */
 export function AgentPanel() {
+  const router = useRouter();
   const open = useUiStore((state) => state.agentOpen);
   const setAgentOpen = useUiStore((state) => state.setAgentOpen);
   const threads = useAgentStore((state) => state.threads);
@@ -48,12 +51,25 @@ export function AgentPanel() {
   const load = useAgentStore((state) => state.load);
   const createThread = useAgentStore((state) => state.createThread);
   const openThread = useAgentStore((state) => state.openThread);
-  const setError = useAgentStore((state) => state.setError);
   const dismissError = useAgentStore((state) => state.dismissError);
   /** 其他对话里等你批准的操作(后台运行不会因为你收起面板而停下)。 */
   const [elsewhere, setElsewhere] = useState<ApprovalDto[]>([]);
   /** 当前页签:对话页自己会显示错误,面板级错误只在其余页签出现,避免同一条报两遍。 */
   const [tab, setTab] = useState("chat");
+  /** 新对话被挡住的原因:一个可用接入点都没有,指引去设置页添加。 */
+  const [needProfile, setNeedProfile] = useState(false);
+
+  /** 打开时才拉数据:收着面板不产生额外 IPC 与网络。 */
+  useEffect(() => {
+    if (open) void load();
+  }, [open, load]);
+
+  /** 配置好可用接入点后自动撤掉指引,不用手动关。 */
+  useEffect(() => {
+    if (profiles.some((profile) => profile.enabled && profile.hasKey)) {
+      setNeedProfile(false);
+    }
+  }, [profiles]);
 
   /** 打开时才拉数据:收着面板不产生额外 IPC 与网络。 */
   useEffect(() => {
@@ -81,11 +97,11 @@ export function AgentPanel() {
     };
   }, [open, activeThreadId]);
 
-  /** 新建对话(需先有配好密钥的接入点)。 */
+  /** 新建对话(需先有配好密钥的接入点;没有就指引去设置页,不在这里报死)。 */
   async function create(): Promise<void> {
     const usable = profiles.find((profile) => profile.enabled && profile.hasKey);
     if (!usable) {
-      setError("还没有可用的模型接入点:切到「模型接入点」页签填地址与密钥");
+      setNeedProfile(true);
       return;
     }
     setTab("chat");
@@ -193,12 +209,27 @@ export function AgentPanel() {
           </Card>
         )}
 
+        {needProfile && (
+          <Alert>
+            <AlertDescription>
+              还没有可用的模型接入点:先到 设置 → AI → 模型配置 添加并填好密钥,再回来新建对话。
+            </AlertDescription>
+            <AlertAction>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => router.push("/settings/ai/models")}
+              >
+                去添加
+              </Button>
+            </AlertAction>
+          </Alert>
+        )}
+
         <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-3">
           <TabsList>
             <TabsTrigger value="chat">对话</TabsTrigger>
             <TabsTrigger value="audit">操作记录</TabsTrigger>
-            <TabsTrigger value="memory">共享记忆</TabsTrigger>
-            <TabsTrigger value="profiles">模型接入点</TabsTrigger>
           </TabsList>
           <TabsContent value="chat" className="flex min-h-0 flex-1 flex-col">
             {activeThreadId ? (
@@ -211,6 +242,14 @@ export function AgentPanel() {
                   </EmptyTitle>
                   <EmptyDescription>
                     点上方「新对话」开始;Agent 能看到你配置过的全部服务器,不必先连上才能问。
+                    机器的固定事实写在{" "}
+                    <Link
+                      href="/settings/ai/memory"
+                      className="underline underline-offset-4 hover:text-foreground"
+                    >
+                      设置 → AI → 记忆
+                    </Link>
+                    ,新对话自动参考。
                   </EmptyDescription>
                 </EmptyHeader>
               </Empty>
@@ -218,12 +257,6 @@ export function AgentPanel() {
           </TabsContent>
           <TabsContent value="audit" className="min-h-0 flex-1 overflow-y-auto">
             <AuditList threadId={activeThreadId} />
-          </TabsContent>
-          <TabsContent value="memory" className="min-h-0 flex-1 overflow-y-auto">
-            <MemoryPanel />
-          </TabsContent>
-          <TabsContent value="profiles" className="min-h-0 flex-1 overflow-y-auto">
-            <ProfilePanel />
           </TabsContent>
         </Tabs>
       </div>

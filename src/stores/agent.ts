@@ -85,8 +85,8 @@ export interface AgentStore {
   probeProfile(id: string): Promise<AgentProfile | null>;
   /** 查模型目录里该模型的窗口事实(接入点表单自动带出);同一模型名只查一次。 */
   lookupModelWindow(model: string): Promise<ModelWindowDto | null>;
-  /** 保存记忆。 */
-  saveMemory(request: Parameters<typeof api.upsertAgentMemory>[0]): Promise<void>;
+  /** 保存记忆(成功返回 true;失败把原因写入 error 并返回 false,供界面保留草稿)。 */
+  saveMemory(request: Parameters<typeof api.upsertAgentMemory>[0]): Promise<boolean>;
   /** 删除记忆。 */
   removeMemory(id: string): Promise<void>;
   /** 清除错误提示。 */
@@ -353,8 +353,10 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       const saved = await api.upsertAgentMemory(request);
       const others = get().memories.filter((memory) => memory.id !== saved.id);
       set({ memories: [...others, saved] });
+      return true;
     } catch (error) {
       set({ error: messageOf(error) });
+      return false;
     }
   },
 

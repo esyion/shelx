@@ -304,6 +304,19 @@ describe("一轮的渲染顺序", () => {
   });
 });
 
+describe("新对话的接入点拦截", () => {
+  it("一个可用接入点都没有时,就地提示去设置页添加并可跳转,不路由也不凭空建线程", async () => {
+    render(<AppShell />);
+    useUiStore.setState({ agentOpen: true });
+    await screen.findByLabelText("向 Agent 提问");
+    fireEvent.click(screen.getByRole("button", { name: "新对话" }));
+    expect(await screen.findByText(/设置 → AI → 模型配置/)).toBeTruthy();
+    expect(routerPush).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "去添加" }));
+    expect(routerPush).toHaveBeenCalledWith("/settings/ai/models");
+  });
+});
+
 describe("停靠右栏持久化", () => {
   it("调宽占比被夹取到 [20, 60]", () => {
     useUiStore.getState().setAgentPanelSplit(90);
