@@ -57,8 +57,13 @@ tauri-plugin-dialog = "2"
 
 # --- 日志与路径(设计文档 §7.1 / §7.5)---
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+# `time` feature 启用 OffsetTime timer(时间戳用本地时区输出)。
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time"] }
 tracing-appender = "0.2"
+# 用途:启动时捕获本机 UTC 偏移,日志时间戳按用户本地时区输出(见 shared/logging.rs)。
+# 风险:`local-offset` 在部分平台多线程下可能检测失败,代码中已回退 UTC。
+# 回滚:去掉本依赖与 tracing-subscriber 的 `time` feature,时间戳退回默认 UTC 输出。
+time = { version = "0.3", default-features = false, features = ["formatting", "local-offset"] }
 dirs = "6"
 
 # --- ID 生成(跨 IPC/持久化统一 string,AGENTS.md §5)---
