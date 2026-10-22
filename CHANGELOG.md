@@ -7,6 +7,38 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > Versions prior to `0.2.0` were internal iterations before the project
 > was open-sourced; their changes are summarized under "Unreleased / 0.2.0".
 
+## [0.3.0-beta] - 2026-10-22
+
+First beta of the built-in operations agent (M5). The agent lives in a
+docked right-hand panel reached from the sidebar entry, so the terminal
+or file list you are viewing is squeezed — never covered — and keeps
+running while the panel is collapsed.
+
+### Added
+
+- **Built-in AI operations agent (beta)** — a rig-based agent speaking
+  the Responses/Messages protocol only, driving connected hosts through
+  tool calls. Each turn is persisted and replayed as a single ordered
+  timeline (thinking / tool steps / answer as ordered stream parts,
+  chain-of-thought steps keyed by tool `callId`); pending approvals are
+  prompt cards with a three-way decision; the context-usage meter takes
+  its budget from the model window shipped with the package and can be
+  overridden in settings; the system prompt is assembled as standard
+  Markdown sections with a host table.
+- **ShelxMark brand glyph** — the terminal-prompt arrow mark now
+  identifies the assistant in the sidebar entry, panel header and
+  message avatars.
+
+### Changed
+
+- Assistant message role copy unified to「助手」(was "Agent"); idle
+  turns no longer repeat the role header.
+
+### Fixed
+
+- Log timestamps now use the machine's local timezone (`+08:00`
+  style) instead of UTC `Z`, so log lines match the system clock.
+
 ## [0.2.26] - 2026-10-20
 
 ### Added

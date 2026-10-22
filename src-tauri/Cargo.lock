@@ -8834,7 +8834,7 @@ dependencies = [
 
 [[package]]
 name = "shelx"
-version = "0.2.26"
+version = "0.3.0-beta"
 dependencies = [
  "aes-gcm 0.10.3",
  "async-trait",
