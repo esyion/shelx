@@ -161,7 +161,7 @@ export function toolActionLabel(toolName: string): string {
 /** 消息角色 → 中文。 */
 export const MESSAGE_ROLE_DISPLAY: Record<MessageRole, AgentDisplay> = {
   user: { label: "你", description: "你的提问", tone: "neutral" },
-  assistant: { label: "Agent", description: "模型的回答", tone: "info" },
+  assistant: { label: "助手", description: "模型的回答", tone: "info" },
   tool: { label: "工具", description: "取证与操作的结果", tone: "neutral" },
   system: { label: "系统", description: "运行过程提示", tone: "neutral" },
 };
