@@ -247,28 +247,28 @@ describe("待批准(每台一个 Item + ToggleGroup)", () => {
 });
 
 describe("上下文用量(Context pattern)", () => {
-  it("有预算时报百分比,分母是设置里的预算而不是猜的模型上限", () => {
+  it("有窗口时报百分比,分母是模型窗口", () => {
     cleanup();
-    render(<ContextUsage used={400} budget={1000} usage={{ totalTokens: 400 }} />);
+    render(<ContextUsage used={400} contextWindow={1000} budget={0} usage={{ totalTokens: 400 }} />);
     expect(screen.getByText("40% 上下文")).toBeTruthy();
   });
 
-  it("未设预算时不报百分比,也不伪造分母", () => {
+  it("窗口未知时不报百分比,也不拿猜的数当分母", () => {
     cleanup();
-    render(<ContextUsage used={400} budget={0} />);
+    render(<ContextUsage used={400} contextWindow={null} budget={0} />);
     expect(screen.getByText("400 tokens")).toBeTruthy();
     expect(screen.queryByText(/%/)).toBeNull();
   });
 
-  it("超出预算封顶 100%,不报出 130% 这种让人误读的数", () => {
+  it("超过窗口封顶 100%,不报出 130% 这种让人误读的数", () => {
     cleanup();
-    render(<ContextUsage used={1300} budget={1000} />);
+    render(<ContextUsage used={1300} contextWindow={1000} budget={0} />);
     expect(screen.getByText("100% 上下文")).toBeTruthy();
   });
 
   it("还没有用量时整块不渲染,不留空壳", () => {
     cleanup();
-    const { container } = render(<ContextUsage used={0} budget={1000} />);
+    const { container } = render(<ContextUsage used={0} contextWindow={1000} budget={0} />);
     expect(container.textContent).toBe("");
   });
 });

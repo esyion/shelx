@@ -438,6 +438,15 @@ export interface DetachRequestDto {
   threadId: string;
 }
 /**
+ * 查模型目录里的窗口事实(接入点表单自动带出用)。
+ */
+export interface LookupModelRequestDto {
+  /**
+   * 模型名(与接入点里填的一致)。
+   */
+  model: string;
+}
+/**
  * 共享记忆条目。
  */
 export interface MemoryDto {
@@ -478,6 +487,27 @@ export interface MessageDto {
   role: MessageRole;
 }
 /**
+ * 模型目录返回的事实;字段为空表示目录没有这条记录,界面如实留空。
+ */
+export interface ModelWindowDto {
+  /**
+   * 一次请求能读写的最大 tokens。
+   */
+  contextWindow: number | null;
+  /**
+   * 目录里的可读名。
+   */
+  displayName: string;
+  /**
+   * 目录里有没有这条模型(没有时上面两项必为空)。
+   */
+  known: boolean;
+  /**
+   * 单次回复的最大 tokens。
+   */
+  maxOutputTokens: number | null;
+}
+/**
  * 协议探测结果。
  */
 export interface ProbeDto {
@@ -503,6 +533,14 @@ export interface ProfileDto {
    */
   baseUrl: string | null;
   /**
+   * 用户手填的上下文窗口覆盖(tokens);`None` = 用模型目录的值。
+   */
+  contextWindow: number | null;
+  /**
+   * 实际生效的上下文窗口:覆盖优先,否则目录值;两处都没有则 `None`(界面如实说"窗口未知")。
+   */
+  effectiveContextWindow: number | null;
+  /**
    * 是否启用。
    */
   enabled: boolean;
@@ -519,6 +557,10 @@ export interface ProfileDto {
    */
   label: string;
   /**
+   * 用户手填的单次回复上限覆盖(tokens)。
+   */
+  maxOutputTokens: number | null;
+  /**
    * 模型名。
    */
   model: string;
@@ -527,6 +569,10 @@ export interface ProfileDto {
    * 协议是否已确认。
    */
   responsesVerified: boolean;
+  /**
+   * 窗口来源:目录里那条模型的可读名;`None` = 目录没有这个模型。
+   */
+  windowSource: string | null;
 }
 /**
  * 作用域解析请求。
@@ -751,6 +797,10 @@ export interface UpsertProfileRequestDto {
    */
   baseUrl: string | null;
   /**
+   * 上下文窗口覆盖(tokens);不传 = 用模型目录的值。
+   */
+  contextWindow: number | null;
+  /**
    * 是否启用。
    */
   enabled: boolean;
@@ -762,6 +812,10 @@ export interface UpsertProfileRequestDto {
    * 名称。
    */
   label: string;
+  /**
+   * 单次回复上限覆盖(tokens);不传 = 用模型目录的值。
+   */
+  maxOutputTokens: number | null;
   /**
    * 模型名。
    */

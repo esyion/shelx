@@ -91,6 +91,7 @@ export function AgentThread({ threadId }: { threadId: string }) {
   const snapshot = useAgentStore((state) => state.snapshots[threadId] ?? null);
   const stream = useAgentStore((state) => state.streams[threadId]);
   const send = useAgentStore((state) => state.send);
+  const profiles = useAgentStore((state) => state.profiles);
   const error = useAgentStore((state) => state.error);
   const loadSettings = useSettingsStore((state) => state.load);
   const settings = useSettingsStore((state) => state.settings);
@@ -152,6 +153,10 @@ export function AgentThread({ threadId }: { threadId: string }) {
         : (run.usage?.totalTokens ?? 0)),
     0,
   );
+  /** 用量条的分母:这一档接入点实际生效的模型窗口(用户覆盖优先,否则后端目录带出的值)。 */
+  const contextWindow =
+    profiles.find((profile) => profile.id === snapshot?.thread.profileId)
+      ?.effectiveContextWindow ?? null;
   const turns: TurnView[] = (snapshot?.runs ?? []).map((run) => ({
     run,
     segments: chainSegments(
@@ -327,6 +332,7 @@ export function AgentThread({ threadId }: { threadId: string }) {
         busy={busy}
         runningId={running[0] ?? null}
         used={usedTokens}
+        contextWindow={contextWindow}
         budget={settings?.agent?.tokenBudget ?? 0}
         usage={stream?.usage}
       />

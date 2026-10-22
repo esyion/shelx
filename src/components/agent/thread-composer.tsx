@@ -28,19 +28,22 @@ import { ContextUsage } from "./context-usage";
  * @param busy 是否有进行中的运行(运行中禁止再次发送)。
  * @param runningId 当前运行 ID;有值才把发送键换成停止键。
  * @param used 整段对话已用 tokens(与后端预算闸门同口径)。
- * @param budget 设置里的单对话 token 预算,`0` = 不限。
+ * @param contextWindow 该接入点实际生效的模型窗口;`null` = 未知(用量不报百分比)。
+ * @param budget 设置里的单对话花费预算,`0` = 不限。
  * @param usage 最近一轮用量,悬浮详情里拆开显示。
  */
 export function ThreadComposer({
   busy,
   runningId,
   used,
+  contextWindow,
   budget,
   usage,
 }: {
   busy: boolean;
   runningId: string | null;
   used: number;
+  contextWindow: number | null;
   budget: number;
   usage?: AgentUsage;
 }) {
@@ -88,7 +91,12 @@ export function ThreadComposer({
           <InputGroupText className="text-xs">
             {busy ? "这一轮正在处理…" : "Enter 发送，Shift+Enter 换行"}
           </InputGroupText>
-          <ContextUsage used={used} budget={budget} usage={usage} />
+          <ContextUsage
+            used={used}
+            contextWindow={contextWindow}
+            budget={budget}
+            usage={usage}
+          />
           {busy && runningId ? (
             <InputGroupButton
               type="button"

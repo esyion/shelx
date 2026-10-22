@@ -441,6 +441,8 @@ impl AgentService {
             base_url: draft.base_url,
             responses_verified: draft.responses_verified,
             enabled: draft.enabled,
+            context_window: draft.context_window,
+            max_output_tokens: draft.max_output_tokens,
             created_at: self
                 .profile(&id)
                 .map(|existing| existing.created_at)

@@ -194,6 +194,8 @@ fn document_uncanonical() -> Value {
                 ("RespondApprovalRequestDto", refer::<crate::dto::agent::RespondApprovalRequestDto>),
                 ("DetachRequestDto", refer::<crate::dto::agent::DetachRequestDto>),
                 ("UpsertProfileRequestDto", refer::<crate::dto::agent::UpsertProfileRequestDto>),
+                ("LookupModelRequestDto", refer::<crate::dto::agent::LookupModelRequestDto>),
+                ("ModelWindowDto", refer::<crate::dto::agent::ModelWindowDto>),
                 ("AgentIdRequestDto", refer::<crate::dto::agent::AgentIdRequestDto>),
                 ("UpsertMemoryRequestDto", refer::<crate::dto::agent::UpsertMemoryRequestDto>),
                 ("ResolveTargetsRequestDto", refer::<crate::dto::agent::ResolveTargetsRequestDto>),

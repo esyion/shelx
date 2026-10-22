@@ -24,6 +24,7 @@ const api = vi.hoisted(() => ({
   listPendingApprovals: vi.fn(),
   listAgentAudit: vi.fn(),
   upsertAgentProfile: vi.fn(),
+  lookupAgentModel: vi.fn(),
   deleteAgentProfile: vi.fn(),
   testAgentProfile: vi.fn(),
   resolveAgentTargets: vi.fn(),
@@ -80,6 +81,7 @@ beforeEach(() => {
     activeThreadId: null,
     snapshots: {},
     streams: {},
+    modelWindows: {},
     error: null,
     loading: false,
   });
@@ -252,6 +254,33 @@ describe("接入点与记忆", () => {
     api.testAgentProfile.mockResolvedValue({ supported: false, message: "只实现旧接口", usage: null });
     const result = await useAgentStore.getState().probeProfile("p1");
     expect(result).toBeNull();
+  });
+
+  it("模型窗口按名缓存:同一个模型两次查只发一次 IPC", async () => {
+    api.lookupAgentModel.mockResolvedValue({
+      displayName: "GLM-5.3",
+      contextWindow: 1000000,
+      maxOutputTokens: 131072,
+      known: true,
+    });
+    const store = useAgentStore.getState();
+    await store.lookupModelWindow("glm-5.3");
+    await store.lookupModelWindow("  GLM-5.3 ");
+    expect(api.lookupAgentModel).toHaveBeenCalledOnce();
+    expect(useAgentStore.getState().modelWindows["glm-5.3"]?.contextWindow).toBe(1000000);
+  });
+
+  it("目录没有这条模型时缓存 known=false,不反复重查也不伪造窗口", async () => {
+    api.lookupAgentModel.mockResolvedValue({
+      displayName: "my-model",
+      contextWindow: null,
+      maxOutputTokens: null,
+      known: false,
+    });
+    const facts = await useAgentStore.getState().lookupModelWindow("my-model");
+    expect(facts?.known).toBe(false);
+    expect(useAgentStore.getState().modelWindows["my-model"]).toBeTruthy();
+    expect(useAgentStore.getState().modelWindows["my-model"]?.contextWindow).toBeNull();
   });
 
   it("停用记忆会写回后端", async () => {

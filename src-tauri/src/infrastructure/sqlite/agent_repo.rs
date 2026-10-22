@@ -455,7 +455,8 @@ impl AgentStore for SqliteAgentStore {
     fn profiles(&self) -> Result<Vec<ProfileRecord>, StoreFault> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
-                "SELECT id,label,protocol,model,base_url,responses_verified,secret_ref,enabled,created_at
+                "SELECT id,label,protocol,model,base_url,responses_verified,secret_ref,enabled,created_at,
+                   context_window,max_output_tokens
                  FROM agent_profiles ORDER BY created_at ASC",
             )?;
             let rows = stmt.query_map([], |row| {
@@ -472,6 +473,8 @@ impl AgentStore for SqliteAgentStore {
                     secret_ref: row.get(6)?,
                     enabled: enabled != 0,
                     created_at: row.get(8)?,
+                    context_window: row.get(9)?,
+                    max_output_tokens: row.get(10)?,
                 })
             })?;
             rows.collect()
@@ -482,10 +485,12 @@ impl AgentStore for SqliteAgentStore {
         let protocol = wire_string(&profile.protocol)?;
         self.with_conn(|conn| {
             conn.execute(
-                "INSERT INTO agent_profiles (id,label,protocol,model,base_url,responses_verified,secret_ref,enabled,created_at)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)
+                "INSERT INTO agent_profiles (id,label,protocol,model,base_url,responses_verified,secret_ref,enabled,created_at,
+                   context_window,max_output_tokens)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
                  ON CONFLICT(id) DO UPDATE SET label=?2, protocol=?3, model=?4, base_url=?5,
-                   responses_verified=?6, secret_ref=?7, enabled=?8",
+                   responses_verified=?6, secret_ref=?7, enabled=?8,
+                   context_window=?10, max_output_tokens=?11",
                 params![
                     profile.id,
                     profile.label,
@@ -495,7 +500,9 @@ impl AgentStore for SqliteAgentStore {
                     profile.responses_verified as i64,
                     profile.secret_ref,
                     profile.enabled as i64,
-                    profile.created_at
+                    profile.created_at,
+                    profile.context_window,
+                    profile.max_output_tokens
                 ],
             )
         })?;
@@ -645,6 +652,8 @@ mod tests {
             secret_ref: format!("llm:{id}:api_key"),
             enabled: true,
             created_at: 1,
+            context_window: Some(200_000),
+            max_output_tokens: Some(8_192),
         }
     }
 
@@ -661,7 +670,25 @@ mod tests {
         let profiles = store.profiles().unwrap();
         assert_eq!(profiles.len(), 1);
         assert_eq!(profiles[0].protocol, ProtocolKind::OpenAiResponses);
+        assert_eq!(profiles[0].context_window, Some(200_000));
+        assert_eq!(profiles[0].max_output_tokens, Some(8_192));
         assert!(store.thread("nope").unwrap().is_none());
+    }
+
+    /// 没填覆盖时两列读回 NULL 而不是 0:"用户没填"与"填了 0"必须是两回事。
+    #[test]
+    fn unset_window_round_trips_as_null() {
+        let store = SqliteAgentStore::open_in_memory().unwrap();
+        store
+            .upsert_profile(&ProfileRecord {
+                context_window: None,
+                max_output_tokens: None,
+                ..profile("p9")
+            })
+            .unwrap();
+        let loaded = store.profiles().unwrap().remove(0);
+        assert_eq!(loaded.context_window, None);
+        assert_eq!(loaded.max_output_tokens, None);
     }
 
     /// 消息按窗口取尾部并正序返回;线程时间被刷新。

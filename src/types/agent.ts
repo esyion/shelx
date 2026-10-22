@@ -18,6 +18,7 @@ export type {
   MemoryScope,
   MessageDto,
   MessageRole,
+  ModelWindowDto,
   ProbeDto,
   ProfileDto,
   ProtocolKind,

@@ -298,12 +298,29 @@ pub struct ProfileDto {
     pub enabled: bool,
     /// 是否已保存密钥(永不回显密钥本体)。
     pub has_key: bool,
+    /// 用户手填的上下文窗口覆盖(tokens);`None` = 用模型目录的值。
+    pub context_window: Option<u32>,
+    /// 用户手填的单次回复上限覆盖(tokens)。
+    pub max_output_tokens: Option<u32>,
+    /// 实际生效的上下文窗口:覆盖优先,否则目录值;两处都没有则 `None`(界面如实说"窗口未知")。
+    pub effective_context_window: Option<u32>,
+    /// 窗口来源:目录里那条模型的可读名;`None` = 目录没有这个模型。
+    pub window_source: Option<String>,
 }
 
 impl ProfileDto {
-    /// 由存储记录与"是否已有密钥"构造。
+    /// 由存储记录、"是否已有密钥"与目录里该模型的事实构造。
+    ///
+    /// `catalog` 为 `None` 表示目录查不到这条模型 —— 此时只有用户手填的覆盖能给出窗口。
     #[must_use]
-    pub fn new(record: ProfileRecord, has_key: bool) -> Self {
+    pub fn new(
+        record: ProfileRecord,
+        has_key: bool,
+        catalog: Option<crate::domain::agent::ModelWindow>,
+    ) -> Self {
+        let effective_context_window = record
+            .context_window
+            .or(catalog.as_ref().and_then(|f| f.context_window));
         Self {
             id: record.id,
             label: record.label,
@@ -313,6 +330,10 @@ impl ProfileDto {
             responses_verified: record.responses_verified,
             enabled: record.enabled,
             has_key,
+            context_window: record.context_window,
+            max_output_tokens: record.max_output_tokens,
+            effective_context_window,
+            window_source: catalog.map(|facts| facts.display_name),
         }
     }
 }
@@ -503,6 +524,34 @@ pub struct UpsertProfileRequestDto {
     /// 是否启用。
     #[serde(default)]
     pub enabled: bool,
+    /// 上下文窗口覆盖(tokens);不传 = 用模型目录的值。
+    #[serde(default)]
+    pub context_window: Option<u32>,
+    /// 单次回复上限覆盖(tokens);不传 = 用模型目录的值。
+    #[serde(default)]
+    pub max_output_tokens: Option<u32>,
+}
+
+/// 查模型目录里的窗口事实(接入点表单自动带出用)。
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LookupModelRequestDto {
+    /// 模型名(与接入点里填的一致)。
+    pub model: String,
+}
+
+/// 模型目录返回的事实;字段为空表示目录没有这条记录,界面如实留空。
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelWindowDto {
+    /// 目录里的可读名。
+    pub display_name: String,
+    /// 一次请求能读写的最大 tokens。
+    pub context_window: Option<u32>,
+    /// 单次回复的最大 tokens。
+    pub max_output_tokens: Option<u32>,
+    /// 目录里有没有这条模型(没有时上面两项必为空)。
+    pub known: bool,
 }
 
 /// ID 请求(profile / 记忆 / 订阅通用)。
@@ -586,28 +635,47 @@ mod tests {
         assert_eq!(draft.approval_mode, None);
     }
 
-    /// profile DTO 永不含密钥字段。
+    /// profile DTO 永不含密钥字段,且窗口解析规则不外泄内部机制。
     #[test]
     fn profile_dto_has_no_secret_material() {
-        let dto = ProfileDto::new(
-            ProfileRecord {
-                id: "p1".into(),
-                label: "官方".into(),
-                protocol: ProtocolKind::AnthropicMessages,
-                model: "claude".into(),
-                base_url: None,
-                responses_verified: true,
-                secret_ref: "llm:p1:api_key".into(),
-                enabled: true,
-                created_at: 0,
-            },
-            false,
-        );
+        let record = ProfileRecord {
+            id: "p1".into(),
+            label: "官方".into(),
+            protocol: ProtocolKind::AnthropicMessages,
+            model: "claude".into(),
+            base_url: None,
+            responses_verified: true,
+            secret_ref: "llm:p1:api_key".into(),
+            enabled: true,
+            created_at: 0,
+            context_window: None,
+            max_output_tokens: None,
+        };
+        let catalog = Some(crate::domain::agent::ModelWindow {
+            display_name: "Claude".into(),
+            context_window: Some(200_000),
+            max_output_tokens: Some(8_192),
+        });
+        let dto = ProfileDto::new(record.clone(), false, catalog.clone());
         let json = serde_json::to_value(&dto).unwrap();
         assert!(json.get("secretRef").is_none(), "引用键也不外泄");
         assert!(json.get("apiKey").is_none());
         assert_eq!(json["hasKey"], false);
         assert_eq!(json["protocol"], "anthropic_messages");
+        // 没填覆盖 → 分母用目录值,并带出来源说明。
+        assert_eq!(json["effectiveContextWindow"], 200_000);
+        assert_eq!(json["windowSource"], "Claude");
+
+        // 填了覆盖 → 覆盖赢。
+        let overridden = ProfileDto::new(
+            ProfileRecord {
+                context_window: Some(64_000),
+                ..record
+            },
+            false,
+            catalog,
+        );
+        assert_eq!(overridden.effective_context_window, Some(64_000));
     }
 
     /// 快照与审计映射保持字段完整。

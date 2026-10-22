@@ -230,6 +230,9 @@ export const listAgentAudit = agentApi.listAgentAudit;
 export const listAgentProfiles = agentApi.listAgentProfiles;
 /** 保存模型接入点。 */
 export const upsertAgentProfile = agentApi.upsertAgentProfile;
+
+/** 查模型目录里该模型的上下文窗口事实(接入点表单自动带出)。 */
+export const lookupAgentModel = agentApi.lookupAgentModel;
 /** 删除模型接入点。 */
 export const deleteAgentProfile = agentApi.deleteAgentProfile;
 /** 测试接入点协议。 */

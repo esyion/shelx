@@ -707,6 +707,20 @@
           ],
           "type": "object"
         },
+        "LookupModelRequestDto": {
+          "additionalProperties": false,
+          "description": "查模型目录里的窗口事实(接入点表单自动带出用)。",
+          "properties": {
+            "model": {
+              "description": "模型名(与接入点里填的一致)。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "model"
+          ],
+          "type": "object"
+        },
         "MemoryDto": {
           "description": "共享记忆条目。",
           "properties": {
@@ -812,6 +826,44 @@
             }
           ]
         },
+        "ModelWindowDto": {
+          "description": "模型目录返回的事实;字段为空表示目录没有这条记录,界面如实留空。",
+          "properties": {
+            "contextWindow": {
+              "description": "一次请求能读写的最大 tokens。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "displayName": {
+              "description": "目录里的可读名。",
+              "type": "string"
+            },
+            "known": {
+              "description": "目录里有没有这条模型(没有时上面两项必为空)。",
+              "type": "boolean"
+            },
+            "maxOutputTokens": {
+              "description": "单次回复的最大 tokens。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "displayName",
+            "contextWindow",
+            "maxOutputTokens",
+            "known"
+          ],
+          "type": "object"
+        },
         "ProbeDto": {
           "description": "协议探测结果。",
           "properties": {
@@ -852,6 +904,24 @@
                 "null"
               ]
             },
+            "contextWindow": {
+              "description": "用户手填的上下文窗口覆盖(tokens);`None` = 用模型目录的值。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "effectiveContextWindow": {
+              "description": "实际生效的上下文窗口:覆盖优先,否则目录值;两处都没有则 `None`(界面如实说\"窗口未知\")。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "enabled": {
               "description": "是否启用。",
               "type": "boolean"
@@ -868,6 +938,15 @@
               "description": "名称。",
               "type": "string"
             },
+            "maxOutputTokens": {
+              "description": "用户手填的单次回复上限覆盖(tokens)。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "model": {
               "description": "模型名。",
               "type": "string"
@@ -879,6 +958,13 @@
             "responsesVerified": {
               "description": "协议是否已确认。",
               "type": "boolean"
+            },
+            "windowSource": {
+              "description": "窗口来源:目录里那条模型的可读名;`None` = 目录没有这个模型。",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "required": [
@@ -889,7 +975,11 @@
             "baseUrl",
             "responsesVerified",
             "enabled",
-            "hasKey"
+            "hasKey",
+            "contextWindow",
+            "maxOutputTokens",
+            "effectiveContextWindow",
+            "windowSource"
           ],
           "type": "object"
         },
@@ -1512,6 +1602,16 @@
                 "null"
               ]
             },
+            "contextWindow": {
+              "default": null,
+              "description": "上下文窗口覆盖(tokens);不传 = 用模型目录的值。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "enabled": {
               "default": false,
               "description": "是否启用。",
@@ -1528,6 +1628,16 @@
             "label": {
               "description": "名称。",
               "type": "string"
+            },
+            "maxOutputTokens": {
+              "default": null,
+              "description": "单次回复上限覆盖(tokens);不传 = 用模型目录的值。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
             },
             "model": {
               "description": "模型名。",
@@ -1551,7 +1661,9 @@
             "baseUrl",
             "responsesVerified",
             "apiKey",
-            "enabled"
+            "enabled",
+            "contextWindow",
+            "maxOutputTokens"
           ],
           "type": "object"
         }
@@ -1594,6 +1706,9 @@
         "DetachRequestDto": {
           "$ref": "#/$defs/DetachRequestDto"
         },
+        "LookupModelRequestDto": {
+          "$ref": "#/$defs/LookupModelRequestDto"
+        },
         "MemoryDto": {
           "$ref": "#/$defs/MemoryDto"
         },
@@ -1605,6 +1720,9 @@
         },
         "MessageRole": {
           "$ref": "#/$defs/MessageRole"
+        },
+        "ModelWindowDto": {
+          "$ref": "#/$defs/ModelWindowDto"
         },
         "ProbeDto": {
           "$ref": "#/$defs/ProbeDto"
@@ -1697,6 +1815,8 @@
         "RespondApprovalRequestDto",
         "DetachRequestDto",
         "UpsertProfileRequestDto",
+        "LookupModelRequestDto",
+        "ModelWindowDto",
         "AgentIdRequestDto",
         "UpsertMemoryRequestDto",
         "ResolveTargetsRequestDto"

@@ -15,6 +15,7 @@ import type {
   ApprovalChoice,
   ApprovalDto,
   AuditDto,
+  ModelWindowDto,
   ProbeDto,
   SendAcceptedDto,
   TargetDto,
@@ -162,6 +163,11 @@ export function listAgentProfiles(): Promise<AgentProfile[]> {
 /** 保存模型接入点。 */
 export function upsertAgentProfile(request: UpsertProfileRequestDto): Promise<AgentProfile> {
   return invokeUnwrapped("upsert_agent_profile", { request });
+}
+
+/** 查模型目录里该模型的窗口事实(接入点表单自动带出;目录没有则 known=false)。 */
+export function lookupAgentModel(model: string): Promise<ModelWindowDto> {
+  return invokeUnwrapped("lookup_agent_model", { request: { model } });
 }
 
 /** 删除模型接入点(同时清除密钥)。 */

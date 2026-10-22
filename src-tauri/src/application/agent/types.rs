@@ -149,6 +149,10 @@ pub struct ProfileRecord {
     pub enabled: bool,
     /// 创建时间。
     pub created_at: i64,
+    /// 上下文窗口覆盖(tokens);`None` = 用模型目录里的值。
+    pub context_window: Option<u32>,
+    /// 单次回复上限覆盖(tokens);`None` = 用模型目录里的值。
+    pub max_output_tokens: Option<u32>,
 }
 
 impl ProfileRecord {
@@ -164,7 +168,8 @@ impl ProfileRecord {
             self.model.clone(),
             self.base_url.clone(),
             self.responses_verified,
-        )
+        )?
+        .with_limits(self.context_window, self.max_output_tokens)
     }
 }
 
@@ -187,6 +192,10 @@ pub struct ProfileDraft {
     pub api_key: Option<String>,
     /// 是否启用。
     pub enabled: bool,
+    /// 上下文窗口覆盖(tokens);`None` = 用模型目录里的值。
+    pub context_window: Option<u32>,
+    /// 单次回复上限覆盖(tokens);`None` = 用模型目录里的值。
+    pub max_output_tokens: Option<u32>,
 }
 
 /// 新建线程的入参(应用层用例形态,DTO 校验在接口层完成)。
@@ -399,6 +408,8 @@ mod tests {
             secret_ref: "llm:p1:api_key".into(),
             enabled: true,
             created_at: 0,
+            context_window: None,
+            max_output_tokens: None,
         };
         assert!(record.to_domain().is_ok());
 
@@ -412,8 +423,22 @@ mod tests {
             secret_ref: "llm:p2:api_key".into(),
             enabled: true,
             created_at: 0,
+            context_window: Some(200_000),
+            max_output_tokens: Some(8_192),
         };
         assert!(bad_gateway.to_domain().is_err());
+
+        // 手填的窗口与上限随记录一起进领域对象,界面才拿得到"实际生效值"。
+        let with_window = ProfileRecord {
+            context_window: Some(200_000),
+            max_output_tokens: Some(8_192),
+            ..record
+        };
+        let mapped = with_window
+            .to_domain()
+            .expect("合法窗口覆盖必须通过领域校验");
+        assert_eq!(mapped.context_window, Some(200_000));
+        assert_eq!(mapped.max_output_tokens, Some(8_192));
     }
 
     /// 记忆注入行带作用域中文。

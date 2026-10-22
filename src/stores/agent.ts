@@ -15,6 +15,7 @@ import type {
   ApprovalChoice,
   ApprovalDto,
   MemoryDto,
+  ModelWindowDto,
   ThreadSnapshotDto,
 } from "@/types";
 import {
@@ -39,6 +40,8 @@ export interface AgentStore {
   memories: MemoryDto[];
   /** 界面候选枚举(协议、批准决策、记忆作用域),一次随列表拉取。 */
   enums: AgentEnumsDto;
+  /** 模型目录里的窗口事实,按小写模型名缓存;键不存在 = 还没查过,`known:false` = 目录没有这条模型。 */
+  modelWindows: Record<string, ModelWindowDto>;
   /** 当前打开的线程。 */
   activeThreadId: string | null;
   /** 线程快照。 */
@@ -80,6 +83,8 @@ export interface AgentStore {
   removeProfile(id: string): Promise<void>;
   /** 测试接入点协议。 */
   probeProfile(id: string): Promise<AgentProfile | null>;
+  /** 查模型目录里该模型的窗口事实(接入点表单自动带出);同一模型名只查一次。 */
+  lookupModelWindow(model: string): Promise<ModelWindowDto | null>;
   /** 保存记忆。 */
   saveMemory(request: Parameters<typeof api.upsertAgentMemory>[0]): Promise<void>;
   /** 删除记忆。 */
@@ -120,6 +125,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   profiles: [],
   memories: [],
   enums: { protocols: [], approvalDecisions: [], memoryScopes: [] },
+  modelWindows: {},
   activeThreadId: null,
   snapshots: {},
   streams: {},
@@ -323,6 +329,21 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       } else {
         set({ error: messageOf(error) });
       }
+      return null;
+    }
+  },
+
+  async lookupModelWindow(model) {
+    const key = model.trim().toLowerCase();
+    if (!key) return null;
+    const cached = get().modelWindows[key];
+    if (cached !== undefined) return cached;
+    try {
+      const facts = await api.lookupAgentModel(key);
+      set({ modelWindows: { ...get().modelWindows, [key]: facts } });
+      return facts;
+    } catch (error) {
+      set({ error: messageOf(error) });
       return null;
     }
   },

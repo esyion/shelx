@@ -4,8 +4,9 @@ use tauri::State;
 
 use crate::domain::agent::{ApprovalDecision, MemoryScope, ProtocolKind};
 use crate::dto::agent::{
-    AgentEnumsDto, AgentIdRequestDto, MemoryDto, ProbeDto, ProfileDto, ResolveTargetsRequestDto,
-    TargetDto, UpsertMemoryRequestDto, UpsertProfileRequestDto,
+    AgentEnumsDto, AgentIdRequestDto, LookupModelRequestDto, MemoryDto, ModelWindowDto, ProbeDto,
+    ProfileDto, ResolveTargetsRequestDto, TargetDto, UpsertMemoryRequestDto,
+    UpsertProfileRequestDto,
 };
 use crate::dto::common::IpcResult;
 use crate::shared::error::{IpcError, IpcErrorCode};
@@ -21,10 +22,41 @@ pub fn list_agent_profiles(state: State<AppState>) -> IpcResult<Vec<ProfileDto>>
             .into_iter()
             .map(|record| {
                 let has_key = state.agent.profile_key_present(&record.id);
-                ProfileDto::new(record, has_key)
+                let catalog = crate::infrastructure::agent::lookup_window(&record.model);
+                ProfileDto::new(record, has_key, catalog)
             })
             .collect()
     }))
+}
+
+/// 查模型目录里该模型的窗口事实(接入点表单自动带出用)。
+///
+/// 目录是随包数据,不联网;查不到时 `known=false`,界面据此如实说明"窗口需手填",
+/// 而不是拿一个猜的数当分母(AGENTS.md §4.1.1 无信息时留空)。
+#[tauri::command]
+pub fn lookup_agent_model(request: LookupModelRequestDto) -> IpcResult<ModelWindowDto> {
+    let model = request.model.trim();
+    if model.is_empty() {
+        return IpcResult::err(IpcError::new(
+            IpcErrorCode::InvalidArgument,
+            "先填模型名才能查窗口",
+        ));
+    }
+    let facts = crate::infrastructure::agent::lookup_window(model);
+    IpcResult::ok(match facts {
+        Some(facts) => ModelWindowDto {
+            display_name: facts.display_name,
+            context_window: facts.context_window,
+            max_output_tokens: facts.max_output_tokens,
+            known: true,
+        },
+        None => ModelWindowDto {
+            display_name: model.to_owned(),
+            context_window: None,
+            max_output_tokens: None,
+            known: false,
+        },
+    })
 }
 
 /// 保存模型接入点。
@@ -39,6 +71,7 @@ pub fn upsert_agent_profile(
             "名称与模型都不能为空",
         ));
     }
+    let model_for_catalog = request.model.clone();
     let saved = state
         .agent
         .save_profile(crate::application::agent::types::ProfileDraft {
@@ -50,10 +83,13 @@ pub fn upsert_agent_profile(
             responses_verified: request.responses_verified,
             api_key: request.api_key,
             enabled: request.enabled,
+            context_window: request.context_window,
+            max_output_tokens: request.max_output_tokens,
         });
     map_err(saved.map(|record| {
         let has_key = state.agent.profile_key_present(&record.id);
-        ProfileDto::new(record, has_key)
+        let catalog = crate::infrastructure::agent::lookup_window(&model_for_catalog);
+        ProfileDto::new(record, has_key, catalog)
     }))
 }
 

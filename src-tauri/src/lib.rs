@@ -161,6 +161,7 @@ pub fn run() {
             commands::agent::list_agent_audit,
             commands::agent_config::list_agent_profiles,
             commands::agent_config::upsert_agent_profile,
+            commands::agent_config::lookup_agent_model,
             commands::agent_config::delete_agent_profile,
             commands::agent_config::test_agent_profile,
             commands::agent_config::resolve_agent_targets,

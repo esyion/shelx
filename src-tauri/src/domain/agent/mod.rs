@@ -137,6 +137,19 @@ impl ProtocolKind {
     }
 }
 
+/// 模型目录里关于一个模型的事实(值对象:窗口与上限是模型的属性,不是对话的属性)。
+///
+/// 由基础设施层的目录适配器填入;`None` 一律表示"目录没给",不允许用猜的数补上。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelWindow {
+    /// 目录里的可读名(界面用它说明这个数是从哪条记录带出来的)。
+    pub display_name: String,
+    /// 一次请求能读写的最大 tokens。
+    pub context_window: Option<u32>,
+    /// 单次回复的最大 tokens。
+    pub max_output_tokens: Option<u32>,
+}
+
 /// 模型接入配置:一台可被 Agent 使用的 provider 端点。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelProfile {
@@ -152,7 +165,15 @@ pub struct ModelProfile {
     pub base_url: Option<String>,
     /// 该接入点是否声明并探测通过 Responses API(仅 OpenAI 侧有意义)。
     pub responses_verified: bool,
+    /// 上下文窗口覆盖(tokens);`None` = 用模型目录里的值。
+    pub context_window: Option<u32>,
+    /// 单次回复上限覆盖(tokens);`None` = 用模型目录里的值。
+    pub max_output_tokens: Option<u32>,
 }
+
+/// 手填窗口的合法区间:下限挡"单位填错/填 0",上限挡把 tokens 误填成 k 之类的打字错误。
+/// 真实取值仍以模型目录为准,这里只保证存进去的数不会一眼就是错的。
+pub const CONTEXT_WINDOW_RANGE: (u32, u32) = (1_000, 10_000_000);
 
 impl ModelProfile {
     /// 构造并校验配置。
@@ -196,12 +217,60 @@ impl ModelProfile {
             model,
             base_url,
             responses_verified,
+            context_window: None,
+            max_output_tokens: None,
         })
+    }
+
+    /// 挂上手填的窗口与回复上限覆盖(两者都允许留空 = 用模型目录的值)。
+    ///
+    /// 规则:取值落在 [`CONTEXT_WINDOW_RANGE`];同时给出两者时,回复上限不得大于窗口 ——
+    /// 否则这一轮永远发不出去(请求本身就把窗口占满),不如在保存时就拒绝。
+    ///
+    /// # Errors
+    /// 越界或上限大于窗口 → [`AgentDomainError::InvalidProfile`]。
+    pub fn with_limits(
+        mut self,
+        context_window: Option<u32>,
+        max_output_tokens: Option<u32>,
+    ) -> Result<Self, AgentDomainError> {
+        let (min, max) = CONTEXT_WINDOW_RANGE;
+        if let Some(window) = context_window {
+            if !(min..=max).contains(&window) {
+                return Err(AgentDomainError::InvalidProfile(format!(
+                    "上下文窗口需在 {min}~{max} tokens 之间"
+                )));
+            }
+        }
+        if let Some(output) = max_output_tokens {
+            if output == 0 || output > max {
+                return Err(AgentDomainError::InvalidProfile(format!(
+                    "单次回复上限需在 1~{max} tokens 之间"
+                )));
+            }
+            if let Some(window) = context_window {
+                if output >= window {
+                    return Err(AgentDomainError::InvalidProfile(
+                        "单次回复上限必须小于上下文窗口,否则请求没有留给历史的位置".into(),
+                    ));
+                }
+            }
+        }
+        self.context_window = context_window;
+        self.max_output_tokens = max_output_tokens;
+        Ok(self)
     }
 
     /// 是否官方端点(官方端点无需探测即合规)。
     pub fn is_official(&self) -> bool {
         self.base_url.is_none()
+    }
+
+    /// 实际生效的上下文窗口:用户覆盖优先,否则用目录带出的值;两处都没有则 `None`。
+    ///
+    /// `None` 是合法状态 —— 界面此时如实说"窗口未知",不拿猜的数当分母。
+    pub fn effective_context_window(&self, catalog: Option<u32>) -> Option<u32> {
+        self.context_window.or(catalog)
     }
 }
 
@@ -560,6 +629,63 @@ mod tests {
             false,
         )
         .is_ok());
+    }
+
+    /// 手填窗口要过区间与"上限小于窗口"两道关(否则这一轮永远发不出去)。
+    #[test]
+    fn profile_window_overrides_are_validated() {
+        let base = || {
+            ModelProfile::new(
+                ProfileId::new("pw").unwrap(),
+                "官方".into(),
+                ProtocolKind::AnthropicMessages,
+                "claude".into(),
+                None,
+                false,
+            )
+            .unwrap()
+        };
+
+        let kept = base().with_limits(Some(200_000), Some(8_192)).unwrap();
+        assert_eq!(kept.context_window, Some(200_000));
+        assert_eq!(kept.max_output_tokens, Some(8_192));
+        assert!(
+            base().with_limits(Some(0), None).is_err(),
+            "窗口 0 不是合法分母"
+        );
+        assert!(
+            base().with_limits(Some(999), None).is_err(),
+            "低于下限按填错处理"
+        );
+        assert!(
+            base().with_limits(Some(8_000), Some(8_000)).is_err(),
+            "回复上限等于窗口 = 历史没有位置"
+        );
+    }
+
+    /// 生效窗口:覆盖优先,其次目录,两处都没有就如实是 None(不许伪造分母)。
+    #[test]
+    fn effective_window_prefers_override() {
+        let base = ModelProfile::new(
+            ProfileId::new("pe").unwrap(),
+            "官方".into(),
+            ProtocolKind::AnthropicMessages,
+            "claude".into(),
+            None,
+            false,
+        )
+        .unwrap();
+        assert_eq!(base.effective_context_window(None), None);
+        assert_eq!(
+            base.effective_context_window(Some(1_000_000)),
+            Some(1_000_000)
+        );
+        let overridden = base.with_limits(Some(64_000), None).unwrap();
+        assert_eq!(
+            overridden.effective_context_window(Some(1_000_000)),
+            Some(64_000),
+            "用户填的覆盖必须赢过目录"
+        );
     }
 
     /// 端点尾部斜杠被规范化,空串等价于未设置。

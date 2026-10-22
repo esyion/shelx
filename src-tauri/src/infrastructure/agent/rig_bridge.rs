@@ -29,8 +29,9 @@ use crate::domain::agent::RunState;
 const FLUSH_CHARS: usize = 512;
 const FLUSH_INTERVAL: Duration = Duration::from_millis(32);
 
-/// 单次回答的输出上限(tokens)。Anthropic 必需该字段,OpenAI 侧同样接受。
-const MAX_OUTPUT_TOKENS: u64 = 8_192;
+/// 单次回答输出上限的兜底值(tokens):接入点没填、模型目录也查不到时才用。
+/// Anthropic 必需该字段,OpenAI 侧同样接受;真实上限优先取模型目录。
+const FALLBACK_MAX_OUTPUT_TOKENS: u32 = 8_192;
 
 /// 基于 rig 的网关实现。
 pub struct RigGateway {
@@ -201,6 +202,15 @@ impl LlmGateway for RigGateway {
             }
         };
 
+        // 模型事实:用户覆盖 > 随包目录 > 兜底。窗口决定什么时候该压缩,上限决定单次回复写多少。
+        let catalog = super::catalog::lookup_window(&plan.profile.model);
+        let max_output_tokens = u64::from(
+            plan.profile
+                .max_output_tokens
+                .or(catalog.as_ref().and_then(|facts| facts.max_output_tokens))
+                .unwrap_or(FALLBACK_MAX_OUTPUT_TOKENS),
+        );
+
         // 工具:按审批档位裁剪后注册;执行一律落到 ToolHost。
         let dynamic_tools: Vec<DynamicTool> = tools_for(context.approval)
             .into_iter()
@@ -242,8 +252,8 @@ impl LlmGateway for RigGateway {
         let agent = AgentBuilder::new(model)
             .preamble(&plan.preamble)
             // Anthropic 的 Messages 协议要求显式 max_tokens,否则请求在编码阶段就被拒;
-            // 这里统一给一个足够宽的输出上限,两家协议都接受。
-            .max_tokens(MAX_OUTPUT_TOKENS)
+            // 取值来自接入点覆盖或模型目录,不再由前端假设一个模型上限。
+            .max_tokens(max_output_tokens)
             .default_max_turns(plan.max_turns)
             .dynamic_tools(dynamic_tools)
             .memory(memory)

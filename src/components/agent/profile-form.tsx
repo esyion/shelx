@@ -32,6 +32,10 @@ export type ProfileDraft = {
   responsesVerified: boolean;
   apiKey: string;
   enabled: boolean;
+  /** 上下文窗口覆盖(文本态,空 = 用模型目录的值)。 */
+  contextWindow: string;
+  /** 单次回复上限覆盖(文本态,空 = 用模型目录的值)。 */
+  maxOutputTokens: string;
 };
 
 /** 空草稿。 */
@@ -45,6 +49,8 @@ export function blankDraft(): ProfileDraft {
     responsesVerified: false,
     apiKey: "",
     enabled: true,
+    contextWindow: "",
+    maxOutputTokens: "",
   };
 }
 
@@ -59,7 +65,35 @@ export function draftFromProfile(profile: AgentProfile): ProfileDraft {
     responsesVerified: profile.responsesVerified,
     apiKey: "",
     enabled: profile.enabled,
+    contextWindow: profile.contextWindow == null ? "" : String(profile.contextWindow),
+    maxOutputTokens:
+      profile.maxOutputTokens == null ? "" : String(profile.maxOutputTokens),
   };
+}
+
+/** 手填的 token 数:空串 = 未填(用目录值),非法值返回 `undefined` 供界面拦下。 */
+function parseTokens(raw: string): number | null | undefined {
+  const text = raw.trim();
+  if (!text) return null;
+  const value = Number(text.replace(/[_,\s]/g, ""));
+  return Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+/** 千分位读数(目录带出的窗口是六位数,不给分隔符读不动)。 */
+function formatTokens(value: number): string {
+  return new Intl.NumberFormat("zh-CN").format(value);
+}
+
+/** 草稿里的窗口/上限是否填得下手(非法时保存按钮要禁用并说明)。 */
+export function draftTokenError(draft: ProfileDraft): string | null {
+  const window = parseTokens(draft.contextWindow);
+  const output = parseTokens(draft.maxOutputTokens);
+  if (window === undefined) return "上下文窗口要填大于 0 的整数(tokens)";
+  if (output === undefined) return "单次回复上限要填大于 0 的整数(tokens)";
+  if (window != null && output != null && output >= window) {
+    return "单次回复上限必须小于上下文窗口,否则请求没有留给历史的位置";
+  }
+  return null;
 }
 
 /** 草稿 → 保存请求(地址为空表示用官方地址;密钥为空表示不改动)。 */
@@ -72,6 +106,8 @@ export function draftToRequest(draft: ProfileDraft): {
   responsesVerified: boolean;
   apiKey: string | null;
   enabled: boolean;
+  contextWindow: number | null;
+  maxOutputTokens: number | null;
 } {
   const baseUrl = draft.baseUrl.trim();
   const apiKey = draft.apiKey.trim();
@@ -84,6 +120,8 @@ export function draftToRequest(draft: ProfileDraft): {
     responsesVerified: draft.responsesVerified,
     apiKey: apiKey ? apiKey : null,
     enabled: draft.enabled,
+    contextWindow: parseTokens(draft.contextWindow) ?? null,
+    maxOutputTokens: parseTokens(draft.maxOutputTokens) ?? null,
   };
 }
 
@@ -114,8 +152,20 @@ export function ProfileForm({
 }) {
   /** 协议候选来自后端枚举(AGENTS.md §5:前端不抄候选清单)。 */
   const protocols = useAgentStore((state) => state.enums.protocols);
+  const lookupModelWindow = useAgentStore((state) => state.lookupModelWindow);
+  const modelWindows = useAgentStore((state) => state.modelWindows);
   const custom = draft.baseUrl.trim().length > 0;
   const verifiedBlocked = draft.protocol === "openai_responses" && custom && !draft.responsesVerified;
+  const modelKey = draft.model.trim().toLowerCase();
+  /** `undefined` = 还没查过;`known === false` = 目录没有这条模型;否则是目录里的事实。 */
+  const catalog = modelKey ? modelWindows[modelKey] : undefined;
+  const tokenError = draftTokenError(draft);
+  const windowHint =
+    catalog === undefined || !modelKey
+      ? "留空则用模型目录里的窗口;目录没有这条模型时必须手填。"
+      : catalog?.contextWindow
+        ? `目录里是 ${formatTokens(catalog.contextWindow)} tokens,留空就用这个数。`
+        : "模型目录没有这条记录,窗口需要你填。";
 
   return (
     <Card>
@@ -155,7 +205,33 @@ export function ProfileForm({
               placeholder="例如 gpt-5.6"
               value={draft.model}
               onChange={(event) => onChange({ ...draft, model: event.target.value })}
+              onBlur={() => void lookupModelWindow(draft.model)}
             />
+            <FieldDescription>离开输入框时去模型目录查这一档的窗口。</FieldDescription>
+          </Field>
+          <Field orientation="responsive">
+            <FieldLabel htmlFor="profile-window">上下文窗口</FieldLabel>
+            <Input
+              id="profile-window"
+              inputMode="numeric"
+              placeholder={catalog?.contextWindow ? String(catalog.contextWindow) : "例如 200000"}
+              value={draft.contextWindow}
+              onChange={(event) => onChange({ ...draft, contextWindow: event.target.value })}
+            />
+            <FieldDescription>{windowHint}</FieldDescription>
+          </Field>
+          <Field orientation="responsive">
+            <FieldLabel htmlFor="profile-output">单次回复上限</FieldLabel>
+            <Input
+              id="profile-output"
+              inputMode="numeric"
+              placeholder={
+                catalog?.maxOutputTokens ? String(catalog.maxOutputTokens) : "例如 8192"
+              }
+              value={draft.maxOutputTokens}
+              onChange={(event) => onChange({ ...draft, maxOutputTokens: event.target.value })}
+            />
+            <FieldDescription>模型一次回复最多写多少 tokens;留空用目录值。</FieldDescription>
           </Field>
           <Field orientation="responsive">
             <FieldLabel htmlFor="profile-key">API 密钥</FieldLabel>
@@ -209,8 +285,14 @@ export function ProfileForm({
             size="sm"
             variant="outline"
             onClick={onSave}
-            disabled={busy || !draft.label.trim() || !draft.model.trim() || verifiedBlocked}
-            title={verifiedBlocked ? "自建网关要先确认协议" : undefined}
+            disabled={
+              busy || !draft.label.trim() || !draft.model.trim() || verifiedBlocked || Boolean(tokenError)
+            }
+            title={
+              verifiedBlocked
+                ? "自建网关要先确认协议"
+                : (tokenError ?? undefined)
+            }
           >
             {draft.id ? "保存修改" : "新增接入点"}
           </Button>
@@ -224,6 +306,7 @@ export function ProfileForm({
             这是自建地址:必须先点「测试并确认协议」,确认它支持 Responses 才能保存。
           </p>
         )}
+        {tokenError && <p className="text-xs text-destructive">{tokenError}</p>}
       </CardContent>
     </Card>
   );
