@@ -85,7 +85,9 @@ export function ThreadComposer({
         void submit();
       }}
     >
-      <InputGroup>
+      {/* 面板底是纯白 `bg-background`,而 `--input` 在浅色下亮度约 98%,落在白底上不可见;
+          换 `--border` + `bg-card` + 投影把输入区抬成一块可见的表面(深色仍走 bg-input/30)。 */}
+      <InputGroup className="border-border bg-card shadow-xs">
         <InputGroupTextarea
           aria-label="向 Agent 提问"
           rows={3}

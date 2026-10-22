@@ -264,7 +264,7 @@ describe("上下文用量(Context pattern)", () => {
   it("有窗口时报百分比,分母是模型窗口", () => {
     cleanup();
     render(<ContextUsage used={400} contextWindow={1000} budget={0} usage={{ totalTokens: 400 }} />);
-    expect(screen.getByText("40% 上下文")).toBeTruthy();
+    expect(screen.getByText("40%")).toBeTruthy();
   });
 
   it("窗口未知时不报百分比,也不拿猜的数当分母", () => {
@@ -277,7 +277,7 @@ describe("上下文用量(Context pattern)", () => {
   it("超过窗口封顶 100%,不报出 130% 这种让人误读的数", () => {
     cleanup();
     render(<ContextUsage used={1300} contextWindow={1000} budget={0} />);
-    expect(screen.getByText("100% 上下文")).toBeTruthy();
+    expect(screen.getByText("100%")).toBeTruthy();
   });
 
   it("还没有用量时整块不渲染,不留空壳", () => {
@@ -451,7 +451,9 @@ describe("输入区的模式切换(审批档位)", () => {
     renderComposer();
     fireEvent.click(screen.getByRole("button", { name: "只读自动,改动需批准" }));
     const option = await screen.findByRole("menuitemradio", { name: /每一步都要批准/ });
-    expect(screen.getAllByRole("menuitemradio")).toHaveLength(3);
+    const items = screen.getAllByRole("menuitemradio");
+    expect(items).toHaveLength(3);
+    expect(items.every((item) => item.querySelector("svg"))).toBe(true);
     expect(screen.getByText(/包括只读取证,每个操作都先经你确认/)).toBeTruthy();
     fireEvent.click(option);
     await waitFor(() =>

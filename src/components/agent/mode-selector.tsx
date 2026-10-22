@@ -2,20 +2,21 @@
  * 模式切换(审批档位,照 ZCode 输入区左侧的模式菜单:图标 + 选项 + "选了会发生什么")。
  *
  * 档位候选直接取设置契约里 `agent.approvalMode` 的枚举,界面不复制一份取值
- * (AGENTS.md §5);每档文案用 `APPROVAL_MODE_DISPLAY` 的标签加效果描述。选中值是
- * 线程上的 `approvalMode`,切换走 `patchThread` 按线程落库。
+ * (AGENTS.md §5);每档文案用 `APPROVAL_MODE_DISPLAY` 的标签加效果描述,菜单不另
+ * 设大标题(档位自身带说明,少一层皮)。选中值是线程上的 `approvalMode`,切换走
+ * `patchThread` 按线程落库。
  */
 "use client";
 
 import { useMemo } from "react";
-import { ChevronDown, Shield } from "lucide-react";
+import { ChevronDown, Eye, Hand, Lock, Shield } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { ApprovalMode } from "@/types";
 import { APPROVAL_MODE_DISPLAY } from "@/lib/agent-events";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
-  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
@@ -23,6 +24,13 @@ import {
 import { InputGroupButton } from "@/components/ui/input-group";
 import { useAgentStore } from "@/stores/agent";
 import { useSettingsStore } from "@/stores/settings";
+
+/** 每档一个一眼能认的图标:自动只读=看,逐步要批=拦,锁死只读=锁。 */
+const MODE_ICON: Record<ApprovalMode, LucideIcon> = {
+  read_only_auto: Eye,
+  all_confirm: Hand,
+  read_only_only: Lock,
+};
 
 /**
  * 渲染输入区里的模式切换键。
@@ -57,25 +65,28 @@ export function ModeSelector({
         {APPROVAL_MODE_DISPLAY[approvalMode].label}
         <ChevronDown data-icon="inline-end" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-80">
+      <DropdownMenuContent align="start" className="min-w-72">
         <DropdownMenuGroup>
-          <DropdownMenuLabel>允许 Agent 做到哪一步</DropdownMenuLabel>
           <DropdownMenuRadioGroup
             value={approvalMode}
             onValueChange={(value) =>
               void patchThread(threadId, { approvalMode: value as ApprovalMode })
             }
           >
-            {options.map((mode) => (
-              <DropdownMenuRadioItem key={mode} value={mode}>
-                <span className="flex flex-col items-start gap-0.5">
-                  <span>{APPROVAL_MODE_DISPLAY[mode].label}</span>
-                  <span className="text-xs font-normal text-muted-foreground">
-                    {APPROVAL_MODE_DISPLAY[mode].description}
+            {options.map((mode) => {
+              const Icon = MODE_ICON[mode];
+              return (
+                <DropdownMenuRadioItem key={mode} value={mode} className="items-start gap-2 py-1.5">
+                  <Icon className="mt-0.5" />
+                  <span className="flex flex-col items-start gap-0.5">
+                    <span>{APPROVAL_MODE_DISPLAY[mode].label}</span>
+                    <span className="text-xs font-normal text-muted-foreground">
+                      {APPROVAL_MODE_DISPLAY[mode].description}
+                    </span>
                   </span>
-                </span>
-              </DropdownMenuRadioItem>
-            ))}
+                </DropdownMenuRadioItem>
+              );
+            })}
           </DropdownMenuRadioGroup>
         </DropdownMenuGroup>
       </DropdownMenuContent>
