@@ -23,9 +23,9 @@ import {
   toolActionLabel,
 } from "@/lib/agent-events";
 import { cn } from "@/lib/utils";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   CodeBlock,
   CodeBlockContent,
@@ -88,18 +88,16 @@ export function ApprovalCard({ approval }: { approval: ApprovalDto }) {
   const args = formatToolArgs(approval.argsJson);
   const categoryBadge = TONE_BADGE[category.tone];
   return (
-    <Card className={WARNING_CARD_CLASS}>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm">
-          <ShieldAlert className={cn("size-4", TONE_CLASS.warning)} />
-          {`需要批准：${toolActionLabel(approval.toolName)}`}
-          <Badge variant={categoryBadge.variant} className={categoryBadge.className}>
-            {category.label}
-          </Badge>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3 text-sm">
-        <p className="text-muted-foreground">{approval.reason}</p>
+    <Alert className={WARNING_CARD_CLASS}>
+      <AlertTitle className="flex items-center gap-2 text-sm">
+        <ShieldAlert className={cn("size-4", TONE_CLASS.warning)} />
+        {`需要批准：${toolActionLabel(approval.toolName)}`}
+        <Badge variant={categoryBadge.variant} className={categoryBadge.className}>
+          {category.label}
+        </Badge>
+      </AlertTitle>
+      <AlertDescription>{approval.reason}</AlertDescription>
+      <div className="mt-2 flex flex-col gap-3 text-sm">
         {args && (
           <CodeBlock size="sm">
             <CodeBlockHeader>
@@ -165,7 +163,7 @@ export function ApprovalCard({ approval }: { approval: ApprovalDto }) {
             </Button>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </Alert>
   );
 }
