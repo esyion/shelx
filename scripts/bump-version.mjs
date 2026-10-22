@@ -6,10 +6,13 @@
  *   - src-tauri/tauri.conf.json
  *
  * 用法:
- *   bun run bump 0.3.0          # 显式指定新版本(走 npm version 前的预检)
- *   bun run bump patch          # 0.2.0 -> 0.2.1
- *   bun run bump minor          # 0.2.0 -> 0.3.0
- *   bun run bump major          # 0.2.0 -> 1.0.0
+ *   bun run bump 0.3.0              # 显式指定新版本(走 npm version 前的预检)
+ *   bun run bump 0.3.0-beta         # 显式指定,支持 -预发布 / +构建 元数据
+ *   bun run bump patch              # 0.2.0 -> 0.2.1(位段递增会丢弃预发布段)
+ *   bun run bump minor              # 0.2.0 -> 0.3.0
+ *   bun run bump major              # 0.2.0 -> 1.0.0
+ *   bun run bump prerelease         # 0.3.0-beta -> 0.3.0-beta.1(迭代预发布号)
+ *   bun run bump prerelease rc      # 0.3.0 -> 0.3.1-rc.1(正式版起步,缺省 preid 为 beta)
  *
  * 退出码:0 成功,1 非法输入,2 文件缺失或写入失败。
  *
@@ -33,8 +36,12 @@ const FILES = [
   { path: resolve(ROOT, "src-tauri/tauri.conf.json"), kind: "json", key: "version" },
 ];
 
-/** semver 三段式,允许预发布标签(alpha-1 / rc.1)?为简化先只允许 MAJOR.MINOR.PATCH。 */
-const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)$/;
+/**
+ * semver 2.0.0:MAJOR.MINOR.PATCH 核心,允许 `-预发布` 与 `+构建元数据`
+ * 后缀(如 0.3.0-beta、0.3.0-beta.1+exp)。预发布段与构建元数据只做
+ * 透传校验,不做语义解释。
+ */
+const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$/;
 
 function readAll() {
   const current = {};
@@ -86,17 +93,76 @@ function parseToml(text) {
   return out;
 }
 
-function bump(current, mode) {
+/**
+ * 纯函数:按模式计算下一版本号,不做任何 I/O。
+ *
+ * 语义对齐 `npm version`:
+ *   - patch|minor|major:对应位段递增,丢弃预发布段与构建元数据
+ *     (如 0.3.0-beta 的 patch 递增结果是 0.3.0,即转正);
+ *   - prerelease [preid]:迭代预发布号。当前已带预发布段时原位递增其
+ *     最后一段数字(`beta` -> `beta.1`,`beta.2` -> `beta.3`);当前是
+ *     正式版时递增 patch 并以 `<preid>.1` 起步(缺省 preid 为 beta);
+ *   - 显式版本:必须匹配 SEMVER_RE(支持 -预发布 / +构建 元数据)。
+ *
+ * @param {string} current 当前版本(调用方保证三处文件一致)
+ * @param {string} arg "patch"|"minor"|"major"|"prerelease [preid]"|显式版本
+ * @returns {{ ok: true, next: string } | { ok: false, error: string }}
+ */
+export function nextVersion(current, arg) {
+  if (!arg) {
+    return {
+      ok: false,
+      error: "缺少目标版本或模式(patch|minor|major|prerelease [preid]|x.y.z[-pre])",
+    };
+  }
   const m = SEMVER_RE.exec(current);
   if (!m) {
-    console.error(`当前版本 "${current}" 不是合法 semver(major.minor.patch)`);
-    process.exit(1);
+    return { ok: false, error: `当前版本 "${current}" 不是合法 semver` };
   }
-  let [_, maj, min, pat] = m;
-  if (mode === "major") return `${Number(maj) + 1}.0.0`;
-  if (mode === "minor") return `${maj}.${Number(min) + 1}.0`;
-  if (mode === "patch") return `${maj}.${min}.${Number(pat) + 1}`;
-  return null;
+  const [, maj, min, pat, pre] = m;
+
+  // 位段递增对齐 node-semver 的 inc:版本带预发布段时,"转正"(丢弃预发布
+  // 段)本身就严格大于当前版本,只有当对应位段不是"新鲜"的(如 minor 递增
+  // 要求 patch===0)才真正进位。例:0.3.0-beta --patch--> 0.3.0,
+  // 0.3.1-beta --minor--> 0.4.0。
+  if (arg === "major") {
+    const nextMaj = pre && min === "0" && pat === "0" ? maj : String(Number(maj) + 1);
+    return { ok: true, next: `${nextMaj}.0.0` };
+  }
+  if (arg === "minor") {
+    const nextMin = pre && pat === "0" ? min : String(Number(min) + 1);
+    return { ok: true, next: `${maj}.${nextMin}.0` };
+  }
+  if (arg === "patch") {
+    const nextPat = pre ? pat : String(Number(pat) + 1);
+    return { ok: true, next: `${maj}.${min}.${nextPat}` };
+  }
+
+  if (arg === "prerelease" || arg.startsWith("prerelease ")) {
+    const preid = arg === "prerelease" ? "beta" : arg.slice("prerelease ".length).trim();
+    if (!/^[0-9A-Za-z-]+$/.test(preid)) {
+      return { ok: false, error: `非法 preid: "${preid}"(只允许字母数字与连字符)` };
+    }
+    if (!pre) {
+      return {
+        ok: true,
+        next: `${maj}.${min}.${Number(pat) + 1}-${preid}.1`,
+      };
+    }
+    const segments = pre.split(".");
+    const last = segments[segments.length - 1];
+    const nextSegments = /^\d+$/.test(last)
+      ? [...segments.slice(0, -1), String(Number(last) + 1)]
+      : [...segments, "1"];
+    return { ok: true, next: `${maj}.${min}.${pat}-${nextSegments.join(".")}` };
+  }
+
+  if (SEMVER_RE.test(arg)) return { ok: true, next: arg };
+
+  return {
+    ok: false,
+    error: `未知参数: ${arg}(期望 patch|minor|major|prerelease [preid] 或 x.y.z[-pre])`,
+  };
 }
 
 function applyVersion(file, newVersion) {
@@ -123,9 +189,10 @@ function applyVersion(file, newVersion) {
 }
 
 function main() {
-  const arg = process.argv[2];
+  // 允许 "prerelease rc" 这类带空格的模式:合并所有 CLI 参数。
+  const arg = process.argv.slice(2).join(" ");
   if (!arg) {
-    console.error("用法: bun run bump <patch|minor|major|x.y.z>");
+    console.error("用法: bun run bump <patch|minor|major|prerelease [preid]|x.y.z[-pre]>");
     process.exit(1);
   }
   const currentMap = readAll();
@@ -137,23 +204,16 @@ function main() {
   }
   const current = versions[0];
 
-  let next;
-  if (SEMVER_RE.test(arg)) {
-    next = arg;
-  } else if (["patch", "minor", "major"].includes(arg)) {
-    next = bump(current, arg);
-  } else {
-    console.error(`未知参数: ${arg}(期望 patch|minor|major 或 x.y.z)`);
+  const result = nextVersion(current, arg);
+  if (!result.ok) {
+    console.error(result.error);
     process.exit(1);
   }
+  const next = result.next;
 
   if (next === current) {
     console.log(`当前已是 ${current},无需变更。`);
     return;
-  }
-  if (!SEMVER_RE.test(next)) {
-    console.error(`计算结果 "${next}" 不是合法 semver`);
-    process.exit(1);
   }
 
   for (const f of FILES) applyVersion(f, next);
@@ -162,10 +222,10 @@ function main() {
 }
 
 /**
- * 公共 API:把版本号改成 `next`(支持 "patch"|"minor"|"major"|"x.y.z")。
- * 不抛错,失败返回 `{ ok: false, error }`。
+ * 公共 API:把版本号改成 `next`(支持 "patch"|"minor"|"major"|
+ * "prerelease [preid]"|"x.y.z[-pre]")。不抛错,失败返回 `{ ok: false, error }`。
  *
- * @param {"patch"|"minor"|"major"|`${number}.${number}.${number}`} nextArg
+ * @param {string} nextArg 目标模式或显式版本号
  * @returns {{ ok: true; previous: string; next: string } | { ok: false; error: string }}
  */
 export function bumpVersion(nextArg) {
@@ -177,22 +237,13 @@ export function bumpVersion(nextArg) {
   }
   const previous = versions[0];
 
-  let next;
-  if (SEMVER_RE.test(nextArg)) {
-    next = nextArg;
-  } else if (["patch", "minor", "major"].includes(nextArg)) {
-    next = bump(previous, nextArg);
-  } else {
-    return { ok: false, error: `未知参数: ${nextArg}(期望 patch|minor|major 或 x.y.z)` };
-  }
-  if (!next || !SEMVER_RE.test(next)) {
-    return { ok: false, error: `计算结果 "${next}" 不是合法 semver` };
-  }
-  if (next === previous) {
+  const result = nextVersion(previous, nextArg);
+  if (!result.ok) return result;
+  if (result.next === previous) {
     return { ok: false, error: `当前已是 ${previous},无需变更` };
   }
-  for (const f of FILES) applyVersion(f, next);
-  return { ok: true, previous, next };
+  for (const f of FILES) applyVersion(f, result.next);
+  return { ok: true, previous, next: result.next };
 }
 
 /**

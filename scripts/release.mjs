@@ -13,10 +13,13 @@
  *   - bump 类型默认 patch,可显式覆盖
  *
  * 用法:
- *   bun run release           # 默认 patch(0.2.1 -> 0.2.2)
+ *   bun run release                  # 默认 patch(0.2.1 -> 0.2.2)
  *   bun run release minor
  *   bun run release major
+ *   bun run release prerelease       # 迭代预发布号(0.3.0-beta -> 0.3.0-beta.1)
+ *   bun run release prerelease rc    # 指定 preid(0.3.0 -> 0.3.1-rc.1)
  *   bun run release 0.5.0
+ *   bun run release 0.5.0-beta       # 支持预发布号(-预发布 / +构建 元数据)
  *
  * 退出码:0 成功,1 前置检查失败,2 bump 失败,3 质量门禁失败,4 commit/tag 失败。
  */
@@ -223,9 +226,10 @@ ${c("dim", "如果你确认 Secret 已配置,可以一次性 push:")
 
 /** 主流程串联。 */
 function main() {
-  const arg = process.argv[2];
+  // 允许 "prerelease rc" 这类带空格的模式:合并所有 CLI 参数。
+  const arg = process.argv.slice(2).join(" ");
   if (arg === "--help" || arg === "-h") {
-    console.log(`用法: bun run release [patch|minor|major|x.y.z]
+    console.log(`用法: bun run release [patch|minor|major|prerelease [preid]|x.y.z[-pre]]
 
 默认 patch。其它模式显式传参。`);
     process.exit(0);
