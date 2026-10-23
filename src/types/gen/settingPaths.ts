@@ -21,6 +21,7 @@ export type SettingPath =
   | "transfer.notifyOnComplete"
   | "monitor.defaultIntervalSecs"
   | "update.autoCheck"
+  | "window.closeToTray"
   | "agent.approvalMode"
   | "agent.maxTurns"
   | "agent.contextMessages"

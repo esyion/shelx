@@ -19,7 +19,8 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 # --- Tauri 框架与插件 ---
-tauri = { version = "2", features = [] }
+# tray-icon:系统托盘(关闭最小化到托盘时保活 SSH 会话的回到入口)。
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
 tauri-plugin-process = "2"
 # 系统剪贴板:WKWebView 拒绝 Web Clipboard API(NotAllowedError),

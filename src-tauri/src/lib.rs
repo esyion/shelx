@@ -46,6 +46,8 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
             use tauri::Manager;
+            // 系统托盘:常驻回到入口(显示主窗口/退出);失败属不可恢复装配错误。
+            infrastructure::tray::setup(app.handle())?;
             // 设置/布局落在平台配置目录(AGENTS.md §10);此目录必须可用。
             let config_dir = app.path().app_config_dir().expect("无法解析应用配置目录");
             std::fs::create_dir_all(&config_dir)
@@ -101,6 +103,28 @@ pub fn run() {
                 &resolution,
             ));
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // 关闭拦截:设置「关闭窗口时最小化到托盘」开启时,点 X 改为隐藏窗口,
+            // SSH/SFTP 会话后台保活;托盘菜单「退出」走 app.exit(0),不经此处。
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                use tauri::Manager;
+                let close_to_tray = window
+                    .app_handle()
+                    .state::<state::AppState>()
+                    .settings
+                    .get()
+                    .map(|s| s.window.close_to_tray)
+                    .unwrap_or_else(|err| {
+                        tracing::warn!(error = %err, "读取关闭行为设置失败,按退出处理");
+                        false
+                    });
+                if close_to_tray {
+                    api.prevent_close();
+                    let _ = window.hide();
+                    tracing::info!("窗口关闭转入托盘常驻");
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_meta::get_app_version,

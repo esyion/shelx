@@ -3769,6 +3769,13 @@
                 "autoCheck": true
               },
               "description": "更新。"
+            },
+            "window": {
+              "$ref": "#/$defs/WindowSettings",
+              "default": {
+                "closeToTray": false
+              },
+              "description": "窗口与系统集成。"
             }
           },
           "required": [
@@ -3778,6 +3785,7 @@
             "transfer",
             "monitor",
             "update",
+            "window",
             "agent",
             "migration"
           ],
@@ -4400,6 +4408,20 @@
           },
           "required": [
             "autoCheck"
+          ],
+          "type": "object"
+        },
+        "WindowSettings": {
+          "description": "窗口与系统集成设置(托盘/自启/全局快捷键/系统通知)。",
+          "properties": {
+            "closeToTray": {
+              "default": false,
+              "description": "关闭窗口时最小化到托盘:拦截关闭改隐藏,SSH 会话后台保活,\n从托盘图标找回窗口或退出。",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "closeToTray"
           ],
           "type": "object"
         }

@@ -270,6 +270,11 @@ fn raw_specs() -> Vec<RawSpec> {
             unit: None,
             kind: SettingKind::Bool,
         },
+        RawSpec {
+            path: "window.closeToTray",
+            unit: None,
+            kind: SettingKind::Bool,
+        },
         // ---- Agent(M5)docs/AGENT_DESIGN.md §11.3 ----
         RawSpec {
             path: "agent.approvalMode",

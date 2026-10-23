@@ -288,6 +288,15 @@
       "default": true
     },
     {
+      "path": "window.closeToTray",
+      "group": "window",
+      "unit": null,
+      "kind": {
+        "kind": "bool"
+      },
+      "default": false
+    },
+    {
       "path": "agent.approvalMode",
       "group": "agent",
       "unit": null,
@@ -473,6 +482,9 @@
     },
     "update": {
       "autoCheck": true
+    },
+    "window": {
+      "closeToTray": false
     },
     "agent": {
       "maxTurns": 12,

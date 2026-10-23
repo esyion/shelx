@@ -212,4 +212,10 @@ export const SETTING_COPY: Partial<Record<SettingPath, SettingCopy>> = {
     label: "显示助手的思考过程",
     hint: "对话里折叠展示助手怎么想的,点开可看原文;关闭后只留下做了哪些操作",
   },
+  "window.closeToTray": {
+    label: "关闭窗口时最小化到托盘",
+    hint: "点关闭按钮不退出,程序缩到系统托盘,终端与会话继续保活;从托盘图标找回窗口或退出",
+    groupTitle: "窗口与系统",
+    groupHint: "窗口行为与系统集成,修改即时生效",
+  },
 };
