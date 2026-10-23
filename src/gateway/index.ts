@@ -7,6 +7,7 @@ export {
   isTauri,
   listenEvent,
   APP_UPDATE_EVENTS,
+  DEEP_LINK_EVENTS,
   SESSION_EVENTS,
 } from "./tauri";
 export * as agentApi from "./agent";

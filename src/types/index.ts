@@ -6,6 +6,7 @@
  * 改契约请改 Rust DTO 后 `bun run gen:ipc`,不要在本目录新增手写字段(AGENTS.md §5)。
  */
 export type { IpcError, IpcErrorCode, IpcResult } from "./ipc";
+export type { DeepLinkTargetDto } from "./deep-link";
 export type {
   AuthMethod,
   ConnectionDto,

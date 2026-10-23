@@ -24,6 +24,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { QuickConnectDialog } from "@/app/connections/hooks/quick-connect-dialog";
+import type { QuickLinkPrefill } from "@/app/connections/hooks/quick-connect-dialog";
 import { TreeNode } from "./connection-tree-nodes";
 import type { ConnectionsApi } from "./connection-tree-nodes";
 import {
@@ -40,6 +41,7 @@ import {
   useFilteredTree,
 } from "@/stores/connections";
 import { promptDialog } from "@/components/app-dialogs";
+import { useUiStore } from "@/stores/ui";
 import { cn } from "@/lib/utils";
 
 /** droppable 根级容器的固定 ID。 */
@@ -61,9 +63,28 @@ export function ConnectionTree({ api }: { api: ConnectionsApi }) {
   const router = useRouter();
   const [keyword, setKeyword] = useState("");
   const [quickOpen, setQuickOpen] = useState(false);
+  /** 当前生效的深链预填(对话框关闭时清空,防止旧链接污染下次手动打开)。 */
+  const [quickPrefill, setQuickPrefill] = useState<QuickLinkPrefill | null>(
+    null,
+  );
+  const pendingLink = useUiStore((s) => s.pendingQuickLink);
   const filtered = useFilteredTree(api.tree, keyword);
   const total = countConnections(api.tree);
   const searching = keyword.trim().length > 0;
+
+  // 深链进来:接管打开动作并带上预填;store 立即清空,同一链接再次点击仍会重触发。
+  React.useEffect(() => {
+    if (!pendingLink) return;
+    setQuickPrefill(pendingLink);
+    setQuickOpen(true);
+    useUiStore.getState().setPendingQuickLink(null);
+  }, [pendingLink]);
+
+  /** 对话框开关包装:关闭时一并清掉预填。 */
+  const handleQuickOpenChange = (next: boolean) => {
+    setQuickOpen(next);
+    if (!next) setQuickPrefill(null);
+  };
 
   /** 当前拖拽中的 draggable id(用于 DragOverlay 渲染预览)。 */
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -176,7 +197,11 @@ export function ConnectionTree({ api }: { api: ConnectionsApi }) {
         </DragOverlay>
       </DndContext>
 
-      <QuickConnectDialog open={quickOpen} onOpenChange={setQuickOpen} />
+      <QuickConnectDialog
+        open={quickOpen}
+        onOpenChange={handleQuickOpenChange}
+        prefill={quickPrefill}
+      />
     </div>
   );
 }

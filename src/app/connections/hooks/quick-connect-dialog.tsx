@@ -12,7 +12,7 @@
  */
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -75,16 +75,41 @@ function validate(form: QuickForm): string | null {
 export interface QuickConnectDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** ssh:// 深链预填;对话框打开且存在时覆盖主机/端口/用户名(用户名缺省沿用表单默认)。 */
+  prefill?: QuickLinkPrefill | null;
+}
+
+/** 深链预填目标(与 stores/ui 的 QuickLink 形状一致,解耦 store 类型)。 */
+export interface QuickLinkPrefill {
+  /** 主机(IP 或域名)。 */
+  host: string;
+  /** 用户名;null 沿用表单默认。 */
+  username: string | null;
+  /** 端口。 */
+  port: number;
 }
 
 /** 快速连接对话框。 */
 export function QuickConnectDialog({
   open,
   onOpenChange,
+  prefill = null,
 }: QuickConnectDialogProps) {
   const [form, setForm] = useState<QuickForm>(EMPTY);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 深链预填:仅在对话框打开且带着预填目标时覆盖对应字段,
+  // 用户手工清空/修改不被后续渲染覆盖(effect 只在依赖变化时执行一次)。
+  useEffect(() => {
+    if (!open || !prefill) return;
+    setForm((prev) => ({
+      ...prev,
+      host: prefill.host,
+      port: String(prefill.port),
+      username: prefill.username?.trim() ? prefill.username : prev.username,
+    }));
+  }, [open, prefill]);
 
   /** 更新单字段(保持受控)。 */
   const set = <K extends keyof QuickForm>(key: K, value: QuickForm[K]) => {

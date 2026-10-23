@@ -49,6 +49,10 @@ tauri-plugin-global-shortcut = "2"
 # @tauri-apps/plugin-notification 保持 2.x 对齐。
 # 回滚:删除本依赖、lib.rs 注册行、capability 与 services/notify.ts 即可。
 tauri-plugin-notification = "2"
+# ssh:// 协议深链:浏览器/文档点击链接直达快速连接(解析在 Rust,事件交前端)。
+# Windows/Linux 运行时注册协议关联,macOS 经 tauri.conf.json 写入 Info.plist。
+# 回滚:删除本依赖、注册行、deep_link 适配器与配置里的 schemes 即可。
+tauri-plugin-deep-link = "2"
 
 # --- 序列化与配置(JSON)---
 serde = { version = "1", features = ["derive"] }

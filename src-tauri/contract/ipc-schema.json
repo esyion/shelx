@@ -2621,6 +2621,49 @@
       ],
       "type": "object"
     },
+    "deepLink": {
+      "$defs": {
+        "DeepLinkTargetDto": {
+          "description": "ssh:// 链接解析结果(`deep-link-connect` 事件载荷,用于预填快速连接)。",
+          "properties": {
+            "host": {
+              "description": "主机(IP 或域名);必然非空(解析失败不发事件)。",
+              "type": "string"
+            },
+            "port": {
+              "description": "端口;链接未提供时为 22。",
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "username": {
+              "description": "用户名;链接未提供时为 None(前端沿用表单默认值)。",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "host",
+            "username",
+            "port"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "DeepLinkTargetDto": {
+          "$ref": "#/$defs/DeepLinkTargetDto"
+        }
+      },
+      "required": [
+        "DeepLinkTargetDto"
+      ],
+      "type": "object"
+    },
     "ipc": {
       "$defs": {
         "IpcError": {

@@ -36,6 +36,12 @@ pub fn run() {
                 let _ = window.show();
                 let _ = window.set_focus();
             }
+            // Windows 上经协议拉起的二次启动把 ssh:// 链接放在 argv,转发给本实例。
+            for arg in &args {
+                if arg.starts_with("ssh://") {
+                    infrastructure::deep_link::handle_ssh_url(app, arg);
+                }
+            }
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -44,6 +50,8 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         // 系统通知:窗口不在前台时提醒传输完成/连接断开(经 services/notify 触发)。
         .plugin(tauri_plugin_notification::init())
+        // ssh:// 协议深链:链接在 Rust 侧解析(deep_link 适配器),事件交前端预填。
+        .plugin(tauri_plugin_deep_link::init())
         // 窗口状态记忆:插件初始化先于配置窗口创建,恢复才能生效。
         .plugin(tauri_plugin_window_state::Builder::default().build())
         // 开机自启:注册表读写经插件;实际同步在 setup 里按设置收敛。
@@ -134,6 +142,21 @@ pub fn run() {
                 Err(err) => {
                     tracing::warn!(error = %err, "读取设置失败,跳过开机自启同步");
                 }
+            }
+
+            // ssh:// 协议关联:Windows/Linux 运行时注册,macOS 由配置写入 Info.plist。
+            // 注册失败不致命(功能不可用但应用可跑);打开链接时解析目标并预填快速连接。
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                if let Err(err) = app.deep_link().register_all() {
+                    tracing::warn!(error = %err, "注册 ssh:// 协议关联失败,深链功能不可用");
+                }
+                let handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        infrastructure::deep_link::handle_ssh_url(&handle, url.as_str());
+                    }
+                });
             }
             Ok(())
         })

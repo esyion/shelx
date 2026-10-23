@@ -36,13 +36,19 @@ import { AppShell } from "@/components/layout/app-shell";
 import { useDataMigrationPrompt } from "@/app/hooks/use-data-migration-prompt";
 import { listSessionStatus } from "@/app/api";
 import { initGbkEncoder } from "@/lib/codec";
-import { listenEvent, APP_UPDATE_EVENTS, SESSION_EVENTS } from "@/gateway";
+import {
+  listenEvent,
+  APP_UPDATE_EVENTS,
+  DEEP_LINK_EVENTS,
+  SESSION_EVENTS,
+} from "@/gateway";
 import { notifyWhenUnfocused } from "@/services/notify";
 import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
 import { useFilePathsStore } from "@/stores/file-paths";
 import { closeTabWithSession, useTabsStore } from "@/stores/tabs";
 import { useUiStore } from "@/stores/ui";
+import type { QuickLink } from "@/stores/ui";
 import { useUpdateStore } from "@/stores/update";
 import { enqueueUploadAndShow } from "@/components/files/transfer-enqueue";
 import type { SessionStatusEvent, UpdateNotice } from "@/types";
@@ -95,6 +101,15 @@ export default function RootLayout({
 
     void listSessionStatus().then((sessions) => {
       useSessionsStore.getState().upsertMany(sessions);
+    });
+
+    // ssh:// 深链:Rust 解析后转发目标,这里写入 store;弹窗打开与预填由
+    // 连接树消费(它挂载着快速连接对话框)。窗口唤起由 Rust 侧完成。
+    let unlistenDeepLink: (() => void) | undefined;
+    void listenEvent<QuickLink>(DEEP_LINK_EVENTS.connect, (target) => {
+      useUiStore.getState().setPendingQuickLink(target);
+    }).then((unlisten) => {
+      unlistenDeepLink = unlisten;
     });
 
     let unlistenStatus: (() => void) | undefined;
@@ -162,6 +177,7 @@ export default function RootLayout({
     return () => {
       unlistenUpdate?.();
       unlistenStatus?.();
+      unlistenDeepLink?.();
       unlistenDrop?.();
     };
   }, [router, setTheme]);

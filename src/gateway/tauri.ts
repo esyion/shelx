@@ -18,6 +18,12 @@ export const APP_UPDATE_EVENTS = {
   available: "app-update-available",
 } as const;
 
+/** ssh:// 深链事件(Rust 侧解析链接后转发,载荷为 DeepLinkTargetDto)。 */
+export const DEEP_LINK_EVENTS = {
+  /** 链接解析成功,载荷为 DeepLinkTargetDto,用于预填快速连接。 */
+  connect: "deep-link-connect",
+} as const;
+
 /**
  * 订阅后端全局事件的唯一出口(AGENTS.md §4.1)。
  *
