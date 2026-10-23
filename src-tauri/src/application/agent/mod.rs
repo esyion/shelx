@@ -13,6 +13,9 @@ pub mod types;
 
 mod run;
 
+#[cfg(test)]
+mod tool_host_tests;
+
 use std::sync::Arc;
 
 use schemars::JsonSchema;

@@ -156,6 +156,15 @@ impl ToolHost for SshToolHost {
                 }
             };
         }
+        if targets.is_empty() {
+            // 走到这里的工具全部面向主机:目标为空说明调用形态错了,
+            // 必须明确报错,不允许落成"在 0 台主机上执行"这种无从排查的假失败。
+            let outcome = ToolOutcome::failed(
+                "缺少目标主机:connId/connIds/targetScope 至少给一项,id 取自 list_connections",
+            );
+            self.finish_call(&context, &call_id, name, category, &outcome);
+            return outcome;
+        }
 
         let reason = classify_reason(name, &argv, category);
 
@@ -389,13 +398,20 @@ impl ToolHost for SshToolHost {
 }
 
 impl SshToolHost {
-    /// 解析显式 connIds:只能是用户配置过的连接。
+    /// 解析显式目标:`connIds`(多台)与 `connId`(单台工具,如 ensure_session)都认,
+    /// 只能是用户配置过的连接。
     fn resolve_targets(
         &self,
         context: &RunContext,
         arguments: &Value,
     ) -> Result<Vec<(String, String)>, ToolOutcome> {
-        let requested = string_array(arguments, "connIds");
+        let mut requested = string_array(arguments, "connIds");
+        // 单台工具的 schema 是单数 connId;两种形态同时出现时按清单去重。
+        if let Some(single) = string_field(arguments, "connId") {
+            if !requested.contains(&single) {
+                requested.push(single);
+            }
+        }
         if requested.is_empty() {
             return Ok(Vec::new());
         }
