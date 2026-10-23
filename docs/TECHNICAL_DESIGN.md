@@ -24,7 +24,7 @@
 
 ```
 ┌──────────────────── 前端(Next.js 静态导出,WebView)────────────────────┐
-│  /(主工作区)              /settings(设置)        /overview(P1 总览)    │
+│  /(主工作区)              /settings(设置)                              │
 │  侧栏连接树 │ 终端视图 │ 文件视图 │ 监控视图 │ 传输中心 │ 断线横幅/弹窗    │
 │  stores(zustand) ── gateway(唯一 invoke/Channel 出口)                  │
 └────────┬ command(请求/响应) ────────┬ ipc Channel(高频流) ──────────┘
@@ -67,8 +67,6 @@
 │  │  ├─ page.tsx                 # 主工作区(侧栏+标签栏+三视图+底部面板)
 │  │  ├─ settings/
 │  │  │  └─ page.tsx              # 设置页(Ctrl+, 打开)
-│  │  ├─ overview/                # P1:多服务器总览
-│  │  │  └─ page.tsx
 │  │  └─ hooks/                   # 主工作区复用 hooks(use-sessions 等)
 │  ├─ components/
 │  │  ├─ ui/                      # shadcn/ui 生成组件
@@ -553,11 +551,10 @@ tracing 分级 info 默认;不记录密码/口令/密钥内容与完整指纹明
 |------|------|
 | `/` | 主工作区:侧栏连接树 + 标签栏 + 三视图(终端/文件/监控,分段控件 Alt+1/2/3)+ 底部面板(SFTP 双栏 / 传输中心,Ctrl+J) |
 | `/settings` | 设置页(Ctrl+,),分组表单,即时保存 |
-| `/overview` | P1:多服务器总览卡片 |
 
 桌面单窗口应用无多页面导航需求,路由保持最小集;路由内 hooks/api 经 gateway,不直接 invoke。
 
-**常驻外壳与浮层路由**:主工作区 UI 由根 layout 的 `AppShell` 常驻挂载(App Router layout 跨导航不重挂);`/settings`、`/overview`、连接表单等功能页由 layout 以全屏浮层(fixed inset-0)覆盖渲染。这样进入功能页不会卸载 `TerminalView`,终端 pty 通道、回滚缓冲与 SFTP 传输状态均保持;返回主页后焦点自动交还可见终端。`/` 路由本身渲染空内容,仅作为"无浮层"状态。传输冲突决策不迁路由,保持弹窗形态(PRD §6.4):`awaiting_conflict` 事件写入 ui store 的 `conflictTaskId`,由根 layout 挂载的 `TransferConflictDialog` 弹框收集四选决策。
+**常驻外壳与浮层路由**:主工作区 UI 由根 layout 的 `AppShell` 常驻挂载(App Router layout 跨导航不重挂);`/settings`、连接表单等功能页由 layout 以全屏浮层(fixed inset-0)覆盖渲染。这样进入功能页不会卸载 `TerminalView`,终端 pty 通道、回滚缓冲与 SFTP 传输状态均保持;返回主页后焦点自动交还可见终端。`/` 路由本身渲染空内容,仅作为"无浮层"状态。传输冲突决策不迁路由,保持弹窗形态(PRD §6.4):`awaiting_conflict` 事件写入 ui store 的 `conflictTaskId`,由根 layout 挂载的 `TransferConflictDialog` 弹框收集四选决策。
 
 ### 8.2 gateway(`gateway/tauri.ts` + `index.ts`)
 

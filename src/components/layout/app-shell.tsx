@@ -2,7 +2,7 @@
  * 常驻主工作区外壳(PRD §6.1):侧栏 + 标签栏 + 工作区 + 底部面板。
  *
  * 由根 layout 无条件挂载(App Router layout 跨导航持久,不重挂)，
- * 设置/总览/连接编辑/传输冲突等功能页以全屏浮层覆盖其上——
+ * 设置/连接编辑/传输冲突等功能页以全屏浮层覆盖其上——
  * 因此进入这些页面不会卸载 TerminalView,pty 通道与终端内容得以保留。
  *
  * AI 助手是本外壳的第三列(docs/AGENT_DESIGN.md §12.1):ResizablePanelGroup

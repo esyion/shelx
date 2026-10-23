@@ -15,7 +15,6 @@ import { Badge } from "@/components/ui/badge";
 import {
   BarChart3,
   GripHorizontal,
-  LayoutDashboard,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
@@ -201,7 +200,7 @@ function SidebarBody({ children }: { children: ReactNode }) {
   );
 }
 
-/** 底部:AI 助手 + 服务器总览 + 设置。 */
+/** 底部:AI 助手 + 设置。 */
 function SidebarFooter() {
   const router = useRouter();
   const toggleAgent = useUiStore((state) => state.toggleAgent);
@@ -229,16 +228,6 @@ function SidebarFooter() {
             {`${pendingCount} 项待批准`}
           </Badge>
         )}
-      </Button>
-      <Button
-        size="sm"
-        variant="ghost"
-        className="w-full justify-start text-xs"
-        title="一屏查看全部服务器的运行状态"
-        onClick={() => router.push("/overview")}
-      >
-        <LayoutDashboard className="size-4" />
-        服务器总览
       </Button>
       <Button
         size="sm"

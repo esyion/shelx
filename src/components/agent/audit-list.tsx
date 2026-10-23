@@ -39,7 +39,7 @@ import {
   toolActionLabel,
   traceLine,
 } from "@/lib/agent-events";
-import { findConnectionName } from "@/lib/overview";
+import { findConnectionName } from "@/lib/connection-tree";
 import { useAgentStore } from "@/stores/agent";
 import { useConnectionsStore } from "@/stores/connections";
 

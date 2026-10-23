@@ -255,7 +255,7 @@ export default function RootLayout({
           {/* 常驻工作区外壳:layout 跨导航不重挂,终端 pty 通道与
               SFTP/传输状态不因进入功能页而中断。 */}
           <AppShell />
-          {/* 功能页(设置/总览/连接表单)以全屏浮层覆盖工作区;
+          {/* 功能页(设置/连接表单)以全屏浮层覆盖工作区;
               主页即外壳本身,children 为空。 */}
           {pathname !== "/" && (
             <div

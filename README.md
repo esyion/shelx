@@ -74,7 +74,7 @@ CPU (donut + per-core), memory & swap, network, disks, load (with an idle / norm
 
 Processes are their own workspace tab — a task-manager table (name, user, PID, state, CPU%, memory, cumulative time), every column sortable, with a filter box. Current CPU% is diffed between two snapshots the way `top` does it, because `ps` reports a lifetime average. Killing a process asks first, shows the full command line, and sends SIGTERM — no fake "force" option that doesn't exist.
 
-There's an overview page too: every connected host as a card with CPU / memory / network at a glance. The monitor view can be pinned always-on-top while you work in the terminal.
+The monitor view can be pinned always-on-top while you work in the terminal.
 
 ## The assistant
 
