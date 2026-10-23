@@ -25,7 +25,7 @@
     "@streamdown/math": "1.0.2",
     "@streamdown/mermaid": "1.0.2",
     "@tanstack/react-virtual": "^3.14.11",
-    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/api": "^2.12.0",
     "@tauri-apps/plugin-clipboard-manager": "2.3.3",
     "@tauri-apps/plugin-dialog": "^2.7.3",
     "@tauri-apps/plugin-notification": "^2.7.0",
@@ -67,7 +67,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
-    "@tauri-apps/cli": "^2.11.4",
+    "@tauri-apps/cli": "^2.12.0",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
