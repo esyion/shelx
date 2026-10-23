@@ -1,5 +1,6 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { IpcError, IpcResult } from "@/types";
 
 /** 后端事件名与载荷契约见 TECHNICAL_DESIGN §6.4。 */
@@ -42,6 +43,21 @@ export function listenEvent<T>(
  */
 export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+/** 原生窗口主题取值:与设置项 appearance.theme 对齐,null 表示跟随系统。 */
+export type WindowTheme = "dark" | "light" | null;
+
+/**
+ * 设置原生窗口(含系统标题栏)主题,让系统级 UI 与界面深浅一致。
+ *
+ * 需要 capability `core:window:allow-set-theme`;非 Tauri 环境(next dev 直开)静默跳过。
+ *
+ * @param theme "dark" / "light";null 表示交还系统跟随
+ */
+export async function setWindowTheme(theme: WindowTheme): Promise<void> {
+  if (!isTauri()) return;
+  await getCurrentWindow().setTheme(theme);
 }
 
 /**

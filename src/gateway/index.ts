@@ -6,6 +6,7 @@ export {
   isGatewayError,
   isTauri,
   listenEvent,
+  setWindowTheme,
   APP_UPDATE_EVENTS,
   SESSION_EVENTS,
 } from "./tauri";

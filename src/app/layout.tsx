@@ -5,8 +5,9 @@
  *   - 常驻外壳 <AppShell>:跨导航不重挂,功能页(设置等)以全屏浮层覆盖其上,
  *     终端 pty 通道与 SFTP 会话不因路由切换中断
  *   - 主题:ThemeProvider(next-themes) + FOUC 防闪烁脚本内置
- *   - 一次性初始化:布局恢复 / GBK 编码器 / 更新事件订阅 / settings 加载与主题同步 /
- *     会话状态快照 / SESSION_EVENTS 订阅 / 窗口级拖放监听
+ *   - 一次性初始化:布局恢复 / GBK 编码器 / 更新事件订阅 / settings 加载(主题
+ *     三端同步在 <ThemeSync>,须挂 Provider 内)/ 会话状态快照 /
+ *     SESSION_EVENTS 订阅 / 窗口级拖放监听
  *   - 全局快捷键(主页生效分支,设置页只响应 Ctrl+,)
  *   - 事件驱动弹窗宿主:HostKey / AuthPrompt / TransferConflict /
  *     AppDialogs(命令式 confirm/prompt)/ ToastHost
@@ -18,7 +19,7 @@
 
 import { useEffect, useRef } from "react";
 import { Geist } from "next/font/google";
-import { ThemeProvider, useTheme } from "next-themes";
+import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import { usePathname, useRouter } from "next/navigation";
 import { useEventListener } from "usehooks-ts";
@@ -33,6 +34,7 @@ import { AppDialogs } from "@/components/app-dialogs";
 import { TransferConflictDialog } from "@/components/transfers/transfer-dialogs";
 import { ToastHost } from "@/components/layout/toast-host";
 import { AppShell } from "@/components/layout/app-shell";
+import { ThemeSync } from "@/components/layout/theme-sync";
 import { useDataMigrationPrompt } from "@/app/hooks/use-data-migration-prompt";
 import { listSessionStatus } from "@/app/api";
 import { initGbkEncoder } from "@/lib/codec";
@@ -62,13 +64,13 @@ export default function RootLayout({
 }>) {
   const router = useRouter();
   const pathname = usePathname();
-  const { setTheme } = useTheme();
 
   // 数据迁移提示:进入应用 2 秒后检查旧位置数据,命中且未「暂不」时弹窗询问。
   useDataMigrationPrompt();
 
   // 初始化:布局恢复、设置加载、会话快照与事件订阅。
-  // 主题由 <ThemeProvider> 自动接管(系统深浅变化 + 后端值同步)。
+  // 主题:深浅渲染由 <ThemeProvider> 接管;后端设置 ↔ 界面 ↔ 原生窗口标题栏
+  // 的三端同步在 <ThemeSync>(next-themes 的 setTheme 须在 Provider 内调用)。
   useEffect(() => {
     void useUiStore.getState().restoreLayout();
 
@@ -84,13 +86,7 @@ export default function RootLayout({
     }).then((unlisten) => {
       unlistenUpdate = unlisten;
     });
-    void useSettingsStore
-      .getState()
-      .load()
-      .then(() => {
-        const theme = useSettingsStore.getState().settings?.appearance.theme;
-        if (theme) setTheme(theme);
-      });
+    void useSettingsStore.getState().load();
 
     void listSessionStatus().then((sessions) => {
       useSessionsStore.getState().upsertMany(sessions);
@@ -163,7 +159,7 @@ export default function RootLayout({
       unlistenStatus?.();
       unlistenDrop?.();
     };
-  }, [router, setTheme]);
+  }, [router]);
 
   // 全局快捷键:handler 通过 ref 同步,避免重复注册/解绑。
   // 主页生效:Ctrl+B / Ctrl+J / Ctrl+W / Alt+1/2/3 / Ctrl+Tab。
@@ -236,6 +232,9 @@ export default function RootLayout({
           enableSystem
           storageKey="theme"
         >
+          {/* 主题三端同步:后端设置 ↔ next-themes ↔ 原生窗口标题栏;
+              必须挂在 Provider 内(Provider 外 setTheme 是 no-op)。 */}
+          <ThemeSync />
           {/* 常驻工作区外壳:layout 跨导航不重挂,终端 pty 通道与
               SFTP/传输状态不因进入功能页而中断。 */}
           <AppShell />
