@@ -7,6 +7,27 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > Versions prior to `0.2.0` were internal iterations before the project
 > was open-sourced; their changes are summarized under "Unreleased / 0.2.0".
 
+## [0.3.2] - 2026-10-23
+
+Follow-up to the desktop-integration release: 0.3.1 was superseded
+before publication (its release was destroyed while re-triggering the
+failed Linux build, and nothing was ever published or downloaded), so
+0.3.2 ships everything from 0.3.1 — theme sync, tray, single instance,
+`ssh://` deep links, notifications, window state, autostart, global
+shortcut, monitor pinning — plus the dependency hardening below.
+
+### Security
+
+- **Dependency hardening** — `rust-ini` is held at 0.21.1 because
+  `tauri-plugin-deep-link` 2.6.2's Linux desktop-file parser does not
+  compile against rust-ini ≥ 0.21.2 (the failure broke the Linux build
+  and CI); `rustls`, `rustls-webpki`, `webpki-root-certs`, `ctutils`
+  and `tokio` were bumped past their RUSTSEC advisories (2026-0346–0349,
+  0382, 0383, 0385, 0386); and the updater plugin's unused `zip` feature
+  is disabled, dropping zip 4.x (three open advisories, 2026-0367–0369)
+  from the tree — no shipped updater artifact is a `.zip`, and the
+  feature returns once the plugin ships zip 9.
+
 ## [0.3.1] - 2026-10-23
 
 Desktop integration release: the appearance setting, the UI and the
@@ -47,19 +68,6 @@ notifications, window state memory and more.
 - Settings gained a「窗口」group — tray close behavior, autostart,
   global shortcut and system notifications — rendered from the backend
   settings schema, so each new capability has its entry point.
-
-### Security
-
-- **Dependency hardening** — `rust-ini` is held at 0.21.1 because
-  `tauri-plugin-deep-link` 2.6.2's Linux desktop-file parser does not
-  compile against rust-ini ≥ 0.21.2 (the failure broke the 0.3.1 Linux
-  build and CI); `rustls`, `rustls-webpki`, `webpki-root-certs`,
-  `ctutils` and `tokio` were bumped past their RUSTSEC advisories
-  (2026-0346–0349, 0382, 0383, 0385, 0386); and the updater plugin's
-  unused `zip` feature is disabled, dropping zip 4.x (three open
-  advisories, 2026-0367–0369) from the tree — no shipped updater
-  artifact is a `.zip`, and the feature returns once the plugin ships
-  zip 9.
 
 ## [0.3.0] - 2026-10-23
 
