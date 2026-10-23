@@ -48,6 +48,19 @@ notifications, window state memory and more.
   global shortcut and system notifications — rendered from the backend
   settings schema, so each new capability has its entry point.
 
+### Security
+
+- **Dependency hardening** — `rust-ini` is held at 0.21.1 because
+  `tauri-plugin-deep-link` 2.6.2's Linux desktop-file parser does not
+  compile against rust-ini ≥ 0.21.2 (the failure broke the 0.3.1 Linux
+  build and CI); `rustls`, `rustls-webpki`, `webpki-root-certs`,
+  `ctutils` and `tokio` were bumped past their RUSTSEC advisories
+  (2026-0346–0349, 0382, 0383, 0385, 0386); and the updater plugin's
+  unused `zip` feature is disabled, dropping zip 4.x (three open
+  advisories, 2026-0367–0369) from the tree — no shipped updater
+  artifact is a `.zip`, and the feature returns once the plugin ships
+  zip 9.
+
 ## [0.3.0] - 2026-10-23
 
 Stable release of the built-in operations agent, graduating from
