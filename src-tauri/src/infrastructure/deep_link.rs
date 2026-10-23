@@ -4,7 +4,7 @@
 //! 链接来源(浏览器/文档)不可信:解析失败、协议不符、缺主机一律只记日志不发事件,
 //! 载荷字段不再二次校验即交给受控表单(表单自身有边界校验)。
 
-use tauri::{AppHandle, Emitter, Manager, Runtime};
+use tauri::{AppHandle, Emitter, Runtime};
 
 use crate::dto::deep_link::DeepLinkTargetDto;
 
