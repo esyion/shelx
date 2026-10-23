@@ -33,6 +33,10 @@ tauri-plugin-updater = "2"
 # 记住窗口大小/位置/最大化状态:注册即自动在退出时保存、建窗时恢复。
 # 回滚:删除本依赖与 lib.rs 注册行即可,窗口回到 tauri.conf.json 的固定几何。
 tauri-plugin-window-state = "2"
+# 单实例:二次启动(含双击 ssh:// 链接拉起的新进程)不再开新窗口,
+# 而是把已有主窗口带回前台;回调必须注册为第一个插件。
+# 回滚:删除本依赖与 lib.rs 注册行即可恢复多开行为。
+tauri-plugin-single-instance = "2"
 
 # --- 序列化与配置(JSON)---
 serde = { version = "1", features = ["derive"] }

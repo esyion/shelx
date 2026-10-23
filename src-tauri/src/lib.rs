@@ -26,6 +26,17 @@ mod ipc_contract;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // 单实例必须第一个注册:二次启动把主窗口带回前台,不开新进程窗口。
+        // 注意回调里不得做耗时工作,会阻塞新进程退出。
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            use tauri::Manager;
+            tracing::info!(args = ?args.len(), "检测到二次启动,唤起已有窗口");
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
