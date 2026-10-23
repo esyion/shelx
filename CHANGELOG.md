@@ -7,6 +7,38 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > Versions prior to `0.2.0` were internal iterations before the project
 > was open-sourced; their changes are summarized under "Unreleased / 0.2.0".
 
+## [0.3.3] - 2026-10-24
+
+Conversation-management release: the thread switcher gains the ability to
+pin, rename and delete conversations, so a long history of「新对话」
+entries stays navigable. Rename and delete were registered commands with
+no UI entry point at all — this release gives every backend capability
+its entrance.
+
+### Added
+
+- **Pin, rename, delete from the switcher** — hovering a conversation in
+  the switcher menu reveals three actions (pin / rename / delete); pinned
+  conversations form a「置顶」group above「最近」and carry a pin glyph,
+  and the menu is capped to a fixed height with scrolling instead of
+  stretching near full-screen. Pinned-first ordering is enforced by the
+  store (migration `0007` adds `pinned_at`), and pinning does not touch
+  `updated_at`, so unpinning returns a thread to its natural place in
+  "recent" instead of jumping it to the top.
+- **Rename dialog** — prefilled with the current title, 80-character
+  limit enforced at the source; a failed save keeps the draft open with
+  the backend's error message shown verbatim.
+- **Delete confirmation** — states the real consequences before acting:
+  messages, run records, tool audit and memory logs are deleted together
+  and cannot be recovered; deleting the conversation you are viewing
+  additionally notes you will return to no-selection.
+
+### Changed
+
+- IPC contract: `ThreadDto` gains `pinnedAt` and `UpdateThreadRequestDto`
+  gains `pinned` (both backward compatible, no commands added/removed).
+- Simplified workspace and assistant empty-state copy.
+
 ## [0.3.2] - 2026-10-23
 
 Follow-up to the desktop-integration release: 0.3.1 was superseded
