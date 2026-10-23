@@ -15,10 +15,7 @@ pub fn apply_window_settings(app: tauri::AppHandle, state: State<AppState>) -> I
     let settings = match state.settings.get() {
         Ok(settings) => settings,
         Err(err) => {
-            return IpcResult::err(IpcError::new(
-                IpcErrorCode::Internal,
-                err.to_string(),
-            ));
+            return IpcResult::err(IpcError::new(IpcErrorCode::Internal, err.to_string()));
         }
     };
     match crate::infrastructure::window_integration::apply(&app, &settings) {

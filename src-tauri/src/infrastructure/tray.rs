@@ -5,9 +5,9 @@
 //! 关闭拦截逻辑在 lib.rs 的窗口事件里;本模块只负责托盘自身的装配与行为。
 
 use tauri::{
-    AppHandle, Manager, Runtime,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    AppHandle, Manager, Runtime,
 };
 
 /// 菜单项 id:显示主窗口。
