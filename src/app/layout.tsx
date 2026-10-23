@@ -37,6 +37,7 @@ import { useDataMigrationPrompt } from "@/app/hooks/use-data-migration-prompt";
 import { listSessionStatus } from "@/app/api";
 import { initGbkEncoder } from "@/lib/codec";
 import { listenEvent, APP_UPDATE_EVENTS, SESSION_EVENTS } from "@/gateway";
+import { notifyWhenUnfocused } from "@/services/notify";
 import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
 import { useFilePathsStore } from "@/stores/file-paths";
@@ -109,12 +110,12 @@ export default function RootLayout({
           serverInfo: existing?.serverInfo ?? null,
         });
         if (event.status === "disconnected") {
-          useUiStore
-            .getState()
-            .toast(
-              event.reason ? `连接已断开:${event.reason}` : "连接已断开",
-              "error",
-            );
+          const reason = event.reason ? `连接已断开:${event.reason}` : "连接已断开";
+          useUiStore.getState().toast(reason, "error");
+          // 窗口不在前台时补一条系统通知(渠道开关 window.systemNotifications)。
+          if (useSettingsStore.getState().settings?.window.systemNotifications) {
+            void notifyWhenUnfocused("连接已断开", reason);
+          }
         }
       },
     ).then((unlisten) => {

@@ -231,4 +231,8 @@ export const SETTING_COPY: Partial<Record<SettingPath, SettingCopy>> = {
       ctrl_alt_s: "Ctrl + Alt + S",
     },
   },
+  "window.systemNotifications": {
+    label: "不在前台时用系统通知提醒",
+    hint: "切到别的程序时,传输完成、连接断开经系统通知提醒;正在使用 shelx 时只弹应用内提示",
+  },
 };

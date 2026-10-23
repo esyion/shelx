@@ -24,6 +24,7 @@ export type SettingPath =
   | "window.closeToTray"
   | "window.launchAtStartup"
   | "window.showShortcut"
+  | "window.systemNotifications"
   | "agent.approvalMode"
   | "agent.maxTurns"
   | "agent.contextMessages"

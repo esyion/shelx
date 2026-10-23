@@ -3775,7 +3775,8 @@
               "default": {
                 "closeToTray": false,
                 "launchAtStartup": false,
-                "showShortcut": "disabled"
+                "showShortcut": "disabled",
+                "systemNotifications": true
               },
               "description": "窗口与系统集成。"
             }
@@ -4450,12 +4451,18 @@
               "$ref": "#/$defs/ShowShortcut",
               "default": "disabled",
               "description": "全局唤起主窗口的快捷键档位;关闭时不注册任何系统级组合键。"
+            },
+            "systemNotifications": {
+              "default": true,
+              "description": "窗口不在前台时经系统通知提醒(传输完成/连接断开);前台时只用应用内提示。",
+              "type": "boolean"
             }
           },
           "required": [
             "closeToTray",
             "launchAtStartup",
-            "showShortcut"
+            "showShortcut",
+            "systemNotifications"
           ],
           "type": "object"
         }

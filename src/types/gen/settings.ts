@@ -256,6 +256,10 @@ export interface WindowSettings {
    * 全局唤起主窗口的快捷键档位(档位而非自由文本:组合键合法性由枚举单点保证)。
    */
   showShortcut: "disabled" | "alt_shift_s" | "ctrl_alt_s";
+  /**
+   * 窗口不在前台时经系统通知提醒(传输完成/连接断开);前台时只用应用内提示。
+   */
+  systemNotifications: boolean;
 }
 /**
  * 单个设置项契约。

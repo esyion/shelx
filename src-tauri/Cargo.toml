@@ -45,6 +45,10 @@ tauri-plugin-autostart = "2"
 # 全局快捷键:任意界面唤起主窗口;档位枚举进设置契约,无自由文本输入。
 # 回滚:删除本依赖、lib.rs 注册行与 window_integration 的快捷键同步即可。
 tauri-plugin-global-shortcut = "2"
+# 系统通知:窗口不在前台时提醒传输完成/连接断开;crate 与 npm
+# @tauri-apps/plugin-notification 保持 2.x 对齐。
+# 回滚:删除本依赖、lib.rs 注册行、capability 与 services/notify.ts 即可。
+tauri-plugin-notification = "2"
 
 # --- 序列化与配置(JSON)---
 serde = { version = "1", features = ["derive"] }

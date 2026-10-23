@@ -308,6 +308,8 @@ pub struct WindowSettings {
     pub launch_at_startup: bool,
     /// 全局唤起主窗口的快捷键档位;关闭时不注册任何系统级组合键。
     pub show_shortcut: ShowShortcut,
+    /// 窗口不在前台时经系统通知提醒(传输完成/连接断开);前台时只用应用内提示。
+    pub system_notifications: bool,
 }
 
 /// Agent 设置(M5,docs/AGENT_DESIGN.md)。
@@ -444,12 +446,14 @@ impl Default for UpdateSettings {
 }
 
 impl Default for WindowSettings {
-    /// 窗口分组默认值:关闭即退出、不自启、无全局快捷键,常驻形态由用户显式开启。
+    /// 窗口分组默认值:关闭即退出、不自启、无全局快捷键;系统通知默认开
+    /// (只在窗口不在前台时触发,不打扰正在使用的用户)。
     fn default() -> Self {
         Self {
             close_to_tray: false,
             launch_at_startup: false,
             show_shortcut: ShowShortcut::Disabled,
+            system_notifications: true,
         }
     }
 }

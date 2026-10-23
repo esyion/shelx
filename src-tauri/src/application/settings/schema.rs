@@ -287,6 +287,11 @@ fn raw_specs() -> Vec<RawSpec> {
                 options: enum_values(ShowShortcut::ALL),
             },
         },
+        RawSpec {
+            path: "window.systemNotifications",
+            unit: None,
+            kind: SettingKind::Bool,
+        },
         // ---- Agent(M5)docs/AGENT_DESIGN.md §11.3 ----
         RawSpec {
             path: "agent.approvalMode",

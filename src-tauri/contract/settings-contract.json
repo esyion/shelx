@@ -320,6 +320,15 @@
       "default": "disabled"
     },
     {
+      "path": "window.systemNotifications",
+      "group": "window",
+      "unit": null,
+      "kind": {
+        "kind": "bool"
+      },
+      "default": true
+    },
+    {
       "path": "agent.approvalMode",
       "group": "agent",
       "unit": null,
@@ -509,7 +518,8 @@
     "window": {
       "closeToTray": false,
       "launchAtStartup": false,
-      "showShortcut": "disabled"
+      "showShortcut": "disabled",
+      "systemNotifications": true
     },
     "agent": {
       "maxTurns": 12,

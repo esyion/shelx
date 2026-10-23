@@ -42,6 +42,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // 系统通知:窗口不在前台时提醒传输完成/连接断开(经 services/notify 触发)。
+        .plugin(tauri_plugin_notification::init())
         // 窗口状态记忆:插件初始化先于配置窗口创建,恢复才能生效。
         .plugin(tauri_plugin_window_state::Builder::default().build())
         // 开机自启:注册表读写经插件;实际同步在 setup 里按设置收敛。
