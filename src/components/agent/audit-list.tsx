@@ -95,7 +95,7 @@ export function AuditList({ threadId }: { threadId: string | null }) {
       <Empty>
         <EmptyHeader>
           <EmptyTitle>还没有选择对话</EmptyTitle>
-          <EmptyDescription>打开一个对话后,这里会列出它执行过的每一步操作。</EmptyDescription>
+          <EmptyDescription>尝试运行一个ai对话</EmptyDescription>
         </EmptyHeader>
       </Empty>
     );

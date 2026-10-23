@@ -32,11 +32,7 @@ export function Workspace() {
     return (
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
         <TerminalSquare className="size-12 opacity-60" />
-        <p className="text-base">还没有打开任何会话</p>
-        <p className="text-sm">在左侧双击一条连接即可打开终端</p>
-        <p className="text-xs opacity-70">
-          还没建过连接？点侧栏上方的 + 新建；或用「快速连接」临时连一台服务器
-        </p>
+        <p className="text-base">还没有打开任何链接</p>
       </div>
     );
   }

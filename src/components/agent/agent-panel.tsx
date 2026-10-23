@@ -18,7 +18,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Plus, X } from "lucide-react";
 import type { ApprovalDto } from "@/types";
 import { listPendingApprovals } from "@/app/api";
@@ -217,15 +216,7 @@ export function AgentPanel() {
                     {loading ? "正在加载…" : "还没有选择对话"}
                   </EmptyTitle>
                   <EmptyDescription>
-                    点上方「新对话」开始;Agent 能看到你配置过的全部服务器,不必先连上才能问。
-                    机器的固定事实写在{" "}
-                    <Link
-                      href="/settings/ai/memory"
-                      className="underline underline-offset-4 hover:text-foreground"
-                    >
-                      设置 → AI → 记忆
-                    </Link>
-                    ,新对话自动参考。
+
                   </EmptyDescription>
                 </EmptyHeader>
               </Empty>

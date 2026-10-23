@@ -190,7 +190,7 @@ describe("AI 助手停靠右栏形态", () => {
     expect(await screen.findByLabelText("向 Agent 提问")).toBeTruthy();
     expect(screen.getByText("web-01 为什么慢")).toBeTruthy();
     // 主列没有被卸载也没有被盖住:空态文案与面板同屏。
-    expect(screen.getByText("还没有打开任何会话")).toBeTruthy();
+    expect(screen.getByText("还没有打开任何链接")).toBeTruthy();
     // 面板壳是 ResizablePanel + 拖拽手柄,页面上不存在 Drawer 弹层节点。
     expect(container.querySelector('[data-slot="resizable-panel-group"]')).toBeTruthy();
     expect(screen.getByRole("separator", { name: "调整 AI 助手面板宽度" })).toBeTruthy();
@@ -215,7 +215,7 @@ describe("AI 助手停靠右栏形态", () => {
     expect(screen.queryByLabelText("AI 助手")).toBeNull();
     expect(screen.queryByRole("separator", { name: "调整 AI 助手面板宽度" })).toBeNull();
     // 主列照常渲染。
-    expect(screen.getByText("还没有打开任何会话")).toBeTruthy();
+    expect(screen.getByText("还没有打开任何链接")).toBeTruthy();
   });
 });
 
