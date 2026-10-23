@@ -108,7 +108,11 @@ export function ApprovalCard({ approval }: { approval: ApprovalDto }) {
             </CodeBlockContent>
           </CodeBlock>
         )}
-        <p className="text-xs text-muted-foreground">{describeApprovalTargets(approval)}</p>
+        {/* 主机清单由下方逐台 Item 呈现;多台时补一句"共几台"看爆炸半径,
+            单台再写一遍"目标主机:xxx"是同一信息第三次出现。 */}
+        {approval.targets.length > 1 && (
+          <p className="text-xs text-muted-foreground">{describeApprovalTargets(approval)}</p>
+        )}
         <ItemGroup className="gap-2">
           {approval.targets.map((target) => {
             const decision = choices[target.connId] ?? fallback;

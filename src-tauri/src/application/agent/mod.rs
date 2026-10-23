@@ -33,6 +33,10 @@ use types::{
     ThreadRecord,
 };
 
+/// 新线程的默认标题;首轮自动命名(见 `run::auto_title`)以它为"还没起过名"的判据,
+/// 用户改过名(任何不等于默认值的标题)就不再覆盖。
+pub(crate) const DEFAULT_THREAD_TITLE: &str = "新对话";
+
 /// 运行记录的最小可见形状(界面状态与死状态恢复用)。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -221,7 +225,7 @@ impl AgentService {
         let thread = ThreadRecord {
             id: uuid::Uuid::new_v4().to_string(),
             title: if draft.title.trim().is_empty() {
-                "新对话".to_owned()
+                DEFAULT_THREAD_TITLE.to_owned()
             } else {
                 draft.title.trim().chars().take(80).collect()
             },

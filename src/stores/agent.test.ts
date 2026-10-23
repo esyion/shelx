@@ -224,6 +224,26 @@ describe("发起一轮", () => {
     await useAgentStore.getState().send("再问一次");
     expect(useAgentStore.getState().error).toBe("已有一轮在进行");
   });
+
+  it("快照带回的新线程标题同步进列表:首轮自动命名立刻可见", async () => {
+    useAgentStore.setState({
+      threads: [snapshot().thread],
+    });
+    api.getAgentThread.mockResolvedValue(
+      snapshot({ thread: { ...snapshot().thread, title: "web-01 为什么这么慢" } }),
+    );
+    api.sendAgentMessage.mockResolvedValue({
+      runId: "r1",
+      threadId: "t1",
+      startedSeq: 0,
+      subscriptionId: "sub-send",
+    });
+    await useAgentStore.getState().openThread("t1");
+    await useAgentStore.getState().send("web-01 为什么这么慢");
+    await vi.waitFor(() => {
+      expect(useAgentStore.getState().threads[0]?.title).toBe("web-01 为什么这么慢");
+    });
+  });
 });
 
 describe("批准与取消", () => {

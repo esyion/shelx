@@ -9,13 +9,29 @@ use super::events::{canonical_log, AgentEvent, AgentEventPayload};
 use super::prompt::{system_preamble, HostLine};
 use super::types::{
     MessageRecord, MessageRole, RunContext, RunOutcome, RunPlan, RunRecord, SendRequest,
+    ThreadRecord,
 };
-use super::{AgentError, AgentService};
+use super::{AgentError, AgentService, DEFAULT_THREAD_TITLE};
 use crate::application::settings::AgentSettings;
 use crate::domain::agent::{ApprovalMode, ProtocolKind, RunState};
 
 /// 单条用户输入长度上限(字符)。
 const MAX_PROMPT_CHARS: usize = 20_000;
+
+/// 自动命名的标题上限(字符):对话列表行宽有限,标题是给人认的,不是给全文存的。
+const AUTO_TITLE_MAX_CHARS: usize = 24;
+
+/// 由第一条输入生成线程标题:取首个非空行,超长截断加省略号。
+/// 全空输入返回 `None`(受理侧已拒空串,这里只是防御)。
+fn auto_title(prompt: &str) -> Option<String> {
+    let first_line = prompt.lines().find(|line| !line.trim().is_empty())?;
+    let trimmed = first_line.trim();
+    let mut title: String = trimmed.chars().take(AUTO_TITLE_MAX_CHARS).collect();
+    if trimmed.chars().count() > AUTO_TITLE_MAX_CHARS {
+        title.push('…');
+    }
+    Some(title)
+}
 
 /// 发起一轮的受理结果。
 #[derive(Debug, Clone)]
@@ -78,6 +94,18 @@ impl AgentService {
 
         let approval = thread.approval;
         let now = super::now_millis();
+        // 首轮自动命名:标题还是默认值时,用第一条输入起个能认出来的名字,
+        // 免得对话列表里是一排「新对话」;用户改过名就不再覆盖。
+        if thread.title == DEFAULT_THREAD_TITLE {
+            if let Some(title) = auto_title(&prompt) {
+                let renamed = ThreadRecord {
+                    title,
+                    updated_at: now,
+                    ..thread.clone()
+                };
+                self.store.upsert_thread(&renamed)?;
+            }
+        }
         self.store.append_message(&MessageRecord {
             id: uuid::Uuid::new_v4().to_string(),
             thread_id: thread_id.clone(),
@@ -352,5 +380,34 @@ mod tests {
     #[test]
     fn prompt_cap_is_declared() {
         assert_eq!(MAX_PROMPT_CHARS, 20_000);
+    }
+
+    /// 短句原样成标题;多行取首个非空行(粘贴的命令块不该整段进标题)。
+    #[test]
+    fn auto_title_takes_first_non_empty_line() {
+        assert_eq!(
+            auto_title("web-01 为什么这么慢").as_deref(),
+            Some("web-01 为什么这么慢")
+        );
+        assert_eq!(
+            auto_title("\n\n看看磁盘\n顺便查下内存").as_deref(),
+            Some("看看磁盘")
+        );
+    }
+
+    /// 超长截断加省略号,且按字符截不把汉字劈成乱码。
+    #[test]
+    fn auto_title_truncates_by_chars_with_ellipsis() {
+        let long = "字".repeat(AUTO_TITLE_MAX_CHARS + 10);
+        let title = auto_title(&long).expect("非空必有标题");
+        assert!(title.ends_with('…'));
+        assert_eq!(title.chars().count(), AUTO_TITLE_MAX_CHARS + 1);
+    }
+
+    /// 空输入不出标题(防御;受理侧已拒空串)。
+    #[test]
+    fn auto_title_rejects_blank() {
+        assert_eq!(auto_title(""), None);
+        assert_eq!(auto_title(" \n \n"), None);
     }
 }

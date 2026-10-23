@@ -15,8 +15,8 @@
 import { Fragment, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { ArrowDown } from "lucide-react";
-import type { RunDto } from "@/types";
-import { EVENT_KIND_DISPLAY, MESSAGE_ROLE_DISPLAY, foldEvents } from "@/lib/agent-events";
+import type { RunDto, TargetDto } from "@/types";
+import { EVENT_KIND_DISPLAY, foldEvents } from "@/lib/agent-events";
 import { chainSegments, type AgentSegment } from "@/lib/agent-chain";
 import { resolveAgentTargets } from "@/app/api";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
@@ -97,8 +97,8 @@ export function AgentThread({ threadId }: { threadId: string }) {
   const loadSettings = useSettingsStore((state) => state.load);
   const settings = useSettingsStore((state) => state.settings);
   const tree = useConnectionsStore((state) => state.tree);
-  const [scope, setScope] = useState<{ count: number; error: string | null }>({
-    count: 0,
+  const [scope, setScope] = useState<{ targets: TargetDto[]; error: string | null }>({
+    targets: [],
     error: null,
   });
 
@@ -107,12 +107,12 @@ export function AgentThread({ threadId }: { threadId: string }) {
     let active = true;
     resolveAgentTargets({ mode: "allConfigured" })
       .then((targets) => {
-        if (active) setScope({ count: targets.length, error: null });
+        if (active) setScope({ targets, error: null });
       })
       .catch((reason: unknown) => {
         if (active)
           setScope({
-            count: 0,
+            targets: [],
             error: reason instanceof Error ? reason.message : "无法读取服务器列表",
           });
       });
@@ -173,7 +173,7 @@ export function AgentThread({ threadId }: { threadId: string }) {
       <ThreadHeader
         threadId={threadId}
         snapshot={snapshot}
-        scopeCount={scope.count}
+        targets={scope.targets}
         scopeError={scope.error}
       />
 
@@ -223,7 +223,6 @@ export function AgentThread({ threadId }: { threadId: string }) {
                       <MessageScrollerItem messageId={`${turn.run.runId}:user`} scrollAnchor>
                         <Message align="end">
                           <MessageContent>
-                            <MessageHeader>{MESSAGE_ROLE_DISPLAY.user.label}</MessageHeader>
                             <Bubble align="end">
                               <BubbleContent>
                                 <p className="whitespace-pre-wrap">{turn.run.prompt}</p>

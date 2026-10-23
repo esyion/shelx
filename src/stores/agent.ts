@@ -107,6 +107,11 @@ async function refreshSnapshot(
     const snapshot = await api.getAgentThread(threadId);
     set({
       snapshots: { ...get().snapshots, [threadId]: snapshot },
+      // 快照里的线程记录可能带新事实(首轮自动命名、绑定会话改动),
+      // 同步回列表,否则要等重开面板才看得见新标题。
+      threads: get().threads.map((thread) =>
+        thread.id === threadId ? snapshot.thread : thread,
+      ),
     });
   } catch (error) {
     set({ error: messageOf(error) });

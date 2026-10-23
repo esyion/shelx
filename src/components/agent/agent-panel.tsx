@@ -7,18 +7,22 @@
  * 不占路由,收起也不打断后台运行:事件由 hub 缓冲,重开时按 `seq` 补发。
  * 只保留对话与操作记录两个页签:记忆与模型配置是低频管理动作,
  * 在 设置 → AI(它们原本挤在这里的页签里,管理体验受限)。
+ *
+ * 头部只有一行:flex 左右排列 —— 对话切换(线程即标题,见 `thread-selector.tsx`)
+ * 占满剩余宽度,右侧是「新对话」与「关闭」两颗图标键,不再用绝对定位的关闭键
+ * (绝对定位在窄窗口会盖住旁边的键,点「新对话」会点到关闭)。
+ * 面板不常驻"AI 助手"大标题与副标题 —— 侧栏入口已经自我介绍,空态也会说明
+ * 它能做什么;跨线程的待批准由侧栏徽章与正文警示卡兜住,标题徽章不再重复一份。
  */
 "use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import type { ApprovalDto } from "@/types";
 import { listPendingApprovals } from "@/app/api";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { ShelxMark } from "@/components/brand/shelx-mark";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
@@ -30,13 +34,13 @@ import {
   ItemGroup,
   ItemTitle,
 } from "@/components/ui/item";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { formatTime, TONE_BADGE, WARNING_CARD_CLASS, toolActionLabel } from "@/lib/agent-events";
+import { toolActionLabel, WARNING_CARD_CLASS } from "@/lib/agent-events";
 import { useAgentStore } from "@/stores/agent";
 import { useUiStore } from "@/stores/ui";
 import { AgentThread } from "./agent-thread";
 import { AuditList } from "./audit-list";
+import { ThreadSelector } from "./thread-selector";
 
 /** AI 助手停靠右栏(挂在 AppShell 第三列,跨路由存活)。 */
 export function AgentPanel() {
@@ -70,11 +74,6 @@ export function AgentPanel() {
       setNeedProfile(false);
     }
   }, [profiles]);
-
-  /** 打开时才拉数据:收着面板不产生额外 IPC 与网络。 */
-  useEffect(() => {
-    if (open) void load();
-  }, [open, load]);
 
   /** 待批准轮询:让"等你决定"这件事一直看得见。 */
   useEffect(() => {
@@ -115,55 +114,32 @@ export function AgentPanel() {
       aria-label="AI 助手"
       className="relative flex h-full min-w-0 flex-col bg-background text-sm text-foreground"
     >
-      <header className="flex shrink-0 flex-col gap-0.5 border-b px-4 py-3 pr-14">
-        <h2 className="flex items-center gap-2 text-sm font-medium">
-          <ShelxMark className="size-4 shrink-0" />
-          AI 助手
-          {elsewhere.length > 0 && (
-            <Badge
-              variant={TONE_BADGE.warning.variant}
-              className={TONE_BADGE.warning.className}
-            >
-              {`${elsewhere.length} 项等你批准`}
-            </Badge>
-          )}
-        </h2>
-        <p className="text-xs text-muted-foreground">
-          按你的描述登录服务器取证与处理;任何改动都会先请你逐台批准。
-        </p>
-        <div className="flex items-center gap-2">
-          <NativeSelect
-            aria-label="选择对话"
-            size="sm"
-            className="h-8 flex-1 text-xs"
-            value={activeThreadId ?? ""}
-            onChange={(event) => {
-              if (event.target.value) void openThread(event.target.value);
-            }}
-          >
-            <NativeSelectOption value="">
-              {threads.length === 0 ? "还没有对话" : "选择对话…"}
-            </NativeSelectOption>
-            {threads.map((thread) => (
-              <NativeSelectOption key={thread.id} value={thread.id}>
-                {`${thread.title} · ${formatTime(thread.updatedAt)}`}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-          <Button size="sm" variant="outline" onClick={() => void create()}>
-            新对话
-          </Button>
-        </div>
+      <header className="flex shrink-0 items-center gap-1 border-b px-2.5 py-2">
+        <ThreadSelector
+          threads={threads}
+          activeThreadId={activeThreadId}
+          onSelect={(threadId) => void openThread(threadId)}
+        />
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="shrink-0"
+          aria-label="新对话"
+          title="新对话"
+          onClick={() => void create()}
+        >
+          <Plus />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="shrink-0"
+          onClick={() => setAgentOpen(false)}
+        >
+          <X />
+          <span className="sr-only">关闭 AI 助手</span>
+        </Button>
       </header>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        className="absolute top-3 right-3"
-        onClick={() => setAgentOpen(false)}
-      >
-        <X />
-        <span className="sr-only">关闭 AI 助手</span>
-      </Button>
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-4 pb-4 pt-3">
         {error && !(tab === "chat" && activeThreadId) && (

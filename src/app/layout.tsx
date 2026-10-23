@@ -182,7 +182,7 @@ export default function RootLayout({
   // 主页生效:Ctrl+B / Ctrl+J / Ctrl+W / Alt+1/2/3 / Ctrl+Tab。
   // 全局生效:Ctrl+, 打开设置页(用 next/navigation 客户端导航)。
   // 设置页其它快捷键 noop。
-  const keyHandlerRef = useRef<(event: KeyboardEvent) => void>(() => {});
+  const keyHandlerRef = useRef<(event: KeyboardEvent) => void>(() => { });
   useEffect(() => {
     keyHandlerRef.current = (event: KeyboardEvent) => {
       // 全局:Ctrl+, 打开设置页(任何路由都响应)。

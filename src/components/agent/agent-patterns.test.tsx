@@ -12,20 +12,34 @@
  *    在场的发送/停止键上,不寄存在按需渲染的用量徽标上(4578753 引入的回归);
  * 8. 模型选择跟输入区走:键上回显线程当前接入点,选中即按线程落库;
  * 9. 模式切换跟输入区走:档位候选取设置契约,每档说清"选了会发生什么",
- *    选中即按线程落库;+ 占位键没能力就禁用,不摆可点的假开关。
+ *    选中即按线程落库;+ 占位键没能力就禁用,不摆可点的假开关;
+ * 10. 面板头部一行:对话切换(Thread Selector)键上回显线程标题、菜单给相对时间;
+ *     抬头的台数合并成一枚键,点开才见主机清单,不再单列"在线会话"计数徽章。
  */
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentToolPart, ApprovalDto, AuditDto, AgentProfile, SettingSpec } from "@/types";
+import type {
+  AgentThread,
+  AgentToolPart,
+  ApprovalDto,
+  AuditDto,
+  AgentProfile,
+  SettingSpec,
+  TargetDto,
+  ThreadSnapshotDto,
+} from "@/types";
 import { ApprovalCard } from "./approval-card";
 import { AuditList } from "./audit-list";
 import { ChainOfThought } from "./chain-of-thought";
 import { ContextUsage } from "./context-usage";
 import { Reasoning } from "./reasoning";
 import { ThreadComposer } from "./thread-composer";
+import { ThreadHeader } from "./thread-header";
+import { ThreadSelector } from "./thread-selector";
 import { useAgentStore } from "@/stores/agent";
 import { useConnectionsStore } from "@/stores/connections";
+import { useSessionsStore } from "@/stores/sessions";
 import { useSettingsStore } from "@/stores/settings";
 
 const api = vi.hoisted(() => ({
@@ -258,6 +272,16 @@ describe("待批准(每台一个 Item + ToggleGroup)", () => {
     expect(screen.queryByText(/永久允许/)).toBeNull();
     expect(screen.queryByText(/始终允许/)).toBeNull();
   });
+
+  it("单台主机不再重复一行目标主机:主机名只在逐台行里出现一次", () => {
+    const single = {
+      ...approval,
+      targets: [{ connId: "k1", connName: "web-01" }],
+    } as unknown as ApprovalDto;
+    render(<ApprovalCard approval={single} />);
+    expect(screen.queryByText(/目标主机：/)).toBeNull();
+    expect(screen.getAllByText("web-01")).toHaveLength(1);
+  });
 });
 
 describe("上下文用量(Context pattern)", () => {
@@ -461,5 +485,71 @@ describe("输入区的模式切换(审批档位)", () => {
         expect.objectContaining({ threadId: "t1", approvalMode: "all_confirm" }),
       ),
     );
+  });
+});
+
+describe("对话切换(Thread Selector pattern)", () => {
+  const threads = [
+    { id: "t1", title: "排查 web-01", updatedAt: Date.now() - 3 * 60_000 },
+    { id: "t2", title: "全量磁盘巡检", updatedAt: Date.now() - 2 * 3_600_000 },
+  ] as unknown as AgentThread[];
+
+  it("键上回显当前线程标题,不再另立一行面板大标题", () => {
+    cleanup();
+    render(
+      <ThreadSelector threads={threads} activeThreadId="t1" onSelect={() => undefined} />,
+    );
+    expect(screen.getByRole("button", { name: /排查 web-01/ })).toBeTruthy();
+  });
+
+  it("菜单列出全部对话并给相对时间,选中即切换", async () => {
+    cleanup();
+    const onSelect = vi.fn();
+    render(<ThreadSelector threads={threads} activeThreadId="t1" onSelect={onSelect} />);
+    fireEvent.click(screen.getByRole("button", { name: /排查 web-01/ }));
+    const option = await screen.findByRole("menuitemradio", { name: /全量磁盘巡检/ });
+    expect(screen.getAllByRole("menuitemradio")).toHaveLength(2);
+    // 行的次要文本是相对时间,不是绝对时间戳。
+    expect(screen.getByText("3 分钟前")).toBeTruthy();
+    expect(screen.getByText("2 小时前")).toBeTruthy();
+    fireEvent.click(option);
+    expect(onSelect).toHaveBeenCalledWith("t2");
+  });
+});
+
+describe("对话抬头(台数合并成一枚键)", () => {
+  const snapshot = {
+    thread: { id: "t1", boundSessionId: null },
+    running: [],
+    runs: [],
+  } as unknown as ThreadSnapshotDto;
+
+  const targets = [
+    { connId: "k1", connName: "web-01", host: "10.0.0.1", online: true },
+    { connId: "k2", connName: "db-01", host: "10.0.0.2", online: false },
+  ] as TargetDto[];
+
+  it("键上只报台数,点开才见主机清单;不再单列在线会话计数徽章", async () => {
+    cleanup();
+    useSessionsStore.setState({ byId: {} });
+    render(
+      <ThreadHeader threadId="t1" snapshot={snapshot} targets={targets} scopeError={null} />,
+    );
+    const trigger = screen.getByRole("button", { name: /可操作 2 台/ });
+    expect(screen.queryByText(/在线会话/)).toBeNull();
+    fireEvent.click(trigger);
+    expect(await screen.findByText("web-01")).toBeTruthy();
+    expect(screen.getByText("10.0.0.1")).toBeTruthy();
+    expect(screen.getByText("db-01")).toBeTruthy();
+    expect(screen.getAllByLabelText("在线")).toHaveLength(1);
+    expect(screen.getByLabelText("未连接")).toBeTruthy();
+  });
+
+  it("清单读取失败时键上如实说明,不点开一个空壳", () => {
+    cleanup();
+    render(
+      <ThreadHeader threadId="t1" snapshot={snapshot} targets={[]} scopeError="连接树为空" />,
+    );
+    expect(screen.getByText(/服务器列表读取失败：连接树为空/)).toBeTruthy();
   });
 });

@@ -22,6 +22,12 @@ export const BOTTOM_PANEL_DEFAULT_RATIO = 0.3;
 export const AGENT_PANEL_DEFAULT_PERCENT = 35;
 /** AI 助手停靠右栏最小宽度占比(%),低于此视为挤没对话区。 */
 export const AGENT_PANEL_MIN_PERCENT = 20;
+/**
+ * AI 助手停靠右栏像素下限:再窄批准卡的三档决定(ToggleGroup)会折行、
+ * 对话切换键放不下标题。窄窗口里 20% 挡不住它,由 AppShell 按实测宽度
+ * 取两者更大的那个(见 `agent-panel-min-percent`)。
+ */
+export const AGENT_PANEL_MIN_WIDTH_PX = 360;
 /** AI 助手停靠右栏最大宽度占比(%),防把终端挤没;与主列最小占比 40 互补。 */
 export const AGENT_PANEL_MAX_PERCENT = 60;
 

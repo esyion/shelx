@@ -25,6 +25,7 @@ import {
   emptyFragment,
   foldEvents,
   formatDuration,
+  formatRelativeTime,
   formatToolArgs,
   formatUsage,
   toolActionLabel,
@@ -404,5 +405,18 @@ describe("格式化", () => {
     expect(describeApprovalTargets({ targets: [] } as unknown as ApprovalDto)).toBe(
       "不涉及具体主机",
     );
+  });
+
+  it("相对时间说人话:分钟/小时/天,超一个月回退日期", () => {
+    const now = new Date("2026-10-23T12:00:00+08:00").getTime();
+    expect(formatRelativeTime(now - 30_000, now)).toBe("刚刚");
+    expect(formatRelativeTime(now - 3 * 60_000, now)).toBe("3 分钟前");
+    expect(formatRelativeTime(now - 2 * 3_600_000, now)).toBe("2 小时前");
+    expect(formatRelativeTime(now - 3 * 86_400_000, now)).toBe("3 天前");
+    // 超一个月回退为日期(具体分隔随 ICU,不锁格式,只锁不再是相对措辞)。
+    const fallback = formatRelativeTime(now - 40 * 86_400_000, now);
+    expect(fallback).toContain("2026");
+    expect(fallback).not.toContain("天前");
+    expect(formatRelativeTime(0, now)).toBe("");
   });
 });

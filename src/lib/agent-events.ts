@@ -39,26 +39,54 @@ export type AgentDisplay = {
 
 /** 事件类别 → 中文。 */
 export const EVENT_KIND_DISPLAY: Record<AgentEventKind, AgentDisplay> = {
-  run_started: { label: "开始处理", description: "已把问题交给模型", tone: "info" },
+  run_started: {
+    label: "开始处理",
+    description: "已把问题交给模型",
+    tone: "info",
+  },
   text_delta: { label: "回答", description: "模型正在写回答", tone: "neutral" },
-  reasoning_delta: { label: "推理", description: "模型正在思考", tone: "neutral" },
+  reasoning_delta: {
+    label: "推理",
+    description: "模型正在思考",
+    tone: "neutral",
+  },
   approval_required: {
     label: "等你批准",
     description: "这一步会改动服务器,需要你逐台决定",
     tone: "warning",
   },
-  target_state: { label: "主机进度", description: "正在逐台执行", tone: "neutral" },
-  tool_call: { label: "执行动作", description: "正在执行操作", tone: "neutral" },
-  tool_result: { label: "工具结果", description: "取证或改动动作的返回内容", tone: "neutral" },
+  target_state: {
+    label: "主机进度",
+    description: "正在逐台执行",
+    tone: "neutral",
+  },
+  tool_call: {
+    label: "执行动作",
+    description: "正在执行操作",
+    tone: "neutral",
+  },
+  tool_result: {
+    label: "工具结果",
+    description: "取证或改动动作的返回内容",
+    tone: "neutral",
+  },
   usage: { label: "用量", description: "正在统计本轮用量", tone: "neutral" },
-  final_response: { label: "完成", description: "这一轮已经答完", tone: "success" },
+  final_response: {
+    label: "完成",
+    description: "这一轮已经答完",
+    tone: "success",
+  },
   run_retry: {
     label: "正在重来",
     description: "上一轮回答不合格,模型正在重试",
     tone: "warning",
   },
   run_failed: { label: "失败", description: "这一轮没有完成", tone: "danger" },
-  run_cancelled: { label: "已取消", description: "你中止了这一轮", tone: "warning" },
+  run_cancelled: {
+    label: "已取消",
+    description: "你中止了这一轮",
+    tone: "warning",
+  },
 };
 
 /** 运行状态 → 中文。 */
@@ -69,28 +97,68 @@ export const RUN_STATE_DISPLAY: Record<RunState, AgentDisplay> = {
     description: "有操作在等你决定,不会自动执行",
     tone: "warning",
   },
-  completed: { label: "已完成", description: "这一轮正常结束", tone: "success" },
+  completed: {
+    label: "已完成",
+    description: "这一轮正常结束",
+    tone: "success",
+  },
   failed: { label: "失败", description: "这一轮出错中断了", tone: "danger" },
-  cancelled: { label: "已取消", description: "这一轮被你取消", tone: "neutral" },
+  cancelled: {
+    label: "已取消",
+    description: "这一轮被你取消",
+    tone: "neutral",
+  },
 };
 
 /** 单台主机状态 → 中文。 */
 export const TARGET_STATUS_DISPLAY: Record<TargetStatus, AgentDisplay> = {
   pending: { label: "排队中", description: "等待并发额度", tone: "neutral" },
-  connecting: { label: "连接中", description: "正在建立 SSH 连接", tone: "info" },
+  connecting: {
+    label: "连接中",
+    description: "正在建立 SSH 连接",
+    tone: "info",
+  },
   running: { label: "执行中", description: "命令正在远端运行", tone: "info" },
   ok: { label: "成功", description: "这台已经完成", tone: "success" },
-  failed: { label: "失败", description: "这台没有完成,其余不受影响", tone: "danger" },
-  denied: { label: "已拒绝", description: "你未批准,这台没有执行任何操作", tone: "warning" },
-  cancelled: { label: "未执行", description: "取消时还没开始,已阻止", tone: "neutral" },
-  awaiting_approval: { label: "等你批准", description: "这台在等你决定", tone: "warning" },
+  failed: {
+    label: "失败",
+    description: "这台没有完成,其余不受影响",
+    tone: "danger",
+  },
+  denied: {
+    label: "已拒绝",
+    description: "你未批准,这台没有执行任何操作",
+    tone: "warning",
+  },
+  cancelled: {
+    label: "未执行",
+    description: "取消时还没开始,已阻止",
+    tone: "neutral",
+  },
+  awaiting_approval: {
+    label: "等你批准",
+    description: "这台在等你决定",
+    tone: "warning",
+  },
 };
 
 /** 工具类别 → 中文。 */
 export const TOOL_CATEGORY_DISPLAY: Record<ToolCategory, AgentDisplay> = {
-  read_only: { label: "只读取证", description: "不会改动服务器", tone: "neutral" },
-  mutating: { label: "改动服务器", description: "会修改远端状态", tone: "warning" },
-  connect: { label: "新建连接", description: "会建立一条新的 SSH 连接", tone: "info" },
+  read_only: {
+    label: "只读取证",
+    description: "不会改动服务器",
+    tone: "neutral",
+  },
+  mutating: {
+    label: "改动服务器",
+    description: "会修改远端状态",
+    tone: "warning",
+  },
+  connect: {
+    label: "新建连接",
+    description: "会建立一条新的 SSH 连接",
+    tone: "info",
+  },
 };
 
 /** 审批档位 → 中文。 */
@@ -129,7 +197,11 @@ export const PROTOCOL_DISPLAY: Record<ProtocolKind, AgentDisplay> = {
 /** 记忆作用域 → 中文。 */
 export const MEMORY_SCOPE_DISPLAY: Record<MemoryScope, AgentDisplay> = {
   global: { label: "全局", description: "所有对话都参考这条", tone: "neutral" },
-  connection: { label: "指定主机", description: "只在提到这台主机时参考", tone: "neutral" },
+  connection: {
+    label: "指定主机",
+    description: "只在提到这台主机时参考",
+    tone: "neutral",
+  },
 };
 
 /** 工具名 → 中文动作名(未登记的直接显示后端原名,不伪造翻译)。 */
@@ -167,15 +239,20 @@ export const MESSAGE_ROLE_DISPLAY: Record<MessageRole, AgentDisplay> = {
 };
 
 /** 批准决策 → 中文。 */
-export const APPROVAL_DECISION_DISPLAY: Record<ApprovalDecision, AgentDisplay> = {
-  allowed_once: { label: "允许这一次", description: "仅本次执行", tone: "success" },
-  allowed_always: {
-    label: "本对话内一直允许",
-    description: "这台主机同类操作不再询问",
-    tone: "warning",
-  },
-  denied: { label: "拒绝", description: "不执行任何操作", tone: "danger" },
-};
+export const APPROVAL_DECISION_DISPLAY: Record<ApprovalDecision, AgentDisplay> =
+  {
+    allowed_once: {
+      label: "允许这一次",
+      description: "仅本次执行",
+      tone: "success",
+    },
+    allowed_always: {
+      label: "本对话内一直允许",
+      description: "这台主机同类操作不再询问",
+      tone: "warning",
+    },
+    denied: { label: "拒绝", description: "不执行任何操作", tone: "danger" },
+  };
 
 /** 待批准类警示卡的统一外观(界面不再各写一份琥珀色)。 */
 export const WARNING_CARD_CLASS = "border-amber-500/40 bg-amber-500/5";
@@ -192,12 +269,21 @@ export const TONE_CLASS: Record<AgentTone, string> = {
 /** 语义色 → Badge 变体与追加类(与传输状态映射同一档位口径)。 */
 export const TONE_BADGE: Record<
   AgentTone,
-  { variant: "default" | "secondary" | "destructive" | "outline"; className?: string }
+  {
+    variant: "default" | "secondary" | "destructive" | "outline";
+    className?: string;
+  }
 > = {
   neutral: { variant: "outline" },
   info: { variant: "default" },
-  success: { variant: "secondary", className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" },
-  warning: { variant: "default", className: "bg-amber-500 text-amber-50 hover:bg-amber-500/90" },
+  success: {
+    variant: "secondary",
+    className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+  },
+  warning: {
+    variant: "default",
+    className: "bg-amber-500 text-amber-50 hover:bg-amber-500/90",
+  },
   danger: { variant: "destructive" },
 };
 
@@ -240,7 +326,11 @@ function appendRun(
 }
 
 /** 终态带来的权威全文:替换最后一段回答(没有就新开一段),不重复累加。 */
-function replaceLastText(parts: AgentPart[], text: string, seq: number): AgentPart[] {
+function replaceLastText(
+  parts: AgentPart[],
+  text: string,
+  seq: number,
+): AgentPart[] {
   const last = parts[parts.length - 1];
   if (last?.type === "text") {
     return [...parts.slice(0, -1), { ...last, text }];
@@ -255,7 +345,11 @@ function replaceLastText(parts: AgentPart[], text: string, seq: number): AgentPa
  * 不许凭空消失(AGENTS.md §5:流式与落库同源、一轮只有一条时间线)。只覆盖最后一段,
  * 是因为收尾全文对应的就是最后那段;网关偶尔把整段回答重述一遍,那种副本由包含判断收掉。
  */
-function settleAnswerText(parts: AgentPart[], text: string, seq: number): AgentPart[] {
+function settleAnswerText(
+  parts: AgentPart[],
+  text: string,
+  seq: number,
+): AgentPart[] {
   let last = -1;
   for (let index = parts.length - 1; index >= 0; index -= 1) {
     if (parts[index]?.type === "text") {
@@ -266,7 +360,9 @@ function settleAnswerText(parts: AgentPart[], text: string, seq: number): AgentP
   if (last < 0) return [...parts, { type: "text", id: `p${seq}`, text }];
   const answer = text.trim();
   return parts
-    .map((part, index) => (index === last && part.type === "text" ? { ...part, text } : part))
+    .map((part, index) =>
+      index === last && part.type === "text" ? { ...part, text } : part,
+    )
     .filter((part, index) => {
       if (part.type !== "text" || index === last) return true;
       const spoken = part.text.trim();
@@ -316,16 +412,26 @@ export function applyEvent(
       // 否则界面上会留下一行永远停在"准备执行"的死状态。
       next.parts = next.parts.map((part) =>
         part.type === "tool" && part.id === event.callId
-          ? { ...part, done: true, ok: event.status === "ok", summary: event.summary }
+          ? {
+              ...part,
+              done: true,
+              ok: event.status === "ok",
+              summary: event.summary,
+            }
           : part,
       );
       break;
     case "target_state": {
       // 键用 connId(连接名可能重名)。
-      const target: ChainTarget = { connName: event.connName, status: event.status };
+      const target: ChainTarget = {
+        connName: event.connName,
+        status: event.status,
+      };
       // 归步靠调用身份,不靠工具名:模型一轮里并行发多个同名调用时,
       // 按名字并会把它们塞进同一步(实测出现过三行永远停在"准备执行")。
-      const index = next.parts.findIndex((part) => part.type === "tool" && part.id === event.callId);
+      const index = next.parts.findIndex(
+        (part) => part.type === "tool" && part.id === event.callId,
+      );
       if (index < 0) {
         // 重挂补发时开步事件可能落在订阅游标之前看不见:就地补一步,进度不无处安放。
         next.parts = [
@@ -402,7 +508,9 @@ export function formatToolArgs(argsJson?: string): string {
     const entries = Object.entries(parsed).filter(
       ([, value]) => value !== null && value !== undefined,
     );
-    return entries.map(([key, value]) => `${key}: ${String(value)}`).join(" · ");
+    return entries
+      .map(([key, value]) => `${key}: ${String(value)}`)
+      .join(" · ");
   } catch {
     return argsJson;
   }
@@ -423,7 +531,9 @@ export function sortThreads(threads: ThreadDto[]): ThreadDto[] {
  * @param approval 待批准请求。
  */
 export function describeApprovalTargets(approval: ApprovalDto): string {
-  const names = approval.targets.map((target) => target.connName).filter(Boolean);
+  const names = approval.targets
+    .map((target) => target.connName)
+    .filter(Boolean);
   if (names.length === 0) return "不涉及具体主机";
   if (names.length === 1) return `目标主机：${names[0]}`;
   return `共 ${names.length} 台：${names.slice(0, 3).join("、")}${names.length > 3 ? " 等" : ""}`;
@@ -480,4 +590,25 @@ export function formatDuration(millis: number | null | undefined): string {
 export function formatTime(millis: number): string {
   if (!millis) return "";
   return new Date(millis).toLocaleString("zh-CN", { hour12: false });
+}
+
+/**
+ * 时间戳(毫秒)→ 相对时间("3 分钟前"),超过一个月回退为日期。
+ * 用于列表行的次要文本:一眼看新旧,不用心算时间戳。
+ *
+ * @param millis unix 毫秒。
+ * @param now 当前时间(毫秒),默认取系统时间;测试里固定传入。
+ */
+export function formatRelativeTime(
+  millis: number,
+  now: number = Date.now(),
+): string {
+  if (!millis) return "";
+  const elapsed = Math.max(0, now - millis);
+  if (elapsed < 60_000) return "刚刚";
+  if (elapsed < 3_600_000) return `${Math.floor(elapsed / 60_000)} 分钟前`;
+  if (elapsed < 86_400_000) return `${Math.floor(elapsed / 3_600_000)} 小时前`;
+  if (elapsed < 30 * 86_400_000)
+    return `${Math.floor(elapsed / 86_400_000)} 天前`;
+  return new Date(millis).toLocaleDateString("zh-CN");
 }

@@ -11,7 +11,7 @@
  */
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TabBar } from "@/components/layout/tab-bar";
@@ -29,6 +29,7 @@ import {
   AGENT_PANEL_DEFAULT_PERCENT,
   AGENT_PANEL_MAX_PERCENT,
   AGENT_PANEL_MIN_PERCENT,
+  AGENT_PANEL_MIN_WIDTH_PX,
   useUiStore,
 } from "@/stores/ui";
 import type { Layout, LayoutChangedMeta } from "react-resizable-panels";
@@ -40,6 +41,20 @@ const AGENT_PANEL_ID = "agent-panel";
 /** 主列最小占比(ResizablePanel 百分比字符串);与助手列上限互补和为 100。 */
 const MAIN_COLUMN_MIN_PERCENT = 40;
 
+/**
+ * 助手列实际生效的最小占比:百分比下限与像素下限(360px,再窄批准卡的三档
+ * 决定折行)里更大的那个 —— 窄窗口里 20% 只有两百多像素,挡不住内容挤碎。
+ * 组宽度变化由 ResizeObserver 跟随,上限夹到 60% 防小窗口反转约束。
+ */
+function agentPanelMinPercent(groupWidth: number): number {
+  if (groupWidth <= 0) return AGENT_PANEL_MIN_PERCENT;
+  const byPixel = Math.ceil((AGENT_PANEL_MIN_WIDTH_PX / groupWidth) * 100);
+  return Math.min(
+    AGENT_PANEL_MAX_PERCENT,
+    Math.max(AGENT_PANEL_MIN_PERCENT, byPixel),
+  );
+}
+
 /** 常驻外壳。 */
 export function AppShell() {
   const pathname = usePathname();
@@ -47,10 +62,24 @@ export function AppShell() {
   const agentOpen = useUiStore((state) => state.agentOpen);
   const agentPanelSplit = useUiStore((state) => state.agentPanelSplit);
   const setAgentPanelSplit = useUiStore((state) => state.setAgentPanelSplit);
+  /** 双列组的实测宽度:助手列的像素下限要按它折算成百分比。 */
+  const groupRef = useRef<HTMLDivElement>(null);
+  const [agentMinPercent, setAgentMinPercent] = useState(AGENT_PANEL_MIN_PERCENT);
 
   // mount 时确保连接树加载(任何路由都可调 refresh)。
   useEffect(() => {
     void useConnectionsStore.getState().refresh();
+  }, []);
+
+  // 组宽度变化时重算助手列最小占比(窗口缩放、侧栏折叠都会触发)。
+  useEffect(() => {
+    const element = groupRef.current;
+    if (!element) return;
+    const update = () => setAgentMinPercent(agentPanelMinPercent(element.clientWidth));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
   }, []);
 
   // 功能页浮层关闭(回到主页)时,把焦点交还可见终端,
@@ -81,30 +110,32 @@ export function AppShell() {
       <Sidebar>
         <ConnectionTree api={connections} />
       </Sidebar>
-      <ResizablePanelGroup
-        orientation="horizontal"
-        className="min-w-0 flex-1"
-        onLayoutChanged={handleLayoutChanged}
-      >
-        <ResizablePanel id={MAIN_COLUMN_ID} minSize={`${MAIN_COLUMN_MIN_PERCENT}`}>
-          <div className="flex h-full min-w-0 flex-col">
-            <TabBar />
-            <Workspace />
-            <BottomPanel />
-          </div>
-        </ResizablePanel>
-        {agentOpen && <ResizableHandle aria-label="调整 AI 助手面板宽度" />}
-        {agentOpen && (
-          <ResizablePanel
-            id={AGENT_PANEL_ID}
-            defaultSize={`${agentPanelSplit ?? AGENT_PANEL_DEFAULT_PERCENT}`}
-            minSize={`${AGENT_PANEL_MIN_PERCENT}`}
-            maxSize={`${AGENT_PANEL_MAX_PERCENT}`}
-          >
-            <AgentPanel />
+      <div ref={groupRef} className="flex min-w-0 flex-1">
+        <ResizablePanelGroup
+          orientation="horizontal"
+          className="min-w-0 flex-1"
+          onLayoutChanged={handleLayoutChanged}
+        >
+          <ResizablePanel id={MAIN_COLUMN_ID} minSize={`${MAIN_COLUMN_MIN_PERCENT}`}>
+            <div className="flex h-full min-w-0 flex-col">
+              <TabBar />
+              <Workspace />
+              <BottomPanel />
+            </div>
           </ResizablePanel>
-        )}
-      </ResizablePanelGroup>
+          {agentOpen && <ResizableHandle aria-label="调整 AI 助手面板宽度" />}
+          {agentOpen && (
+            <ResizablePanel
+              id={AGENT_PANEL_ID}
+              defaultSize={`${agentPanelSplit ?? AGENT_PANEL_DEFAULT_PERCENT}`}
+              minSize={`${agentMinPercent}`}
+              maxSize={`${AGENT_PANEL_MAX_PERCENT}`}
+            >
+              <AgentPanel />
+            </ResizablePanel>
+          )}
+        </ResizablePanelGroup>
+      </div>
     </div>
   );
 }
