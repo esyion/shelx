@@ -144,10 +144,12 @@ pub fn run() {
                 }
             }
 
-            // ssh:// 协议关联:Windows/Linux 运行时注册,macOS 由配置写入 Info.plist。
+            // ssh:// 协议关联:Windows/Linux 运行时注册;macOS 由打包配置写入 Info.plist。
+            // 运行时注册 API 在 macOS 恒返回 unsupported platform,按平台门控避免误报 WARN。
             // 注册失败不致命(功能不可用但应用可跑);打开链接时解析目标并预填快速连接。
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
+                #[cfg(any(windows, target_os = "linux"))]
                 if let Err(err) = app.deep_link().register_all() {
                     tracing::warn!(error = %err, "注册 ssh:// 协议关联失败,深链功能不可用");
                 }
