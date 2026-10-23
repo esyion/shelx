@@ -18,6 +18,7 @@ pub mod monitor;
 pub mod sessions;
 pub mod settings;
 pub mod sftp;
+pub mod window;
 pub mod terminals;
 pub mod transfers;
 pub mod update;

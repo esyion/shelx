@@ -22,6 +22,7 @@ export type SettingPath =
   | "monitor.defaultIntervalSecs"
   | "update.autoCheck"
   | "window.closeToTray"
+  | "window.launchAtStartup"
   | "agent.approvalMode"
   | "agent.maxTurns"
   | "agent.contextMessages"

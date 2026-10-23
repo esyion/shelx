@@ -297,6 +297,15 @@
       "default": false
     },
     {
+      "path": "window.launchAtStartup",
+      "group": "window",
+      "unit": null,
+      "kind": {
+        "kind": "bool"
+      },
+      "default": false
+    },
+    {
       "path": "agent.approvalMode",
       "group": "agent",
       "unit": null,
@@ -484,7 +493,8 @@
       "autoCheck": true
     },
     "window": {
-      "closeToTray": false
+      "closeToTray": false,
+      "launchAtStartup": false
     },
     "agent": {
       "maxTurns": 12,

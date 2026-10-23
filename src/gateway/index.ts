@@ -18,6 +18,7 @@ export * as migrationApi from "./migration";
 export { relaunchForMigration } from "./migration";
 export * as terminalsApi from "./terminals";
 export * as transferApi from "./transfer";
+export * as windowApi from "./window";
 export * as localFsApi from "./local_fs";
 export * as monitorApi from "./monitor";
 export * as systemInfoApi from "./system-info";

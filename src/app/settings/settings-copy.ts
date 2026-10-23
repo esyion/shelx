@@ -218,4 +218,8 @@ export const SETTING_COPY: Partial<Record<SettingPath, SettingCopy>> = {
     groupTitle: "窗口与系统",
     groupHint: "窗口行为与系统集成,修改即时生效",
   },
+  "window.launchAtStartup": {
+    label: "开机自动启动",
+    hint: "登录系统后自动启动 shelx;配合托盘常驻,随时找回窗口",
+  },
 };

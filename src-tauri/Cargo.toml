@@ -38,6 +38,10 @@ tauri-plugin-window-state = "2"
 # 而是把已有主窗口带回前台;回调必须注册为第一个插件。
 # 回滚:删除本依赖与 lib.rs 注册行即可恢复多开行为。
 tauri-plugin-single-instance = "2"
+# 开机自启:设置项驱动,启动期收敛注册表与设置文件的一致性。
+# dev 构建跳过注册表写入(避免 dev/安装版互相覆写自启指向)。
+# 回滚:删除本依赖、lib.rs 注册行与 window_integration 同步逻辑即可。
+tauri-plugin-autostart = "2"
 
 # --- 序列化与配置(JSON)---
 serde = { version = "1", features = ["derive"] }

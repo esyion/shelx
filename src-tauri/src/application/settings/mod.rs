@@ -284,6 +284,8 @@ pub struct WindowSettings {
     /// 关闭窗口时最小化到托盘:拦截关闭改隐藏,SSH 会话后台保活,
     /// 从托盘图标找回窗口或退出。
     pub close_to_tray: bool,
+    /// 开机自启:登录系统后自动启动;启动期把注册表收敛到本值。
+    pub launch_at_startup: bool,
 }
 
 /// Agent 设置(M5,docs/AGENT_DESIGN.md)。
@@ -420,10 +422,11 @@ impl Default for UpdateSettings {
 }
 
 impl Default for WindowSettings {
-    /// 窗口分组默认值:关闭即退出,托盘常驻由用户显式开启。
+    /// 窗口分组默认值:关闭即退出、不自启,常驻形态由用户显式开启。
     fn default() -> Self {
         Self {
             close_to_tray: false,
+            launch_at_startup: false,
         }
     }
 }

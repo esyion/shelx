@@ -248,6 +248,10 @@ export interface WindowSettings {
    * 从托盘图标找回窗口或退出。
    */
   closeToTray: boolean;
+  /**
+   * 开机自启:登录系统后自动启动;启动期把注册表收敛到本值。
+   */
+  launchAtStartup: boolean;
 }
 /**
  * 单个设置项契约。

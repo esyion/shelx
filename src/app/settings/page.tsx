@@ -12,6 +12,7 @@ import type { SettingPath, ThemeMode } from "@/types";
 import { useSettingsStore } from "@/stores/settings";
 import { useUiStore } from "@/stores/ui";
 import { SchemaForm } from "./schema-form";
+import { applyWindowSettings } from "@/app/api";
 import type { SettingValue } from "./setting-control";
 
 /** 加载/失败态属性。 */
@@ -88,6 +89,12 @@ export default function SettingsPage() {
     Record<SettingPath, (value: SettingValue) => void>
   > = {
     "appearance.theme": (value) => setTheme(String(value) as ThemeMode),
+    // 窗口与系统组:保存成功后同步到操作系统(开机自启),失败 toast 后端原文。
+    "window.launchAtStartup": () => {
+      void applyWindowSettings().catch((err: unknown) => {
+        toast(err instanceof Error ? err.message : String(err), "error");
+      });
+    },
   };
 
   return (

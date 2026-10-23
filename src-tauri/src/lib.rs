@@ -44,6 +44,11 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         // 窗口状态记忆:插件初始化先于配置窗口创建,恢复才能生效。
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        // 开机自启:注册表读写经插件;实际同步在 setup 里按设置收敛。
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .setup(|app| {
             use tauri::Manager;
             // 系统托盘:常驻回到入口(显示主窗口/退出);失败属不可恢复装配错误。
@@ -102,6 +107,21 @@ pub fn run() {
                 settings,
                 &resolution,
             ));
+
+            // 开机自启收敛:设置文件是事实来源,启动时对齐注册表(仅正式包;
+            // 读取失败只跳过本次同步,不按默认值误关用户的自启)。
+            match app.state::<state::AppState>().settings.get() {
+                Ok(current) => {
+                    if let Err(message) =
+                        infrastructure::window_integration::apply(app.handle(), &current)
+                    {
+                        tracing::warn!(reason = %message, "启动同步开机自启失败");
+                    }
+                }
+                Err(err) => {
+                    tracing::warn!(error = %err, "读取设置失败,跳过开机自启同步");
+                }
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -143,6 +163,7 @@ pub fn run() {
             commands::settings::update_settings,
             commands::settings::get_layout,
             commands::settings::save_layout,
+            commands::window::apply_window_settings,
             commands::migration::get_data_migration_status,
             commands::migration::approve_data_migration,
             commands::migration::dismiss_data_migration,

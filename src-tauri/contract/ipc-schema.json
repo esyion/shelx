@@ -3773,7 +3773,8 @@
             "window": {
               "$ref": "#/$defs/WindowSettings",
               "default": {
-                "closeToTray": false
+                "closeToTray": false,
+                "launchAtStartup": false
               },
               "description": "窗口与系统集成。"
             }
@@ -4418,10 +4419,16 @@
               "default": false,
               "description": "关闭窗口时最小化到托盘:拦截关闭改隐藏,SSH 会话后台保活,\n从托盘图标找回窗口或退出。",
               "type": "boolean"
+            },
+            "launchAtStartup": {
+              "default": false,
+              "description": "开机自启:登录系统后自动启动;启动期把注册表收敛到本值。",
+              "type": "boolean"
             }
           },
           "required": [
-            "closeToTray"
+            "closeToTray",
+            "launchAtStartup"
           ],
           "type": "object"
         }
