@@ -97,6 +97,26 @@ impl Language {
     pub const ALL: &'static [Self] = &[Self::Zh, Self::En];
 }
 
+/// 全局唤起主窗口的快捷键档位(档位而非自由文本:组合键合法性由枚举单点保证)。
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ShowShortcut {
+    /// 关闭(默认)。
+    #[default]
+    Disabled,
+    /// Alt + Shift + S。
+    AltShiftS,
+    /// Ctrl + Alt + S。
+    CtrlAltS,
+}
+
+impl ShowShortcut {
+    /// 全部候选值(顺序即设置界面顺序)。
+    pub const ALL: &'static [Self] = &[Self::Disabled, Self::AltShiftS, Self::CtrlAltS];
+}
+
 /// 光标样式。
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, schemars::JsonSchema,
@@ -286,6 +306,8 @@ pub struct WindowSettings {
     pub close_to_tray: bool,
     /// 开机自启:登录系统后自动启动;启动期把注册表收敛到本值。
     pub launch_at_startup: bool,
+    /// 全局唤起主窗口的快捷键档位;关闭时不注册任何系统级组合键。
+    pub show_shortcut: ShowShortcut,
 }
 
 /// Agent 设置(M5,docs/AGENT_DESIGN.md)。
@@ -422,11 +444,12 @@ impl Default for UpdateSettings {
 }
 
 impl Default for WindowSettings {
-    /// 窗口分组默认值:关闭即退出、不自启,常驻形态由用户显式开启。
+    /// 窗口分组默认值:关闭即退出、不自启、无全局快捷键,常驻形态由用户显式开启。
     fn default() -> Self {
         Self {
             close_to_tray: false,
             launch_at_startup: false,
+            show_shortcut: ShowShortcut::Disabled,
         }
     }
 }

@@ -222,4 +222,13 @@ export const SETTING_COPY: Partial<Record<SettingPath, SettingCopy>> = {
     label: "开机自动启动",
     hint: "登录系统后自动启动 shelx;配合托盘常驻,随时找回窗口",
   },
+  "window.showShortcut": {
+    label: "全局唤起快捷键",
+    hint: "在任何程序里按下组合键,把 shelx 主窗口带到最前",
+    options: {
+      disabled: "关闭",
+      alt_shift_s: "Alt + Shift + S",
+      ctrl_alt_s: "Ctrl + Alt + S",
+    },
+  },
 };

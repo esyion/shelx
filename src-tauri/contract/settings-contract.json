@@ -306,6 +306,20 @@
       "default": false
     },
     {
+      "path": "window.showShortcut",
+      "group": "window",
+      "unit": null,
+      "kind": {
+        "kind": "enum",
+        "options": [
+          "disabled",
+          "alt_shift_s",
+          "ctrl_alt_s"
+        ]
+      },
+      "default": "disabled"
+    },
+    {
       "path": "agent.approvalMode",
       "group": "agent",
       "unit": null,
@@ -494,7 +508,8 @@
     },
     "window": {
       "closeToTray": false,
-      "launchAtStartup": false
+      "launchAtStartup": false,
+      "showShortcut": "disabled"
     },
     "agent": {
       "maxTurns": 12,

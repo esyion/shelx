@@ -23,6 +23,7 @@ export type SettingPath =
   | "update.autoCheck"
   | "window.closeToTray"
   | "window.launchAtStartup"
+  | "window.showShortcut"
   | "agent.approvalMode"
   | "agent.maxTurns"
   | "agent.contextMessages"

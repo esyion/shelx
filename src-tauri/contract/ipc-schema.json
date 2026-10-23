@@ -3774,7 +3774,8 @@
               "$ref": "#/$defs/WindowSettings",
               "default": {
                 "closeToTray": false,
-                "launchAtStartup": false
+                "launchAtStartup": false,
+                "showShortcut": "disabled"
               },
               "description": "窗口与系统集成。"
             }
@@ -4233,6 +4234,26 @@
           ],
           "type": "object"
         },
+        "ShowShortcut": {
+          "description": "全局唤起主窗口的快捷键档位(档位而非自由文本:组合键合法性由枚举单点保证)。",
+          "oneOf": [
+            {
+              "const": "disabled",
+              "description": "关闭(默认)。",
+              "type": "string"
+            },
+            {
+              "const": "alt_shift_s",
+              "description": "Alt + Shift + S。",
+              "type": "string"
+            },
+            {
+              "const": "ctrl_alt_s",
+              "description": "Ctrl + Alt + S。",
+              "type": "string"
+            }
+          ]
+        },
         "TerminalColorScheme": {
           "description": "终端配色方案(PRD 用户故事 19;GitHub Light 为默认)。",
           "oneOf": [
@@ -4424,11 +4445,17 @@
               "default": false,
               "description": "开机自启:登录系统后自动启动;启动期把注册表收敛到本值。",
               "type": "boolean"
+            },
+            "showShortcut": {
+              "$ref": "#/$defs/ShowShortcut",
+              "default": "disabled",
+              "description": "全局唤起主窗口的快捷键档位;关闭时不注册任何系统级组合键。"
             }
           },
           "required": [
             "closeToTray",
-            "launchAtStartup"
+            "launchAtStartup",
+            "showShortcut"
           ],
           "type": "object"
         }

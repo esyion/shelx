@@ -252,6 +252,10 @@ export interface WindowSettings {
    * 开机自启:登录系统后自动启动;启动期把注册表收敛到本值。
    */
   launchAtStartup: boolean;
+  /**
+   * 全局唤起主窗口的快捷键档位(档位而非自由文本:组合键合法性由枚举单点保证)。
+   */
+  showShortcut: "disabled" | "alt_shift_s" | "ctrl_alt_s";
 }
 /**
  * 单个设置项契约。

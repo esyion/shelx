@@ -49,6 +49,17 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        // 全局快捷键:按下任意已注册组合键都把主窗口带到最前(唤起是唯一用途,
+        // 具体注册哪个组合键由 window_integration 按设置档位动态维护)。
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        infrastructure::tray::show_main_window(app);
+                    }
+                })
+                .build(),
+        )
         .setup(|app| {
             use tauri::Manager;
             // 系统托盘:常驻回到入口(显示主窗口/退出);失败属不可恢复装配错误。
