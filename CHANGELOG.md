@@ -7,6 +7,47 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > Versions prior to `0.2.0` were internal iterations before the project
 > was open-sourced; their changes are summarized under "Unreleased / 0.2.0".
 
+## [0.3.1] - 2026-10-23
+
+Desktop integration release: the appearance setting, the UI and the
+native window now share one theme, and shelx gains the standard
+desktop-app behaviors — tray, single instance, deep links, system
+notifications, window state memory and more.
+
+### Added
+
+- **Theme synced three ways** — the backend appearance setting, the UI
+  and the native window titlebar follow one source of truth; the window
+  now starts dark by default instead of flashing a light titlebar, and
+  startup sync happens inside the theme provider where it actually
+  takes effect.
+- **System tray with keep-alive close** — opt-in「关闭窗口时最小化到托盘」
+  keeps SSH/SFTP sessions alive after the window closes; restore the
+  window or quit from the tray icon.
+- **Single instance** — a second launch brings the existing window to
+  the front instead of starting another process; two instances would
+  otherwise fight over the data directory.
+- **`ssh://` deep links** — clicking an ssh:// link opens shelx with
+  quick connect prefilled; the link reaches the already-running
+  instance.
+- **System notifications when unfocused** — transfer completions
+  surface as OS notifications while you work in other apps; in-app
+  toasts remain while shelx is focused.
+- **Window state memory** — size, position and maximized state are
+  restored on launch.
+- **Launch at login** — opt-in autostart setting.
+- **Global summon shortcut** — a preset-tiered shortcut (managed on the
+  shortcuts settings page) brings the main window to the front from
+  anywhere.
+- **Monitor always-on-top** — pin the monitor view above other windows
+  while watching server metrics.
+
+### Changed
+
+- Settings gained a「窗口」group — tray close behavior, autostart,
+  global shortcut and system notifications — rendered from the backend
+  settings schema, so each new capability has its entry point.
+
 ## [0.3.0] - 2026-10-23
 
 Stable release of the built-in operations agent, graduating from
