@@ -22,7 +22,7 @@ export * as windowApi from "./window";
 export * as localFsApi from "./local_fs";
 export * as monitorApi from "./monitor";
 export { sendSystemNotification } from "./notification";
-export { isWindowFocused } from "./window";
+export { isWindowFocused, setWindowAlwaysOnTop } from "./window";
 export * as systemInfoApi from "./system-info";
 export * as appMetaApi from "./app-meta";
 export * as openerApi from "./opener";

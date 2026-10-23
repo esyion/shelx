@@ -8,9 +8,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Cpu, HardDrive } from "lucide-react";
+import { Cpu, HardDrive, Pin, PinOff } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
-import { attachMonitor, detachMonitor, ensureMonitor, recentMonitorSamples } from "@/app/api";
+import {
+  attachMonitor,
+  detachMonitor,
+  ensureMonitor,
+  recentMonitorSamples,
+  setWindowAlwaysOnTop,
+} from "@/app/api";
 import { formatBytes, formatDuration } from "@/lib/format";
 import { isGatewayError } from "@/gateway";
 import {
@@ -68,6 +75,8 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
   );
   /** 曲线时间窗(秒);默认 15 分钟。 */
   const [windowSecs, setWindowSecs] = useState(900);
+  /** 窗口置顶(盯盘场景):只在成功后翻转,避免假开关。 */
+  const [pinned, setPinned] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const status = useSessionsStore((s) => s.byId[sessionId]?.status);
   const serverInfo = useSessionsStore((s) => s.byId[sessionId]?.serverInfo);
@@ -118,6 +127,30 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, intervalSecs, status, osUnsupported, pushSample]);
+
+  // 离开监控视图(切 tab/关标签/卸载)即还原置顶:置顶是盯盘场景,
+  // 不应悄悄影响用户回到其他页面后的窗口行为。
+  useEffect(() => {
+    if (!pinned) return;
+    return () => {
+      void setWindowAlwaysOnTop(false).catch(() => {
+        // 卸载路径下无法再 toast,静默即可;下次进入监控重开。
+      });
+    };
+  }, [pinned]);
+
+  /** 切换置顶:成功才更新状态(失败 toast 后端原文,开关保持原样)。 */
+  const togglePinned = () => {
+    const next = !pinned;
+    setWindowAlwaysOnTop(next)
+      .then(() => setPinned(next))
+      .catch((err: unknown) => {
+        toast(
+          `置顶失败:${err instanceof Error ? err.message : String(err)}`,
+          "error",
+        );
+      });
+  };
 
   const samples = samplesRef.current;
   const latest = samples[samples.length - 1];
@@ -210,6 +243,21 @@ export function MonitorView({ sessionId }: MonitorViewProps) {
             ))}
           </NativeSelect>
         </span>
+        <Button
+          variant="outline"
+          size="icon"
+          className="size-7 shrink-0"
+          aria-pressed={pinned}
+          aria-label={pinned ? "取消窗口置顶" : "置顶窗口"}
+          title={
+            pinned
+              ? "取消置顶(切走监控视图也会自动还原)"
+              : "置顶窗口,盯盘时不被其他窗口遮挡"
+          }
+          onClick={togglePinned}
+        >
+          {pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
+        </Button>
       </div>
 
       {/* 图表网格:2 列 */}

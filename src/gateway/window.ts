@@ -27,3 +27,15 @@ export async function isWindowFocused(): Promise<boolean> {
   if (!isTauri()) return true;
   return getCurrentWindow().isFocused();
 }
+
+/**
+ * 设置主窗口是否置顶(监控视图盯盘场景:压在其他窗口之上看曲线)。
+ *
+ * 调用方负责在离开场景时还原;非 Tauri 环境静默跳过。
+ *
+ * @throws GatewayError(平台调用失败,如组合场景不被 WM 支持)
+ */
+export function setWindowAlwaysOnTop(enabled: boolean): Promise<void> {
+  if (!isTauri()) return Promise.resolve();
+  return getCurrentWindow().setAlwaysOnTop(enabled);
+}
