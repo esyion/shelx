@@ -221,6 +221,15 @@ export function attachAgentThread(
 export const detachAgentThread = agentApi.detachAgentThread;
 /** 取消一轮。 */
 export const cancelAgentRun = agentApi.cancelAgentRun;
+/** 继续一轮暂停的运行(流式,断点上下文由后端保存)。 */
+export function resumeAgentRun(
+  threadId: string,
+  runId: string,
+  onEvent: Parameters<typeof agentApi.resumeAgentRun>[2],
+): ReturnType<typeof agentApi.resumeAgentRun> {
+  // 固定参数名 onEvent:Rust 侧命令参数名与之逐字一致。
+  return agentApi.resumeAgentRun(threadId, runId, onEvent);
+}
 /** 逐台批准。 */
 export const respondToolApproval = agentApi.respondToolApproval;
 /** 全局待批准。 */

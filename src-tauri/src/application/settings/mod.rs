@@ -343,7 +343,7 @@ impl Default for AgentSettings {
     /// Agent 分组默认值:只读自动、批量 5 台、并发 4、超时 30s、预算 100 万 token。
     fn default() -> Self {
         Self {
-            max_turns: 12,
+            max_turns: 20,
             context_messages: 30,
             batch_limit: 5,
             parallel_hosts: 4,

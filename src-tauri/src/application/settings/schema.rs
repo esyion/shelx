@@ -304,7 +304,7 @@ fn raw_specs() -> Vec<RawSpec> {
         RawSpec {
             path: "agent.maxTurns",
             unit: Some("轮"),
-            kind: ints(1, 60, &[4, 8, 12, 20, 40]),
+            kind: ints(1, 100, &[8, 12, 20, 40, 100]),
         },
         RawSpec {
             path: "agent.contextMessages",

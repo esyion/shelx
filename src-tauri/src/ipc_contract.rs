@@ -193,6 +193,7 @@ fn document_uncanonical() -> Value {
                 ("SendMessageRequestDto", refer::<crate::dto::agent::SendMessageRequestDto>),
                 ("ThreadIdRequestDto", refer::<crate::dto::agent::ThreadIdRequestDto>),
                 ("CancelRunRequestDto", refer::<crate::dto::agent::CancelRunRequestDto>),
+                ("ResumeRunRequestDto", refer::<crate::dto::agent::ResumeRunRequestDto>),
                 ("ApprovalDecisionDto", refer::<crate::dto::agent::ApprovalDecisionDto>),
                 ("RespondApprovalRequestDto", refer::<crate::dto::agent::RespondApprovalRequestDto>),
                 ("DetachRequestDto", refer::<crate::dto::agent::DetachRequestDto>),

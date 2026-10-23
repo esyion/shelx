@@ -75,6 +75,8 @@ export interface AgentStore {
   send(prompt: string): Promise<void>;
   /** 取消一轮。 */
   cancel(runId: string): Promise<void>;
+  /** 继续一轮暂停的运行(断点上下文由后端保存)。 */
+  resume(runId: string): Promise<void>;
   /** 逐台批准。 */
   approve(requestId: string, choices: ApprovalChoice[]): Promise<void>;
   /** 保存模型接入点(成功返回保存后的配置,供新建后立刻探测)。 */
@@ -284,6 +286,10 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       useUiStore.getState().toast("已取消这一轮;已发出的命令不会自动撤回");
       void refreshSnapshot(event.threadId, set, get);
     }
+    if (event.kind === "run_paused") {
+      useUiStore.getState().toast("已连续执行到轮数上限,暂停;可继续接着跑");
+      void refreshSnapshot(event.threadId, set, get);
+    }
   },
 
   async cancel(runId) {
@@ -293,6 +299,30 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       await api.cancelAgentRun(threadId, runId);
     } catch (error) {
       set({ error: messageOf(error) });
+    }
+  },
+
+  async resume(runId) {
+    const threadId = get().activeThreadId;
+    if (!threadId) return;
+    const snapshot = get().snapshots[threadId];
+    get().closeThread();
+    set({
+      streams: { ...get().streams, [threadId]: { ...emptyFragment(), seq: snapshot?.latestSeq ?? 0 } },
+      error: null,
+    });
+    try {
+      // 与发起一轮同一手法:这条 Channel 是本轮唯一订阅,不能 attach 第二条。
+      const accepted = await api.resumeAgentRun(threadId, runId, (event) =>
+        get().applyEvent(event),
+      );
+      set({
+        subscriptions: { ...get().subscriptions, [threadId]: accepted.subscriptionId },
+      });
+      await refreshSnapshot(threadId, set, get);
+    } catch (error) {
+      set({ error: messageOf(error) });
+      await refreshSnapshot(threadId, set, get);
     }
   },
 

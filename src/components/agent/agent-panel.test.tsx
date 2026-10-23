@@ -26,6 +26,8 @@ const api = vi.hoisted(() => ({
   getAgentThread: vi.fn(),
   attachAgentThread: vi.fn(),
   detachAgentThread: vi.fn(),
+  cancelAgentRun: vi.fn(),
+  resumeAgentRun: vi.fn(),
   resolveAgentTargets: vi.fn(),
   listPendingApprovals: vi.fn(),
   getSettings: vi.fn(),
@@ -301,6 +303,39 @@ describe("一轮的渲染顺序", () => {
     // 第一轮的回答来自它自己的日志,不会被第二轮的缓冲顶掉。
     expect(screen.getByText("磁盘满了")).toBeTruthy();
     expect(screen.getByText("再看一眼内存")).toBeTruthy();
+  });
+  it("轮数耗尽的一轮显示暂停卡与继续入口,不是失败", async () => {
+    const paused = {
+      ...snapshot,
+      running: [],
+      runs: [
+        {
+          ...snapshot.runs[0],
+          state: "paused",
+          error: "已连续执行 20 轮还没收尾,已暂停;可以继续接着跑",
+        },
+      ],
+    } as unknown as ThreadSnapshotDto;
+    api.getAgentThread.mockResolvedValue(paused);
+    api.resumeAgentRun.mockResolvedValue({
+      runId: "r2",
+      threadId: "t1",
+      startedSeq: 9,
+      subscriptionId: "s1",
+    });
+    useAgentStore.setState({ snapshots: { t1: null }, streams: {} });
+    render(<AgentThread threadId="t1" />);
+
+    expect(
+      await screen.findByText("已连续执行 20 轮还没收尾,已暂停;可以继续接着跑"),
+    ).toBeTruthy();
+    // 暂停不是失败:不得出现失败卡的重试入口。
+    expect(screen.queryByText("照原问题重试")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "继续这一轮" }));
+    await waitFor(() =>
+      expect(api.resumeAgentRun).toHaveBeenCalledWith("t1", "r1", expect.any(Function)),
+    );
   });
 });
 

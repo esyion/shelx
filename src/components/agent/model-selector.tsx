@@ -43,9 +43,19 @@ export function ModelSelector({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        render={<InputGroupButton type="button" size="sm" disabled={disabled} />}
+        render={
+          <InputGroupButton
+            type="button"
+            size="sm"
+            disabled={disabled}
+            className="min-w-0 max-w-40 shrink"
+          />
+        }
       >
-        {active ? `${active.label} · ${active.model}` : "选择接入点"}
+        {/* 助手列可拖到 360px:模型名再长也只能截断,不能把用量与发送键顶出屏。 */}
+        <span className="min-w-0 truncate">
+          {active ? `${active.label}/${active.model}` : "选择接入点"}
+        </span>
         <ChevronDown data-icon="inline-end" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="min-w-56">
@@ -57,7 +67,7 @@ export function ModelSelector({
           >
             {profiles.map((profile) => (
               <DropdownMenuRadioItem key={profile.id} value={profile.id}>
-                {`${profile.label} · ${profile.model}`}
+                {`${profile.label}/${profile.model}`}
               </DropdownMenuRadioItem>
             ))}
           </DropdownMenuRadioGroup>

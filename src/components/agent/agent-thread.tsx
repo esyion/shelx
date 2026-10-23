@@ -92,6 +92,7 @@ export function AgentThread({ threadId }: { threadId: string }) {
   const snapshot = useAgentStore((state) => state.snapshots[threadId] ?? null);
   const stream = useAgentStore((state) => state.streams[threadId]);
   const send = useAgentStore((state) => state.send);
+  const resume = useAgentStore((state) => state.resume);
   const profiles = useAgentStore((state) => state.profiles);
   const error = useAgentStore((state) => state.error);
   const loadSettings = useSettingsStore((state) => state.load);
@@ -290,6 +291,25 @@ export function AgentThread({ threadId }: { threadId: string }) {
                           </Alert>
                         </MessageScrollerItem>
                       )}
+                      {turn.run.state === "paused" && (
+                        <MessageScrollerItem messageId={`${turn.run.runId}:paused`}>
+                          <Alert>
+                            <AlertDescription>
+                              {turn.run.error ??
+                                "已连续执行多轮还没收尾,已暂停;可以继续接着跑。"}
+                            </AlertDescription>
+                            <AlertAction>
+                              <Button
+                                size="sm"
+                                disabled={busy}
+                                onClick={() => void resume(turn.run.runId)}
+                              >
+                                继续这一轮
+                              </Button>
+                            </AlertAction>
+                          </Alert>
+                        </MessageScrollerItem>
+                      )}
                       {turn.run.state === "cancelled" && (
                         <MessageScrollerItem messageId={`${turn.run.runId}:cancelled`}>
                           <p className="text-xs text-muted-foreground">
@@ -334,7 +354,6 @@ export function AgentThread({ threadId }: { threadId: string }) {
         approvalMode={snapshot?.thread.approvalMode ?? "read_only_auto"}
         used={usedTokens}
         contextWindow={contextWindow}
-        budget={settings?.agent?.tokenBudget ?? 0}
         usage={stream?.usage}
       />
     </div>

@@ -3,22 +3,27 @@
 //! 本文件是唯一把 `MultiTurnStreamItem`/`StreamEvent` 翻译成 shelx 事件的地方。
 //! 审批落在工具执行器内部([`crate::application::agent::tool_host`]),而不是 rig 的 hook:
 //! 工具不调用就绝不会碰远端,这个保证比"在 hook 里拦截"更直接,也不依赖 rig 内部时序。
+//!
+//! 历史与断点:不挂 rig 记忆(rig 只在运行成功时保存,中断轮次会整体失忆),
+//! 每轮由 [`RigGateway::assemble_history`] 从 shelx 自己的消息表装配窗口化历史;
+//! 轮数耗尽时把 rig 交回的完整对话历史序列化成断点上下文,继续时原样注回。
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use futures::StreamExt;
 use rig::message::{Message, ToolName};
-use rig::prelude::{AgentBuilder, MultiTurnStreamItem};
+use rig::prelude::{AgentBuilder, MultiTurnStreamItem, PromptError};
 use rig::streaming::{Item, StreamEvent};
 use rig::tool::{DynamicTool, ToolOutput};
 
-use super::memory_store::ThreadMemoryStore;
 use super::provider;
 use crate::application::agent::events::{AgentEvent, AgentEventPayload, AgentUsage};
 use crate::application::agent::hub::{ApprovalCenter, ThreadEventHub};
 use crate::application::agent::tools::{tools_for, ToolHost};
-use crate::application::agent::types::{AgentStore, LlmGateway, RunContext, RunOutcome, RunPlan};
+use crate::application::agent::types::{
+    AgentStore, LlmGateway, MessageRecord, MessageRole, RunContext, RunOutcome, RunPlan,
+};
 use crate::domain::agent::RunState;
 
 /// 文本增量聚合:达到该字符数或时间间隔才推一条 IPC 事件(AGENTS.md §6 不阻塞 UI)。
@@ -55,6 +60,78 @@ impl RigGateway {
             cached_input_tokens: usage.cached_input_tokens.map(|value| value as i64),
         }
     }
+
+    /// 装配本轮的输入历史。
+    ///
+    /// - 继续暂停轮(`plan.resume_history`):断点上下文是上一轮序列化的完整对话,
+    ///   原样注回,模型从断点无缝接续;
+    /// - 常规轮:取线程消息表的尾部窗口(设置项 `agent.contextMessages`,真正的消费者),
+    ///   去掉刚落库的本轮提问后渲染成消息序列。
+    fn assemble_history(&self, plan: &RunPlan, thread_id: &str) -> Vec<Message> {
+        if let Some(json) = plan.resume_history.as_deref() {
+            return match serde_json::from_str::<Vec<Message>>(json) {
+                Ok(history) => history,
+                Err(err) => {
+                    // 断点解析失败按空历史继续:宁可让模型重问,也不能整轮拒跑。
+                    tracing::error!("断点上下文解析失败,按无历史继续: {err}");
+                    Vec::new()
+                }
+            };
+        }
+        let records = match self.store.messages(thread_id, plan.context_messages) {
+            Ok(records) => records,
+            Err(err) => {
+                tracing::error!("线程历史读取失败,按无历史继续: {err}");
+                Vec::new()
+            }
+        };
+        render_history(&records, &plan.prompt)
+    }
+}
+
+/// 把消息记录渲染成模型输入序列:User/Assistant 各成一条;
+/// Tool/System 记录(工具台账、中断说明)并入相邻的用户侧消息 —— provider
+/// 普遍要求 user/assistant 交替,连续同侧会被拒或被合并,这里显式合并不丢内容。
+///
+/// 刚为本轮落库的提问(尾部与 `prompt` 同文的 User 行)不进历史:它由本轮的
+/// prompt 字段承载,重复带会让模型看到两遍同一句问话。
+fn render_history(records: &[MessageRecord], prompt: &str) -> Vec<Message> {
+    let mut usable: &[MessageRecord] = records;
+    // 只去掉刚落库的那一行(最多一条):更早的同文提问是真实历史,照常保留。
+    if let Some(last) = usable.last() {
+        if last.role == MessageRole::User && last.content == prompt {
+            usable = &usable[..usable.len() - 1];
+        }
+    }
+    let mut messages: Vec<Message> = Vec::new();
+    let mut pending_user: Vec<String> = Vec::new();
+    for record in usable {
+        let text = record.content.trim();
+        if text.is_empty() {
+            continue;
+        }
+        if record.role == MessageRole::Assistant {
+            if let Some(joined) = flush_user(&mut pending_user) {
+                messages.push(joined);
+            }
+            messages.push(Message::assistant(text.to_owned()));
+        } else {
+            pending_user.push(text.to_owned());
+        }
+    }
+    if let Some(joined) = flush_user(&mut pending_user) {
+        messages.push(joined);
+    }
+    messages
+}
+
+/// 把累积的用户侧内容合成一条消息(没有内容返回 `None`)。
+fn flush_user(pending: &mut Vec<String>) -> Option<Message> {
+    if pending.is_empty() {
+        return None;
+    }
+    let joined = std::mem::take(pending).join("\n\n");
+    Some(Message::user(joined))
 }
 
 /// 增量聚合器:按字符数与时间双阈值下发。
@@ -198,6 +275,7 @@ impl LlmGateway for RigGateway {
                     turns: 0,
                     error: Some(err.to_string()),
                     title: None,
+                    resume_history: None,
                 };
             }
         };
@@ -248,7 +326,7 @@ impl LlmGateway for RigGateway {
             })
             .collect();
 
-        let memory = ThreadMemoryStore::new(Arc::clone(&self.store), &context.thread_id);
+        let history = self.assemble_history(&plan, &context.thread_id);
         let agent = AgentBuilder::new(model)
             .preamble(&plan.preamble)
             // Anthropic 的 Messages 协议要求显式 max_tokens,否则请求在编码阶段就被拒;
@@ -256,13 +334,12 @@ impl LlmGateway for RigGateway {
             .max_tokens(max_output_tokens)
             .default_max_turns(plan.max_turns)
             .dynamic_tools(dynamic_tools)
-            .memory(memory)
-            .conversation(context.thread_id.clone())
             .build();
 
         let mut stream = agent
             .prompt(Message::user(plan.prompt.clone()))
             .max_turns(plan.max_turns)
+            .history(history)
             .stream();
 
         let mut answer = String::new();
@@ -270,6 +347,8 @@ impl LlmGateway for RigGateway {
         let mut turns = 0usize;
         let mut error: Option<String> = None;
         let mut cancelled = false;
+        let mut paused = false;
+        let mut resume_history: Option<String> = None;
         let mut deltas = DeltaAggregator::new();
 
         while let Some(item) = stream.next().await {
@@ -319,11 +398,38 @@ impl LlmGateway for RigGateway {
                 Ok(other) => {
                     tracing::trace!("未映射的流式条目: {other:?}");
                 }
-                Err(err) => {
-                    error = Some(err.to_string());
-                    tracing::warn!("Agent 运行失败: {err}");
-                    break;
-                }
+                Err(err) => match err {
+                    // 轮数耗尽不是失败,是可继续的暂停:rig 把断点时的完整对话历史
+                    // 交回(chat_history),序列化保存,继续时原样注回。
+                    PromptError::MaxTurns {
+                        max_turns,
+                        chat_history,
+                        ..
+                    } => {
+                        paused = true;
+                        error = Some(format!(
+                            "已连续执行 {max_turns} 轮还没收尾,已暂停;可以继续接着跑"
+                        ));
+                        resume_history = serde_json::to_string(&chat_history)
+                            .map_err(|err| {
+                                tracing::error!("断点上下文序列化失败: {err}");
+                                err
+                            })
+                            .ok();
+                        break;
+                    }
+                    // rig 内部判定的取消(工具返回取消或流被中断):归入取消态,理由用 rig 原文。
+                    PromptError::Cancelled { reason, .. } => {
+                        cancelled = true;
+                        error = Some(reason);
+                        break;
+                    }
+                    other => {
+                        error = Some(other.to_string());
+                        tracing::warn!("Agent 运行失败: {other}");
+                        break;
+                    }
+                },
             }
         }
 
@@ -334,6 +440,8 @@ impl LlmGateway for RigGateway {
 
         let state = if cancelled {
             RunState::Cancelled
+        } else if paused {
+            RunState::Paused
         } else if error.is_some() {
             RunState::Failed
         } else {
@@ -346,6 +454,7 @@ impl LlmGateway for RigGateway {
             turns,
             error: error.or_else(|| cancelled.then(|| "已取消".to_owned())),
             title: None,
+            resume_history: if paused { resume_history } else { None },
         }
     }
 }
@@ -364,7 +473,58 @@ fn accumulate(mut total: AgentUsage, item: AgentUsage) -> AgentUsage {
 mod tests {
     use super::*;
     use crate::application::agent::hub::CancelToken;
+    use crate::application::agent::types::MessageRole;
     use crate::domain::agent::ApprovalMode;
+
+    /// 构造一条消息记录(测试用)。
+    fn record(role: MessageRole, content: &str) -> MessageRecord {
+        MessageRecord {
+            id: uuid::Uuid::new_v4().to_string(),
+            thread_id: "t1".into(),
+            role,
+            content: content.to_owned(),
+            created_at: 0,
+        }
+    }
+
+    /// 消息的用户侧文本(Assistant 走 `Message::assistant`,这里只取文本便于断言)。
+    fn user_text(message: &Message) -> String {
+        message.rag_text().unwrap_or_default()
+    }
+
+    /// 历史装配:User/Assistant 各成一条,Tool/System 并入相邻用户侧消息。
+    #[test]
+    fn render_history_merges_user_side_records() {
+        let messages = render_history(
+            &[
+                record(MessageRole::User, "看看磁盘"),
+                record(MessageRole::Tool, "这一轮执行过的操作:\n- exec(...)"),
+                record(MessageRole::System, "上一轮中断:超时"),
+                record(MessageRole::Assistant, "磁盘 82%"),
+            ],
+            "新问题",
+        );
+        assert_eq!(messages.len(), 2, "工具台账与中断说明并进第一条用户消息");
+        assert!(user_text(&messages[0]).contains("看看磁盘"));
+        assert!(user_text(&messages[0]).contains("exec"));
+        assert!(user_text(&messages[0]).contains("中断"));
+    }
+
+    /// 刚落库的本轮提问不进历史:它由 prompt 字段承载,重复会让模型看到两遍问话。
+    #[test]
+    fn render_history_drops_current_prompt() {
+        let messages = render_history(
+            &[
+                record(MessageRole::Assistant, "上次答完"),
+                record(MessageRole::User, "同一个问题"),
+                record(MessageRole::User, "同一个问题"),
+            ],
+            "同一个问题",
+        );
+        // 尾部两行同文:本轮落的一行被去掉,再往前那行是真实历史,保留。
+        assert_eq!(messages.len(), 2);
+        assert!(user_text(&messages[1]).contains("同一个问题"));
+    }
 
     /// 增量批处理按字符阈值下发。
     #[test]

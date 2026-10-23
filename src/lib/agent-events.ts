@@ -35,6 +35,8 @@ export type AgentDisplay = {
   description: string;
   /** 语义色档位。 */
   tone: AgentTone;
+  /** 空间紧张控件上的短标签(如输入区模式键);不填就复用 `label`。 */
+  short?: string;
 };
 
 /** 事件类别 → 中文。 */
@@ -87,6 +89,11 @@ export const EVENT_KIND_DISPLAY: Record<AgentEventKind, AgentDisplay> = {
     description: "你中止了这一轮",
     tone: "warning",
   },
+  run_paused: {
+    label: "已暂停",
+    description: "连续执行轮数到达上限,等你决定是否继续",
+    tone: "warning",
+  },
 };
 
 /** 运行状态 → 中文。 */
@@ -107,6 +114,11 @@ export const RUN_STATE_DISPLAY: Record<RunState, AgentDisplay> = {
     label: "已取消",
     description: "这一轮被你取消",
     tone: "neutral",
+  },
+  paused: {
+    label: "已暂停",
+    description: "连续执行轮数到达上限,可从断点继续",
+    tone: "warning",
   },
 };
 
@@ -165,16 +177,19 @@ export const TOOL_CATEGORY_DISPLAY: Record<ToolCategory, AgentDisplay> = {
 export const APPROVAL_MODE_DISPLAY: Record<ApprovalMode, AgentDisplay> = {
   read_only_auto: {
     label: "只读自动,改动需批准",
+    short: "只读自动",
     description: "取证命令直接执行;改动服务器的操作逐台请你批准",
     tone: "info",
   },
   all_confirm: {
     label: "每一步都要批准",
+    short: "逐步批准",
     description: "包括只读取证,每个操作都先经你确认",
     tone: "warning",
   },
   read_only_only: {
     label: "只允许取证",
+    short: "仅取证",
     description: "只提供只读工具,Agent 无法改动服务器",
     tone: "success",
   },
@@ -469,6 +484,11 @@ export function applyEvent(
       // 失败/取消带的是说明文字,只落最后一段,不抹掉已流出的内容。
       next.settled = true;
       next.parts = replaceLastText(next.parts, event.text, event.seq);
+      next.usage = event.usage;
+      break;
+    case "run_paused":
+      // 暂停说明由轮次状态卡承载;已流出的半截回答保持原样,继续时模型接着写。
+      next.settled = true;
       next.usage = event.usage;
       break;
     case "run_started":

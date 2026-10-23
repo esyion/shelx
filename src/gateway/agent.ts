@@ -136,6 +136,26 @@ export function cancelAgentRun(threadId: string, runId: string): Promise<boolean
   return invokeUnwrapped("cancel_agent_run", { request: { threadId, runId } });
 }
 
+/**
+ * 继续一轮暂停的运行(断点上下文由后端保存);事件经 `onEvent` 推送。
+ *
+ * @param threadId 线程 ID
+ * @param runId 暂停的运行 ID
+ * @param onEvent 流式事件回调
+ */
+export function resumeAgentRun(
+  threadId: string,
+  runId: string,
+  onEvent: AgentEventHandler,
+): Promise<SendAcceptedDto> {
+  const channel = new Channel<AgentEvent>();
+  channel.onmessage = (event) => onEvent(event);
+  return invokeUnwrapped("resume_agent_run", {
+    request: { threadId, runId },
+    onEvent: channel,
+  });
+}
+
 /** 逐台应答工具批准。 */
 export function respondToolApproval(
   requestId: string,

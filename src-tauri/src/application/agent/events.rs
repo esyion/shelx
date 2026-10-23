@@ -154,6 +154,14 @@ pub enum AgentEventPayload {
         /// 已产生的用量。
         usage: AgentUsage,
     },
+    /// 连续执行轮数到达上限而暂停(终态;断点可继续)。
+    #[serde(rename_all = "camelCase")]
+    RunPaused {
+        /// 暂停说明(已执行轮数与下一步)。
+        text: String,
+        /// 已产生的用量。
+        usage: AgentUsage,
+    },
 }
 
 impl AgentEventPayload {
@@ -173,6 +181,7 @@ impl AgentEventPayload {
             Self::RunRetry { .. } => "run_retry",
             Self::RunFailed { .. } => "run_failed",
             Self::RunCancelled { .. } => "run_cancelled",
+            Self::RunPaused { .. } => "run_paused",
         }
     }
 
@@ -427,6 +436,10 @@ mod tests {
                 text: "已取消".into(),
                 usage: AgentUsage::default(),
             },
+            AgentEventPayload::RunPaused {
+                text: "已到轮数上限".into(),
+                usage: AgentUsage::default(),
+            },
         ];
         list.extend(call_trio());
         list
@@ -439,7 +452,7 @@ mod tests {
             let json = serde_json::to_value(&payload).unwrap();
             assert_eq!(json["kind"], payload.kind(), "{payload:?}");
         }
-        assert_eq!(samples().len(), 12, "类别数变化时同步检查前端映射表");
+        assert_eq!(samples().len(), 13, "类别数变化时同步检查前端映射表");
     }
 
     /// 载荷字段按 camelCase 上线,`None` 字段不落成 null;构造时序号为 0 待中枢分配。

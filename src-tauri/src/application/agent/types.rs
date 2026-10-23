@@ -254,10 +254,13 @@ pub struct RunOutcome {
     pub usage: AgentUsage,
     /// 工具轮次。
     pub turns: usize,
-    /// 失败原因。
+    /// 失败原因(暂停时为暂停说明)。
     pub error: Option<String>,
     /// 模型归纳出的标题(首轮时)。
     pub title: Option<String>,
+    /// 断点上下文(仅暂停时):网关序列化的对话历史,继续时原样传回。
+    /// 应用层不解析内容,只负责与运行记录一起持久化。
+    pub resume_history: Option<String>,
 }
 
 /// 跑一轮所需的全部输入(由应用层组装,gateway 只消费)。
@@ -275,6 +278,9 @@ pub struct RunPlan {
     pub max_turns: usize,
     /// 携带的历史消息条数(上下文窗口档位)。
     pub context_messages: usize,
+    /// 断点上下文(继续暂停的一轮时):网关格式的对话历史序列化,
+    /// 优先于 `context_messages` 的常规装配。
+    pub resume_history: Option<String>,
 }
 
 /// Agent 持久化端口。

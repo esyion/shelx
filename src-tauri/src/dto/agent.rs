@@ -536,6 +536,16 @@ pub struct CancelRunRequestDto {
     pub run_id: String,
 }
 
+/// 继续暂停运行请求(从断点上下文接着跑)。
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResumeRunRequestDto {
+    /// 线程 ID。
+    pub thread_id: String,
+    /// 暂停的运行 ID。
+    pub run_id: String,
+}
+
 /// 单台主机的批准决策。
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

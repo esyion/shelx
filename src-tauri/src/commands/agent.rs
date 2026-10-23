@@ -14,8 +14,8 @@ use crate::application::agent::{AgentError, PendingApprovalView};
 use crate::domain::agent::{ApprovalDecision, ThreadId};
 use crate::dto::agent::{
     ApprovalDecisionDto, CancelRunRequestDto, CreateThreadRequestDto, DetachRequestDto,
-    RespondApprovalRequestDto, SendAcceptedDto, SendMessageRequestDto, ThreadIdRequestDto,
-    ThreadSnapshotDto, UpdateThreadRequestDto,
+    RespondApprovalRequestDto, ResumeRunRequestDto, SendAcceptedDto, SendMessageRequestDto,
+    ThreadIdRequestDto, ThreadSnapshotDto, UpdateThreadRequestDto,
 };
 use crate::dto::common::IpcResult;
 use crate::shared::error::{IpcError, IpcErrorCode};
@@ -178,6 +178,44 @@ pub async fn send_agent_message(
         Ok(accepted) => {
             // 订阅必须先于后续增量,否则首包可能丢;由 service 统一持有 sink。
             // 这条 Channel 就是本轮唯一的 sink,订阅号回给前端用于退订 —— 前端不得再 attach 第二条。
+            let subscription_id = state.agent.attach(
+                &accepted.thread_id,
+                Arc::new(ChannelEventSink(on_event)),
+                accepted.started_seq,
+            );
+            Ok(IpcResult::ok(SendAcceptedDto {
+                run_id: accepted.run_id,
+                thread_id: accepted.thread_id,
+                started_seq: accepted.started_seq,
+                subscription_id,
+            }))
+        }
+        Err(err) => Ok(IpcResult::err(to_ipc_error(err))),
+    }
+}
+
+/// 继续一轮暂停的运行:断点上下文由后端保存,这里只带运行标识;事件照常走 `onEvent`。
+#[tauri::command]
+pub async fn resume_agent_run(
+    state: State<'_, AppState>,
+    request: ResumeRunRequestDto,
+    on_event: Channel<InvokeResponseBody>,
+) -> Result<IpcResult<SendAcceptedDto>, String> {
+    let Ok(thread_id) = ThreadId::new(request.thread_id.clone()) else {
+        return Ok(IpcResult::err(IpcError::new(
+            IpcErrorCode::InvalidArgument,
+            "缺少对话标识",
+        )));
+    };
+    if request.run_id.trim().is_empty() {
+        return Ok(IpcResult::err(IpcError::new(
+            IpcErrorCode::InvalidArgument,
+            "缺少运行标识",
+        )));
+    }
+    match state.agent.resume_run(thread_id.as_str(), &request.run_id) {
+        Ok(accepted) => {
+            // 与发起一轮同一手法:这条 Channel 是本轮唯一订阅,订阅号回给前端退订。
             let subscription_id = state.agent.attach(
                 &accepted.thread_id,
                 Arc::new(ChannelEventSink(on_event)),

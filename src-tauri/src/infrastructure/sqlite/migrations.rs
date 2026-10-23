@@ -18,6 +18,10 @@ const MIGRATIONS: &[(i64, &str)] = &[
         5,
         include_str!("../../../migrations/0005_agent_profile_window.sql"),
     ),
+    (
+        6,
+        include_str!("../../../migrations/0006_agent_run_paused.sql"),
+    ),
 ];
 
 /// 将数据库迁移到最新版本;已是最新时为空操作。

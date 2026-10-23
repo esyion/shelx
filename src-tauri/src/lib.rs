@@ -252,6 +252,7 @@ pub fn run() {
             commands::agent::attach_agent_thread,
             commands::agent::detach_agent_thread,
             commands::agent::cancel_agent_run,
+            commands::agent::resume_agent_run,
             commands::agent::respond_tool_approval,
             commands::agent::list_pending_approvals,
             commands::agent::list_agent_audit,

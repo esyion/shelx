@@ -179,6 +179,18 @@ describe("时间线合并", () => {
     expect(textOf(fragment)).toBe("已取消");
   });
 
+  it("暂停收住时间线但不吃掉半截回答", () => {
+    let fragment = emptyFragment();
+    fragment = applyEvent(fragment, event({ seq: 1, kind: "text_delta", text: "查到一半的结论" }));
+    fragment = applyEvent(
+      fragment,
+      event({ seq: 2, kind: "run_paused", text: "已连续执行 20 轮", usage: {} }),
+    );
+    // 说明由轮次状态卡承载;已流出的内容保持原样,继续时模型接着写。
+    expect(fragment.settled).toBe(true);
+    expect(textOf(fragment)).toBe("查到一半的结论");
+  });
+
   it("记录最近一条事件类别供界面显示进度", () => {
     let fragment = emptyFragment();
     fragment = applyEvent(fragment, event({ seq: 1, kind: "tool_call", ...CALL, callId: "a" }));

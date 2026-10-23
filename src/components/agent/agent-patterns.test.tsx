@@ -287,26 +287,26 @@ describe("待批准(每台一个 Item + ToggleGroup)", () => {
 describe("上下文用量(Context pattern)", () => {
   it("有窗口时报百分比,分母是模型窗口", () => {
     cleanup();
-    render(<ContextUsage used={400} contextWindow={1000} budget={0} usage={{ totalTokens: 400 }} />);
+    render(<ContextUsage used={400} contextWindow={1000} usage={{ totalTokens: 400 }} />);
     expect(screen.getByText("40%")).toBeTruthy();
   });
 
   it("窗口未知时不报百分比,也不拿猜的数当分母", () => {
     cleanup();
-    render(<ContextUsage used={400} contextWindow={null} budget={0} />);
+    render(<ContextUsage used={400} contextWindow={null} />);
     expect(screen.getByText("400 tokens")).toBeTruthy();
     expect(screen.queryByText(/%/)).toBeNull();
   });
 
   it("超过窗口封顶 100%,不报出 130% 这种让人误读的数", () => {
     cleanup();
-    render(<ContextUsage used={1300} contextWindow={1000} budget={0} />);
+    render(<ContextUsage used={1300} contextWindow={1000} />);
     expect(screen.getByText("100%")).toBeTruthy();
   });
 
   it("还没有用量时整块不渲染,不留空壳", () => {
     cleanup();
-    const { container } = render(<ContextUsage used={0} contextWindow={1000} budget={0} />);
+    const { container } = render(<ContextUsage used={0} contextWindow={1000} />);
     expect(container.textContent).toBe("");
   });
 });
@@ -323,7 +323,6 @@ describe("对话输入区(ThreadComposer)", () => {
         approvalMode="read_only_auto"
         used={0}
         contextWindow={1000}
-        budget={0}
       />,
     );
     expect(screen.queryByText(/上下文/)).toBeNull();
@@ -342,30 +341,10 @@ describe("对话输入区(ThreadComposer)", () => {
         approvalMode="read_only_auto"
         used={400}
         contextWindow={1000}
-        budget={0}
       />,
     );
-    const stop = screen.getByLabelText("取消这一轮");
+    const stop = screen.getByLabelText("取消");
     expect((stop.parentElement as HTMLElement).className).toContain("ml-auto");
-  });
-
-  it("+ 是占位键:能力没落地就禁用并说明,不摆可点的假开关", () => {
-    cleanup();
-    render(
-      <ThreadComposer
-        threadId="t1"
-        busy={false}
-        runningId={null}
-        profileId=""
-        approvalMode="read_only_auto"
-        used={0}
-        contextWindow={1000}
-        budget={0}
-      />,
-    );
-    const plus = screen.getByLabelText("更多能力(准备中)") as HTMLButtonElement;
-    expect(plus.disabled).toBe(true);
-    expect(plus.title).toContain("准备中");
   });
 
   it("键盘提示走占位文案,底行不再另放提示被挤换行", () => {
@@ -379,7 +358,6 @@ describe("对话输入区(ThreadComposer)", () => {
         approvalMode="read_only_auto"
         used={0}
         contextWindow={1000}
-        budget={0}
       />,
     );
     const textarea = screen.getByLabelText("向 Agent 提问") as HTMLTextAreaElement;
@@ -405,7 +383,6 @@ describe("输入区的模型选择(Model Selector pattern)", () => {
         approvalMode="read_only_auto"
         used={0}
         contextWindow={1000}
-        budget={0}
       />,
     );
   }
@@ -414,7 +391,7 @@ describe("输入区的模型选择(Model Selector pattern)", () => {
     cleanup();
     useAgentStore.setState({ profiles });
     renderComposer();
-    expect(screen.getByRole("button", { name: "Gem · glm-5.3" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Gem/glm-5.3" })).toBeTruthy();
   });
 
   it("菜单列出全部接入点,选中即按线程落库", async () => {
@@ -423,8 +400,8 @@ describe("输入区的模型选择(Model Selector pattern)", () => {
     api.updateAgentThread.mockResolvedValue({ id: "t1" });
     api.getAgentThread.mockResolvedValue(null);
     renderComposer();
-    fireEvent.click(screen.getByRole("button", { name: "Gem · glm-5.3" }));
-    const option = await screen.findByRole("menuitemradio", { name: "Gem · glm-5.2" });
+    fireEvent.click(screen.getByRole("button", { name: "Gem/glm-5.3" }));
+    const option = await screen.findByRole("menuitemradio", { name: "Gem/glm-5.2" });
     expect(screen.getAllByRole("menuitemradio")).toHaveLength(2);
     fireEvent.click(option);
     await waitFor(() =>
@@ -455,7 +432,6 @@ describe("输入区的模式切换(审批档位)", () => {
         approvalMode="read_only_auto"
         used={0}
         contextWindow={1000}
-        budget={0}
       />,
     );
   }
@@ -465,6 +441,20 @@ describe("输入区的模式切换(审批档位)", () => {
     useSettingsStore.setState({ schema: [approvalSpec] });
     renderComposer();
     expect(screen.getByRole("button", { name: "只读自动,改动需批准" })).toBeTruthy();
+  });
+
+  it("窄面板退化为档位图标:短标签让位,完整说明不丢", () => {
+    cleanup();
+    useSettingsStore.setState({ schema: [approvalSpec] });
+    renderComposer();
+    const trigger = screen.getByRole("button", {
+      name: "只读自动,改动需批准",
+    }) as HTMLButtonElement;
+    // 短标签与档位图标仍在键上(CSS 只在窄容器隐藏文字,信息不删)。
+    expect(trigger.textContent).toContain("只读自动");
+    expect(trigger.querySelector("svg")).toBeTruthy();
+    // 完整档位说明固定在可访问名与悬浮提示里,任何宽度读屏同一口径。
+    expect(trigger.title).toBe("只读自动,改动需批准");
   });
 
   it("每档说清选了会发生什么,选中即按线程落库", async () => {

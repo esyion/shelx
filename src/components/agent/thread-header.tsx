@@ -22,7 +22,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
-  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
@@ -138,7 +137,7 @@ export function ThreadHeader({
         />
         <DropdownMenuContent align="start" className="min-w-56">
           <DropdownMenuGroup>
-            <DropdownMenuLabel>把哪台已连上的机器带进上下文</DropdownMenuLabel>
+            {/* <DropdownMenuLabel>把哪台已连上的机器带进上下文</DropdownMenuLabel> */}
             <DropdownMenuRadioGroup
               value={snapshot?.thread.boundSessionId ?? ""}
               onValueChange={(value) => void patchThread(threadId, { boundSessionId: value || null })}

@@ -8,8 +8,8 @@ use std::sync::Arc;
 use super::events::{canonical_log, AgentEvent, AgentEventPayload};
 use super::prompt::{system_preamble, HostLine};
 use super::types::{
-    MessageRecord, MessageRole, RunContext, RunOutcome, RunPlan, RunRecord, SendRequest,
-    ThreadRecord,
+    MessageRecord, MessageRole, ProfileRecord, RunContext, RunOutcome, RunPlan, RunRecord,
+    SendRequest, ThreadRecord,
 };
 use super::{AgentError, AgentService, DEFAULT_THREAD_TITLE};
 use crate::application::settings::AgentSettings;
@@ -20,6 +20,135 @@ const MAX_PROMPT_CHARS: usize = 20_000;
 
 /// 自动命名的标题上限(字符):对话列表行宽有限,标题是给人认的,不是给全文存的。
 const AUTO_TITLE_MAX_CHARS: usize = 24;
+
+/// 工具台账单行入参摘要上限(字符)。
+const LEDGER_ARGS_CHARS: usize = 120;
+
+/// 工具台账整体上限(字符):进上下文的是摘要,不是全文搬运。
+const LEDGER_TOTAL_CHARS: usize = 6_000;
+
+/// 继续暂停一轮时发给模型的指令:断点上下文由网关注入,这里只说明意图与边界。
+const RESUME_PROMPT: &str =
+    "继续完成上一轮未完成的任务。上一轮因连续执行轮数到达上限而暂停;已执行过的操作不要重复。";
+
+/// 断点上下文在线程命名空间 KV 里的对象名(取出即销毁,防一次暂停被继续两次)。
+fn resume_payload_name(run_id: &str) -> String {
+    format!("resume:{run_id}")
+}
+
+/// 中断轮次给下一轮的说明(System 角色):说清为什么没走完、下一步是什么。
+/// 正常完成返回 `None`(不需要说明)。
+fn interrupted_note(state: RunState, outcome: &RunOutcome) -> Option<String> {
+    let note = match state {
+        RunState::Failed => format!(
+            "上一轮中断:{}。已执行过的操作见上一条工具记录,重新尝试时不要重复。",
+            outcome.error.as_deref().unwrap_or("原因未知")
+        ),
+        RunState::Cancelled => {
+            "上一轮被用户取消;已发出的命令不会自动撤回。已执行过的操作见上一条工具记录。".to_owned()
+        }
+        RunState::Paused => format!(
+            "上一轮{}。可从断点继续;继续前不要重复已执行的操作。",
+            outcome.error.as_deref().unwrap_or("到达轮数上限暂停")
+        ),
+        _ => return None,
+    };
+    Some(truncate_chars(&note, 2_000))
+}
+
+/// 按字符数截断,超长补省略号(字符级,不劈 UTF-8)。
+fn truncate_chars(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_owned();
+    }
+    let mut cut: String = text.chars().take(max).collect();
+    cut.push('…');
+    cut
+}
+
+/// 中断或完成轮次的工具台账:把这一轮执行过什么压成带界限的几行,
+/// 落库为 Tool 角色消息,下一轮装配上下文时让模型"记得自己做过什么"。
+///
+/// 这是失败/取消后不重跑已执行操作的关键:rig 的记忆只在运行成功时保存,
+/// 中断轮次的过程只活在时间线日志里,这里把它翻译成模型可读的摘要。
+fn tool_ledger(timeline: &[AgentEvent]) -> Option<String> {
+    /// 一个工具步的累积形态(开步、逐台进度、收尾共用同一 callId)。
+    struct Step {
+        tool: String,
+        args: String,
+        summary: Option<String>,
+        targets: Vec<String>,
+    }
+    let mut order: Vec<String> = Vec::new();
+    let mut steps: std::collections::HashMap<String, Step> = std::collections::HashMap::new();
+    for event in timeline {
+        match &event.payload {
+            AgentEventPayload::ToolCall {
+                call_id,
+                tool_name,
+                args_json,
+                ..
+            } => {
+                if !steps.contains_key(call_id) {
+                    order.push(call_id.to_owned());
+                    steps.insert(
+                        call_id.to_owned(),
+                        Step {
+                            tool: tool_name.clone(),
+                            args: truncate_chars(args_json, LEDGER_ARGS_CHARS),
+                            summary: None,
+                            targets: Vec::new(),
+                        },
+                    );
+                }
+            }
+            AgentEventPayload::ToolResult {
+                call_id, summary, ..
+            } => {
+                if let Some(step) = steps.get_mut(call_id) {
+                    step.summary = Some(summary.clone());
+                }
+            }
+            AgentEventPayload::TargetState {
+                call_id,
+                conn_name,
+                status,
+                ..
+            } => {
+                if let Some(step) = steps.get_mut(call_id) {
+                    step.targets
+                        .push(format!("{conn_name}:{}", status.as_str()));
+                }
+            }
+            _ => {}
+        }
+    }
+    if order.is_empty() {
+        return None;
+    }
+    let mut lines: Vec<String> = Vec::new();
+    for call_id in order {
+        let Some(step) = steps.get(&call_id) else {
+            continue;
+        };
+        let mut line = format!("- {}({})", step.tool, step.args);
+        if let Some(summary) = &step.summary {
+            line.push_str(&format!(" → {summary}"));
+        }
+        if !step.targets.is_empty() {
+            line.push_str(&format!(" [{}]", step.targets.join(", ")));
+        }
+        lines.push(truncate_chars(&line, 240));
+        if lines.join("\n").chars().count() > LEDGER_TOTAL_CHARS {
+            break;
+        }
+    }
+    let mut ledger = lines.join("\n");
+    if ledger.chars().count() > LEDGER_TOTAL_CHARS {
+        ledger = truncate_chars(&ledger, LEDGER_TOTAL_CHARS);
+    }
+    Some(ledger)
+}
 
 /// 由第一条输入生成线程标题:取首个非空行,超长截断加省略号。
 /// 全空输入返回 `None`(受理侧已拒空串,这里只是防御)。
@@ -42,6 +171,14 @@ pub struct SendAccepted {
     pub thread_id: String,
     /// 本轮起始序号(前端从此续接)。
     pub started_seq: i64,
+}
+
+/// 已预检的模型配置(接口层校验通过后的起步输入,聚合在一起免得参数列表变长)。
+struct PreparedModel {
+    /// 持久化形态的接入点(前导装配与领域校验都要用)。
+    record: ProfileRecord,
+    /// API 密钥(仅在本次调用内存在,禁止落日志与 IPC)。
+    api_key: String,
 }
 
 impl AgentService {
@@ -81,18 +218,8 @@ impl AgentService {
         let settings = self.agent_settings();
         self.check_budget(&thread_id, &settings)?;
 
-        let profile_record = self
-            .profile(&thread.profile_id)
-            .ok_or(AgentError::NotFound("模型配置"))?;
-        if !profile_record.enabled {
-            return Err(AgentError::Invalid("该模型配置已停用".into()));
-        }
-        let profile = profile_record.to_domain()?;
-        let api_key = self
-            .profile_key(&profile_record)
-            .ok_or(AgentError::KeyMissing)?;
+        let prepared_model = self.prepared_model(&thread)?;
 
-        let approval = thread.approval;
         let now = super::now_millis();
         // 首轮自动命名:标题还是默认值时,用第一条输入起个能认出来的名字,
         // 免得对话列表里是一排「新对话」;用户改过名就不再覆盖。
@@ -113,7 +240,98 @@ impl AgentService {
             content: prompt.clone(),
             created_at: now,
         })?;
+        self.start_run(
+            &thread,
+            prepared_model,
+            prompt,
+            request.bound_session_id.clone(),
+            None,
+        )
+    }
 
+    /// 继续一轮暂停的运行:断点上下文由上一轮保存,这里另起新 Run 承接。
+    ///
+    /// # Errors
+    /// 线程或运行不存在、运行不在暂停态、断点上下文丢失、已有运行在进行、缺少密钥、超出预算。
+    pub fn resume_run(
+        self: &Arc<Self>,
+        thread_id: &str,
+        run_id: &str,
+    ) -> Result<SendAccepted, AgentError> {
+        let thread = self
+            .store
+            .thread(thread_id)?
+            .ok_or(AgentError::NotFound("对话线程"))?;
+        if !self.runs.running_of_thread(thread_id).is_empty() {
+            return Err(AgentError::AlreadyRunning);
+        }
+        let settings = self.agent_settings();
+        self.check_budget(thread_id, &settings)?;
+
+        let run = self
+            .store
+            .runs(thread_id)?
+            .into_iter()
+            .find(|record| record.run_id == run_id)
+            .ok_or(AgentError::NotFound("运行记录"))?;
+        if run.state != RunState::Paused {
+            return Err(AgentError::Invalid("这一轮不在暂停状态".into()));
+        }
+        // 断点上下文是网关序列化的对话历史;取出即销毁,防一次暂停被继续两次。
+        let resume_history = self
+            .store
+            .store_get(thread_id, &resume_payload_name(run_id))?
+            .and_then(|bytes| String::from_utf8(bytes).ok())
+            .ok_or(AgentError::NotFound("断点上下文"))?;
+        self.store
+            .store_remove(thread_id, &resume_payload_name(run_id))?;
+
+        let prepared_model = self.prepared_model(&thread)?;
+
+        let prompt = RESUME_PROMPT.to_owned();
+        let now = super::now_millis();
+        self.store.append_message(&MessageRecord {
+            id: uuid::Uuid::new_v4().to_string(),
+            thread_id: thread_id.to_owned(),
+            role: MessageRole::User,
+            content: prompt.clone(),
+            created_at: now,
+        })?;
+        self.start_run(&thread, prepared_model, prompt, None, Some(resume_history))
+    }
+
+    /// 预检线程的模型配置:存在、启用、领域校验通过且密钥可用。
+    fn prepared_model(&self, thread: &ThreadRecord) -> Result<PreparedModel, AgentError> {
+        let record = self
+            .profile(&thread.profile_id)
+            .ok_or(AgentError::NotFound("模型配置"))?;
+        if !record.enabled {
+            return Err(AgentError::Invalid("该模型配置已停用".into()));
+        }
+        record.to_domain()?;
+        let api_key = self.profile_key(&record).ok_or(AgentError::KeyMissing)?;
+        Ok(PreparedModel { record, api_key })
+    }
+
+    /// 受理后的共用起步:落初始运行记录、注册取消令牌、发布开跑事件并转后台执行。
+    ///
+    /// `resume_history` 非空时网关跳过常规历史装配,直接用断点上下文接续。
+    ///
+    /// # Errors
+    /// 领域校验、存储或前导(preamble)装配失败。
+    fn start_run(
+        self: &Arc<Self>,
+        thread: &ThreadRecord,
+        model: PreparedModel,
+        prompt: String,
+        bound_session_id: Option<String>,
+        resume_history: Option<String>,
+    ) -> Result<SendAccepted, AgentError> {
+        let profile = model.record.to_domain()?;
+        let thread_id = thread.id.clone();
+        let approval = thread.approval;
+        let settings = self.agent_settings();
+        let now = super::now_millis();
         let run_id = uuid::Uuid::new_v4().to_string();
         self.store.upsert_run(&RunRecord {
             run_id: run_id.clone(),
@@ -134,10 +352,7 @@ impl AgentService {
             thread_id: thread_id.clone(),
             run_id: run_id.clone(),
             approval,
-            bound_conn_id: request
-                .bound_session_id
-                .clone()
-                .or_else(|| thread.bound_session_id.clone()),
+            bound_conn_id: bound_session_id.or_else(|| thread.bound_session_id.clone()),
             batch_limit: settings.batch_limit.max(1) as usize,
             parallel_hosts: settings.parallel_hosts.max(1) as usize,
             exec_timeout_secs: settings.exec_timeout_secs.max(1) as u64,
@@ -147,14 +362,15 @@ impl AgentService {
             preamble: self.build_preamble(
                 approval,
                 context.bound_conn_id.as_deref(),
-                &profile_record,
+                &model.record,
                 settings.inject_memories,
             )?,
             profile,
-            api_key,
+            api_key: model.api_key,
             prompt,
             max_turns: settings.max_turns.max(1) as usize,
             context_messages: settings.context_messages.max(2) as usize,
+            resume_history,
         });
 
         let started_seq = self.hub.publish(AgentEvent::new(
@@ -242,9 +458,43 @@ impl AgentService {
             turns: outcome.turns as i64,
             created_at: now,
             updated_at: now,
-            timeline,
+            timeline: timeline.clone(),
         }) {
             tracing::warn!("运行收尾落库失败: {err}");
+        }
+        // 断点上下文(暂停轮)与运行记录分开存:体积大、生命周期短,取出即销毁。
+        if let Some(resume) = outcome.resume_history.as_deref() {
+            if let Err(err) =
+                self.store
+                    .store_put(thread_id, &resume_payload_name(run_id), resume.as_bytes())
+            {
+                tracing::warn!("断点上下文保存失败: {err}");
+            }
+        }
+        // 工具台账:rig 的记忆只在成功运行后保存,这一轮"执行过什么"若不落库,
+        // 中断后重试的模型就不知道自己做过什么,可能重跑已执行的写操作。
+        if let Some(ledger) = tool_ledger(&timeline) {
+            if let Err(err) = self.store.append_message(&MessageRecord {
+                id: uuid::Uuid::new_v4().to_string(),
+                thread_id: thread_id.to_owned(),
+                role: MessageRole::Tool,
+                content: format!("这一轮执行过的操作:\n{ledger}"),
+                created_at: now,
+            }) {
+                tracing::warn!("工具台账落库失败: {err}");
+            }
+        }
+        // 中断说明(System 角色):失败、取消、暂停都要给下一轮留下"为什么没走完"。
+        if let Some(note) = interrupted_note(state, outcome) {
+            if let Err(err) = self.store.append_message(&MessageRecord {
+                id: uuid::Uuid::new_v4().to_string(),
+                thread_id: thread_id.to_owned(),
+                role: MessageRole::System,
+                content: note,
+                created_at: now,
+            }) {
+                tracing::warn!("中断说明落库失败: {err}");
+            }
         }
         if !outcome.final_text.trim().is_empty() {
             if let Err(err) = self.store.append_message(&MessageRecord {
@@ -284,6 +534,13 @@ impl AgentService {
                     .error
                     .clone()
                     .unwrap_or_else(|| "已取消。已经发出去的命令不会自动撤回。".to_owned()),
+                usage: outcome.usage,
+            },
+            RunState::Paused => AgentEventPayload::RunPaused {
+                text: outcome
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| "已连续执行到轮数上限,暂停;可继续接着跑。".to_owned()),
                 usage: outcome.usage,
             },
             _ => AgentEventPayload::RunFailed {
@@ -375,6 +632,7 @@ impl AgentService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::application::agent::events::AgentUsage;
 
     /// 单条输入上限的存在性约束(过长直接拒绝,避免把预算一次性打光)。
     #[test]
@@ -409,5 +667,107 @@ mod tests {
     fn auto_title_rejects_blank() {
         assert_eq!(auto_title(""), None);
         assert_eq!(auto_title(" \n \n"), None);
+    }
+
+    /// 构造一条带序号的时间线事件(测试用)。
+    fn timeline_event(seq: i64, payload: AgentEventPayload) -> AgentEvent {
+        let mut event = AgentEvent::new("t1", "r1", payload);
+        event.seq = seq;
+        event
+    }
+
+    /// 工具台账:同一调用的开步/逐台进度/收尾按 callId 归并成一行,带摘要与主机结果。
+    #[test]
+    fn tool_ledger_groups_by_call_id() {
+        let ledger = tool_ledger(&[
+            timeline_event(
+                1,
+                AgentEventPayload::ToolCall {
+                    call_id: "c1".into(),
+                    tool_name: "exec".into(),
+                    category: crate::domain::agent::ToolCategory::ReadOnly,
+                    args_json: r#"{"argv":["df","-h"]}"#.into(),
+                },
+            ),
+            timeline_event(
+                2,
+                AgentEventPayload::TargetState {
+                    call_id: "c1".into(),
+                    tool_name: "exec".into(),
+                    category: crate::domain::agent::ToolCategory::ReadOnly,
+                    args_json: "{}".into(),
+                    conn_id: "k1".into(),
+                    conn_name: "web-01".into(),
+                    status: crate::domain::agent::TargetStatus::Ok,
+                    output_excerpt: None,
+                    error: None,
+                },
+            ),
+            timeline_event(
+                3,
+                AgentEventPayload::ToolResult {
+                    call_id: "c1".into(),
+                    tool_name: "exec".into(),
+                    category: crate::domain::agent::ToolCategory::ReadOnly,
+                    status: crate::domain::agent::TargetStatus::Ok,
+                    summary: "1 台完成".into(),
+                },
+            ),
+        ])
+        .expect("有工具步必有台账");
+        assert_eq!(ledger.lines().count(), 1, "同一 callId 合成一行");
+        assert!(ledger.contains("exec"));
+        assert!(ledger.contains("df"));
+        assert!(ledger.contains("1 台完成"));
+        assert!(ledger.contains("web-01:ok"));
+    }
+
+    /// 没有工具步就没有台账;中断说明只覆盖失败/取消/暂停三种终态。
+    #[test]
+    fn ledger_and_note_cover_interrupted_states() {
+        assert!(tool_ledger(&[]).is_none());
+
+        let usage = AgentUsage::default();
+        let paused_note = interrupted_note(
+            RunState::Paused,
+            &RunOutcome {
+                state: RunState::Paused,
+                final_text: String::new(),
+                usage,
+                turns: 12,
+                error: Some("已连续执行 12 轮".into()),
+                title: None,
+                resume_history: Some("[]".into()),
+            },
+        )
+        .expect("暂停要有中断说明");
+        assert!(paused_note.contains("不要重复"));
+        assert!(interrupted_note(
+            RunState::Failed,
+            &RunOutcome {
+                state: RunState::Failed,
+                final_text: String::new(),
+                usage,
+                turns: 0,
+                error: Some("超时".into()),
+                title: None,
+                resume_history: None,
+            },
+        )
+        .expect("失败要有中断说明")
+        .contains("不要重复"));
+        assert!(interrupted_note(
+            RunState::Completed,
+            &RunOutcome {
+                state: RunState::Completed,
+                final_text: "答完".into(),
+                usage,
+                turns: 1,
+                error: None,
+                title: None,
+                resume_history: None,
+            },
+        )
+        .is_none());
     }
 }

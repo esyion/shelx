@@ -180,7 +180,7 @@ export const SETTING_COPY: Partial<Record<SettingPath, SettingCopy>> = {  "appea
   },
   "agent.maxTurns": {
     label: "一次任务最多走几轮",
-    hint: "一轮指助手思考并操作一次,轮数越大越能完成复杂任务,也越慢",
+    hint: "一轮指助手思考并操作一次;到达上限会暂停并保留进度,点「继续」接着跑,不会前功尽弃",
   },
   "agent.contextMessages": {
     label: "每次带上多少条历史",

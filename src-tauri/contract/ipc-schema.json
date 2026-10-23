@@ -371,6 +371,29 @@
                 "usage"
               ],
               "type": "object"
+            },
+            {
+              "description": "连续执行轮数到达上限而暂停(终态;断点可继续)。",
+              "properties": {
+                "kind": {
+                  "const": "run_paused",
+                  "type": "string"
+                },
+                "text": {
+                  "description": "暂停说明(已执行轮数与下一步)。",
+                  "type": "string"
+                },
+                "usage": {
+                  "$ref": "#/$defs/AgentUsage",
+                  "description": "已产生的用量。"
+                }
+              },
+              "required": [
+                "kind",
+                "text",
+                "usage"
+              ],
+              "type": "object"
             }
           ],
           "properties": {
@@ -1057,6 +1080,25 @@
           ],
           "type": "object"
         },
+        "ResumeRunRequestDto": {
+          "additionalProperties": false,
+          "description": "继续暂停运行请求(从断点上下文接着跑)。",
+          "properties": {
+            "runId": {
+              "description": "暂停的运行 ID。",
+              "type": "string"
+            },
+            "threadId": {
+              "description": "线程 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "threadId",
+            "runId"
+          ],
+          "type": "object"
+        },
         "RunDto": {
           "description": "一轮运行。",
           "properties": {
@@ -1126,7 +1168,7 @@
           "type": "object"
         },
         "RunState": {
-          "description": "一次运行(Run)的状态机。\n\n合法流转:\n- `Running → AwaitingApproval | Completed | Failed | Cancelled`\n- `AwaitingApproval → Running | Cancelled | Failed`(批准恢复 / 用户取消 / 应用重启被判定过期)\n\n`Completed`、`Cancelled` 为终态;`Failed` 后用户可在同线程重新发起(新 Run)。",
+          "description": "一次运行(Run)的状态机。\n\n合法流转:\n- `Running → AwaitingApproval | Completed | Failed | Cancelled | Paused`\n- `AwaitingApproval → Running | Cancelled | Failed`(批准恢复 / 用户取消 / 应用重启被判定过期)\n\n`Completed`、`Cancelled`、`Paused` 为终态;`Failed` 后用户可在同线程重新发起(新 Run);\n`Paused` 只因连续执行轮数到达上限,断点上下文随运行记录保存,继续时另起新 Run。",
           "oneOf": [
             {
               "const": "running",
@@ -1151,6 +1193,11 @@
             {
               "const": "cancelled",
               "description": "用户取消。",
+              "type": "string"
+            },
+            {
+              "const": "paused",
+              "description": "连续执行轮数到达上限而暂停(可从断点继续)。",
               "type": "string"
             }
           ]
@@ -1830,6 +1877,9 @@
         "RespondApprovalRequestDto": {
           "$ref": "#/$defs/RespondApprovalRequestDto"
         },
+        "ResumeRunRequestDto": {
+          "$ref": "#/$defs/ResumeRunRequestDto"
+        },
         "RunDto": {
           "$ref": "#/$defs/RunDto"
         },
@@ -1905,6 +1955,7 @@
         "SendMessageRequestDto",
         "ThreadIdRequestDto",
         "CancelRunRequestDto",
+        "ResumeRunRequestDto",
         "ApprovalDecisionDto",
         "RespondApprovalRequestDto",
         "DetachRequestDto",
@@ -3693,7 +3744,7 @@
               "type": "boolean"
             },
             "maxTurns": {
-              "default": 12,
+              "default": 20,
               "description": "单轮最多允许多少次工具往返。",
               "format": "uint32",
               "minimum": 0,
@@ -3743,7 +3794,7 @@
                 "contextMessages": 30,
                 "execTimeoutSecs": 30,
                 "injectMemories": true,
-                "maxTurns": 12,
+                "maxTurns": 20,
                 "parallelHosts": 4,
                 "showReasoning": true,
                 "tokenBudget": 1000000

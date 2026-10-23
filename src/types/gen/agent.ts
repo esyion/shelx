@@ -179,6 +179,14 @@ export type AgentEvent1 =
        */
       text: string;
       usage: AgentUsage;
+    }
+  | {
+      kind: "run_paused";
+      /**
+       * 暂停说明(已执行轮数与下一步)。
+       */
+      text: string;
+      usage: AgentUsage;
     };
 /**
  * 工具调用对世界的影响类别。
@@ -225,12 +233,13 @@ export type TargetScope =
  * 一次运行(Run)的状态机。
  *
  * 合法流转:
- * - `Running → AwaitingApproval | Completed | Failed | Cancelled`
+ * - `Running → AwaitingApproval | Completed | Failed | Cancelled | Paused`
  * - `AwaitingApproval → Running | Cancelled | Failed`(批准恢复 / 用户取消 / 应用重启被判定过期)
  *
- * `Completed`、`Cancelled` 为终态;`Failed` 后用户可在同线程重新发起(新 Run)。
+ * `Completed`、`Cancelled`、`Paused` 为终态;`Failed` 后用户可在同线程重新发起(新 Run);
+ * `Paused` 只因连续执行轮数到达上限,断点上下文随运行记录保存,继续时另起新 Run。
  */
-export type RunState = "running" | "awaiting_approval" | "completed" | "failed" | "cancelled";
+export type RunState = "running" | "awaiting_approval" | "completed" | "failed" | "cancelled" | "paused";
 
 /**
  * 界面候选枚举的单点来源(AGENTS.md §5:前端禁止自己抄一份取值)。
@@ -613,6 +622,19 @@ export interface RespondApprovalRequestDto {
    * 请求 ID。
    */
   requestId: string;
+}
+/**
+ * 继续暂停运行请求(从断点上下文接着跑)。
+ */
+export interface ResumeRunRequestDto {
+  /**
+   * 暂停的运行 ID。
+   */
+  runId: string;
+  /**
+   * 线程 ID。
+   */
+  threadId: string;
 }
 /**
  * 一轮运行。

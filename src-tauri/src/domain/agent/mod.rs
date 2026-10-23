@@ -358,10 +358,11 @@ pub enum TargetScope {
 /// 一次运行(Run)的状态机。
 ///
 /// 合法流转:
-/// - `Running → AwaitingApproval | Completed | Failed | Cancelled`
+/// - `Running → AwaitingApproval | Completed | Failed | Cancelled | Paused`
 /// - `AwaitingApproval → Running | Cancelled | Failed`(批准恢复 / 用户取消 / 应用重启被判定过期)
 ///
-/// `Completed`、`Cancelled` 为终态;`Failed` 后用户可在同线程重新发起(新 Run)。
+/// `Completed`、`Cancelled`、`Paused` 为终态;`Failed` 后用户可在同线程重新发起(新 Run);
+/// `Paused` 只因连续执行轮数到达上限,断点上下文随运行记录保存,继续时另起新 Run。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum RunState {
@@ -375,6 +376,8 @@ pub enum RunState {
     Failed,
     /// 用户取消。
     Cancelled,
+    /// 连续执行轮数到达上限而暂停(可从断点继续)。
+    Paused,
 }
 
 impl RunState {
@@ -386,12 +389,13 @@ impl RunState {
             Self::Completed => "completed",
             Self::Failed => "failed",
             Self::Cancelled => "cancelled",
+            Self::Paused => "paused",
         }
     }
 
     /// 是否终态。
     pub fn is_terminal(self) -> bool {
-        matches!(self, Self::Completed | Self::Cancelled)
+        matches!(self, Self::Completed | Self::Cancelled | Self::Paused)
     }
 
     /// 判断能否流转到目标状态。
@@ -400,7 +404,11 @@ impl RunState {
             (self, next),
             (
                 Self::Running,
-                Self::AwaitingApproval | Self::Completed | Self::Failed | Self::Cancelled
+                Self::AwaitingApproval
+                    | Self::Completed
+                    | Self::Failed
+                    | Self::Cancelled
+                    | Self::Paused
             ) | (
                 Self::AwaitingApproval,
                 Self::Running | Self::Failed | Self::Cancelled
@@ -729,6 +737,9 @@ mod tests {
         assert!(RunState::Running
             .transition_to(RunState::AwaitingApproval)
             .is_ok());
+        assert!(RunState::Running.transition_to(RunState::Paused).is_ok());
+        assert!(RunState::Paused.transition_to(RunState::Running).is_err());
+        assert!(RunState::Paused.is_terminal());
         assert!(RunState::Completed
             .transition_to(RunState::Running)
             .is_err());
@@ -737,6 +748,7 @@ mod tests {
             .is_ok());
         assert!(RunState::Completed.is_terminal());
         assert!(!RunState::AwaitingApproval.is_terminal());
+        assert_eq!(RunState::Paused.as_str(), "paused");
     }
 
     /// 单主机状态:等待批准即为非进行中状态。
