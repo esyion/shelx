@@ -46,6 +46,7 @@ const api = vi.hoisted(() => ({
   listAgentAudit: vi.fn(),
   respondToolApproval: vi.fn(),
   updateAgentThread: vi.fn(),
+  deleteAgentThread: vi.fn(),
   getAgentThread: vi.fn(),
 }));
 
@@ -504,6 +505,97 @@ describe("对话切换(Thread Selector pattern)", () => {
     expect(screen.getByText("2 小时前")).toBeTruthy();
     fireEvent.click(option);
     expect(onSelect).toHaveBeenCalledWith("t2");
+  });
+
+  it("行上给管理三键,点它们只做自己的事,不切换对话", async () => {
+    cleanup();
+    const onSelect = vi.fn();
+    render(<ThreadSelector threads={threads} activeThreadId="t1" onSelect={onSelect} />);
+    fireEvent.click(screen.getByRole("button", { name: /排查 web-01/ }));
+    await screen.findByRole("menuitemradio", { name: /全量磁盘巡检/ });
+    expect(screen.getByRole("button", { name: "置顶「全量磁盘巡检」" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "重命名「全量磁盘巡检」" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "删除「全量磁盘巡检」" })).toBeTruthy();
+    api.updateAgentThread.mockResolvedValue({ ...threads[1], pinnedAt: Date.now() });
+    api.getAgentThread.mockResolvedValue(null);
+    fireEvent.click(screen.getByRole("button", { name: "置顶「全量磁盘巡检」" }));
+    await waitFor(() =>
+      expect(api.updateAgentThread).toHaveBeenCalledWith(
+        expect.objectContaining({ threadId: "t2", pinned: true }),
+      ),
+    );
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("置顶后菜单分「置顶 / 最近」两组,置顶的行带图钉", async () => {
+    cleanup();
+    const pinned = [
+      { ...threads[1], pinnedAt: Date.now() - 1000 },
+      threads[0],
+    ] as unknown as AgentThread[];
+    const { rerender } = render(
+      <ThreadSelector threads={pinned} activeThreadId="t1" onSelect={() => undefined} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /排查 web-01/ }));
+    await screen.findByRole("menuitemradio", { name: /全量磁盘巡检/ });
+    expect(screen.getByText("置顶")).toBeTruthy();
+    expect(screen.getByText("最近")).toBeTruthy();
+    // 两组标签都在,单组标题「切换对话」不再出现。
+    expect(screen.queryByText("切换对话")).toBeNull();
+    rerender(
+      <ThreadSelector threads={threads} activeThreadId="t1" onSelect={() => undefined} />,
+    );
+    expect(screen.getByText("切换对话")).toBeTruthy();
+  });
+
+  it("重命名走弹窗:保存按线程落库,失败保留输入并回显错误", async () => {
+    cleanup();
+    render(<ThreadSelector threads={threads} activeThreadId="t1" onSelect={() => undefined} />);
+    fireEvent.click(screen.getByRole("button", { name: /排查 web-01/ }));
+    await screen.findByRole("menuitemradio", { name: /全量磁盘巡检/ });
+    fireEvent.click(screen.getByRole("button", { name: "重命名「全量磁盘巡检」" }));
+    const input = await screen.findByLabelText("对话名");
+    expect((input as HTMLInputElement).value).toBe("全量磁盘巡检");
+    fireEvent.change(input, { target: { value: "全量磁盘巡检(补)" } });
+    api.updateAgentThread.mockRejectedValueOnce(new Error("后端拒了"));
+    api.getAgentThread.mockResolvedValue(null);
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    // 失败:弹窗保持打开、草稿保留、错误原文可见(AGENTS.md §4.1.1)。
+    expect(await screen.findByText("后端拒了")).toBeTruthy();
+    expect((screen.getByLabelText("对话名") as HTMLInputElement).value).toBe(
+      "全量磁盘巡检(补)",
+    );
+    api.updateAgentThread.mockResolvedValueOnce({ ...threads[1] });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(api.updateAgentThread).toHaveBeenCalledWith(
+        expect.objectContaining({ threadId: "t2", title: "全量磁盘巡检(补)" }),
+      ),
+    );
+    await waitFor(() => expect(screen.queryByText("重命名对话")).toBeNull());
+  });
+
+  it("删除先说清连带后果,确认才落库,取消不动", async () => {
+    cleanup();
+    render(<ThreadSelector threads={threads} activeThreadId="t1" onSelect={() => undefined} />);
+    fireEvent.click(screen.getByRole("button", { name: /排查 web-01/ }));
+    await screen.findByRole("menuitemradio", { name: /全量磁盘巡检/ });
+    fireEvent.click(screen.getByRole("button", { name: "删除「全量磁盘巡检」" }));
+    expect(
+      await screen.findByText(/消息、运行记录、操作审计与记忆日志会一并删除/),
+    ).toBeTruthy();
+    // 删的不是当前对话时,不出现"正在查看"提示。
+    expect(screen.queryByText(/正在查看的对话/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(api.deleteAgentThread).not.toHaveBeenCalled();
+    // 取消后菜单已收起(弹窗接管时菜单让位),重新打开再删当前正在查看的对话。
+    fireEvent.click(screen.getByRole("button", { name: /排查 web-01/ }));
+    await screen.findByRole("menuitemradio", { name: /排查 web-01/ });
+    fireEvent.click(screen.getByRole("button", { name: "删除「排查 web-01」" }));
+    expect(await screen.findByText(/回到未选中状态/)).toBeTruthy();
+    api.deleteAgentThread.mockResolvedValueOnce(undefined);
+    fireEvent.click(screen.getByRole("button", { name: "删除" }));
+    await waitFor(() => expect(api.deleteAgentThread).toHaveBeenCalledWith("t1"));
   });
 });
 

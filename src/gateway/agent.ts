@@ -54,13 +54,14 @@ export function createAgentThread(request: {
   });
 }
 
-/** 修改线程(标题 / 审批档 / 绑定 / 模型配置)。 */
+/** 修改线程(标题 / 审批档 / 绑定 / 模型配置 / 置顶)。 */
 export function updateAgentThread(request: {
   threadId: string;
   title?: string;
   approvalMode?: "read_only_auto" | "all_confirm" | "read_only_only";
   boundSessionId?: string | null;
   profileId?: string;
+  pinned?: boolean;
 }): Promise<AgentThread> {
   return invokeUnwrapped("update_agent_thread", {
     request: {
@@ -69,6 +70,7 @@ export function updateAgentThread(request: {
       approvalMode: request.approvalMode ?? null,
       boundSessionId: request.boundSessionId ?? null,
       profileId: request.profileId ?? null,
+      pinned: request.pinned ?? null,
     },
   });
 }

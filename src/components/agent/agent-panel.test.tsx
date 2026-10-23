@@ -134,6 +134,7 @@ beforeEach(() => {
         profileId: "p1",
         createdAt: 1,
         updatedAt: 2,
+        pinnedAt: null,
       },
     ],
     profiles: [],

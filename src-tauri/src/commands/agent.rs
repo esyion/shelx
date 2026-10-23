@@ -114,7 +114,7 @@ pub fn create_agent_thread(
     map_err(state.agent.create_thread(draft).map(Into::into))
 }
 
-/// 修改线程(标题 / 审批档 / 绑定 / profile)。
+/// 修改线程(标题 / 审批档 / 绑定 / profile / 置顶)。
 #[tauri::command]
 pub fn update_agent_thread(
     state: State<AppState>,
@@ -136,6 +136,7 @@ pub fn update_agent_thread(
                 request.approval_mode,
                 bound,
                 request.profile_id,
+                request.pinned,
             )
             .map(Into::into),
     )

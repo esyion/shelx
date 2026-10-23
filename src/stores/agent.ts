@@ -62,15 +62,16 @@ export interface AgentStore {
   closeThread(): void;
   /** 新建并打开线程。 */
   createThread(profileId: string, title?: string): Promise<string | null>;
-  /** 删除线程。 */
-  removeThread(threadId: string): Promise<void>;
-  /** 改线程属性。 */
+  /** 删除线程(成功返回 true;失败把原因写入 error 并返回 false,供确认弹窗保持打开)。 */
+  removeThread(threadId: string): Promise<boolean>;
+  /** 改线程属性(置顶/改名后按后端同款顺序重排:置顶在前,其余按更新时间倒序;成功返回 true,失败原因写入 error)。 */
   patchThread(
     threadId: string,
     patch: Partial<Pick<AgentThread, "title" | "approvalMode" | "profileId">> & {
       boundSessionId?: string | null;
+      pinned?: boolean;
     },
-  ): Promise<void>;
+  ): Promise<boolean>;
   /** 发起一轮。 */
   send(prompt: string): Promise<void>;
   /** 取消一轮。 */
@@ -97,6 +98,19 @@ export interface AgentStore {
   setError(message: string): void;
   /** 合并一条流式事件(订阅回调使用)。 */
   applyEvent(event: AgentEvent): void;
+}
+
+/**
+ * 与后端列表同一顺序:置顶在前(组内按置顶时间倒序),其余按更新时间倒序。
+ * 置顶/改名只改了单条记录,本地按同一规则重排即可,不必重拉整张列表。
+ */
+function sortThreads(threads: AgentThread[]): AgentThread[] {
+  return [...threads].sort((a, b) => {
+    const pinned = Number(b.pinnedAt != null) - Number(a.pinnedAt != null);
+    if (pinned !== 0) return pinned;
+    if (a.pinnedAt != null && b.pinnedAt != null) return b.pinnedAt - a.pinnedAt;
+    return b.updatedAt - a.updatedAt;
+  });
 }
 
 /** 拉取快照并合并(失败时保留旧数据并回报错误)。 */
@@ -223,8 +237,10 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         activeThreadId: wasActive ? null : get().activeThreadId,
       });
       if (wasActive) get().closeThread();
+      return true;
     } catch (error) {
       set({ error: messageOf(error) });
+      return false;
     }
   },
 
@@ -236,13 +252,18 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         approvalMode: patch.approvalMode,
         boundSessionId: patch.boundSessionId,
         profileId: patch.profileId,
+        pinned: patch.pinned,
       });
       set({
-        threads: get().threads.map((thread) => (thread.id === updated.id ? updated : thread)),
+        threads: sortThreads(
+          get().threads.map((thread) => (thread.id === updated.id ? updated : thread)),
+        ),
       });
       await refreshSnapshot(threadId, set, get);
+      return true;
     } catch (error) {
       set({ error: messageOf(error) });
+      return false;
     }
   },
 

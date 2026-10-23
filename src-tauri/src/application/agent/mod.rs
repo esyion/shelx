@@ -235,6 +235,7 @@ impl AgentService {
             created_at: now,
             updated_at: now,
             archived_at: None,
+            pinned_at: None,
         };
         self.store.upsert_thread(&thread)?;
         Ok(thread)
@@ -290,7 +291,10 @@ impl AgentService {
         })
     }
 
-    /// 改标题或审批模式或绑定会话(None 表示不改)。
+    /// 改标题、审批模式、绑定会话、模型配置或置顶(None 表示不改)。
+    ///
+    /// 置顶只改 `pinned_at`,不动 `updated_at`:取消置顶后线程按原更新时间
+    /// 回到"最近"组,不会因为置过一次顶就窜到列表最前。
     ///
     /// # Errors
     /// 线程不存在或存储失败。
@@ -301,11 +305,16 @@ impl AgentService {
         approval: Option<ApprovalMode>,
         bound_session_id: Option<Option<String>>,
         profile_id: Option<String>,
+        pinned: Option<bool>,
     ) -> Result<ThreadRecord, AgentError> {
         let mut thread = self
             .store
             .thread(thread_id)?
             .ok_or(AgentError::NotFound("对话线程"))?;
+        let touched = title.is_some()
+            || approval.is_some()
+            || bound_session_id.is_some()
+            || profile_id.is_some();
         if let Some(title) = title {
             if title.trim().is_empty() {
                 return Err(AgentError::Invalid("标题不能为空".into()));
@@ -324,7 +333,12 @@ impl AgentService {
             }
             thread.profile_id = profile_id;
         }
-        thread.updated_at = now_millis();
+        if let Some(pinned) = pinned {
+            thread.pinned_at = pinned.then(now_millis);
+        }
+        if touched {
+            thread.updated_at = now_millis();
+        }
         self.store.upsert_thread(&thread)?;
         Ok(thread)
     }

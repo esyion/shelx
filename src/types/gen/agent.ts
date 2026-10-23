@@ -759,6 +759,10 @@ export interface ThreadDto {
    */
   id: string;
   /**
+   * 置顶时间(`None` = 未置顶;列表置顶在前、按置顶时间倒序)。
+   */
+  pinnedAt: number | null;
+  /**
    * 模型配置 ID。
    */
   profileId: string;
@@ -818,6 +822,10 @@ export interface UpdateThreadRequestDto {
    * 绑定会话;传空字符串表示解绑。
    */
   boundSessionId: string | null;
+  /**
+   * 置顶(`true` = 置顶,`false` = 取消置顶);不传不改。
+   */
+  pinned: boolean | null;
   /**
    * 模型配置 ID。
    */

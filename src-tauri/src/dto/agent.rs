@@ -38,6 +38,8 @@ pub struct ThreadDto {
     pub created_at: Millis,
     /// 更新时间。
     pub updated_at: Millis,
+    /// 置顶时间(`None` = 未置顶;列表置顶在前、按置顶时间倒序)。
+    pub pinned_at: Option<Millis>,
 }
 
 impl From<ThreadRecord> for ThreadDto {
@@ -51,6 +53,7 @@ impl From<ThreadRecord> for ThreadDto {
             bound_session_id: value.bound_session_id,
             created_at: value.created_at,
             updated_at: value.updated_at,
+            pinned_at: value.pinned_at,
         }
     }
 }
@@ -503,6 +506,9 @@ pub struct UpdateThreadRequestDto {
     /// 模型配置 ID。
     #[serde(default)]
     pub profile_id: Option<String>,
+    /// 置顶(`true` = 置顶,`false` = 取消置顶);不传不改。
+    #[serde(default)]
+    pub pinned: Option<bool>,
 }
 
 /// 发起对话请求。

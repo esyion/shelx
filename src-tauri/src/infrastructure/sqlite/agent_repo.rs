@@ -106,6 +106,7 @@ fn row_to_thread(row: &rusqlite::Row<'_>) -> rusqlite::Result<ThreadRecord> {
         created_at: row.get(5)?,
         updated_at: row.get(6)?,
         archived_at: row.get(7)?,
+        pinned_at: row.get(8)?,
     })
 }
 
@@ -153,13 +154,15 @@ fn row_to_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<RunRecord> {
 }
 
 const THREAD_COLUMNS: &str =
-    "id,title,profile_id,approval_mode,bound_session_id,created_at,updated_at,archived_at";
+    "id,title,profile_id,approval_mode,bound_session_id,created_at,updated_at,archived_at,pinned_at";
 
 impl AgentStore for SqliteAgentStore {
     fn threads(&self) -> Result<Vec<ThreadRecord>, StoreFault> {
         self.with_conn(|conn| {
+            // 置顶在前(SQLite 里 NULL 参与比较为真 → 1,置顶行 → 0),组内各按时间倒序。
             let sql = format!(
-                "SELECT {THREAD_COLUMNS} FROM agent_threads WHERE archived_at IS NULL ORDER BY updated_at DESC"
+                "SELECT {THREAD_COLUMNS} FROM agent_threads WHERE archived_at IS NULL \
+                 ORDER BY (pinned_at IS NULL), pinned_at DESC, updated_at DESC"
             );
             let mut stmt = conn.prepare(&sql)?;
             let rows = stmt.query_map([], row_to_thread)?;
@@ -178,10 +181,10 @@ impl AgentStore for SqliteAgentStore {
         let approval = wire_string(&thread.approval)?;
         self.with_conn(|conn| {
             conn.execute(
-                "INSERT INTO agent_threads (id,title,profile_id,approval_mode,bound_session_id,created_at,updated_at,archived_at)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8)
+                "INSERT INTO agent_threads (id,title,profile_id,approval_mode,bound_session_id,created_at,updated_at,archived_at,pinned_at)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)
                  ON CONFLICT(id) DO UPDATE SET title=?2, profile_id=?3, approval_mode=?4,
-                   bound_session_id=?5, updated_at=?7, archived_at=?8",
+                   bound_session_id=?5, updated_at=?7, archived_at=?8, pinned_at=?9",
                 params![
                     thread.id,
                     thread.title,
@@ -190,7 +193,8 @@ impl AgentStore for SqliteAgentStore {
                     thread.bound_session_id,
                     thread.created_at,
                     thread.updated_at,
-                    thread.archived_at
+                    thread.archived_at,
+                    thread.pinned_at
                 ],
             )
         })?;
@@ -620,6 +624,7 @@ mod tests {
             created_at: 1,
             updated_at: 1,
             archived_at: None,
+            pinned_at: None,
         }
     }
 
@@ -689,6 +694,54 @@ mod tests {
         let loaded = store.profiles().unwrap().remove(0);
         assert_eq!(loaded.context_window, None);
         assert_eq!(loaded.max_output_tokens, None);
+    }
+
+    /// 置顶线程排最前(组内按置顶时间倒序),其余仍按更新时间倒序;
+    /// 置顶往返不丢、取消置顶(回 NULL)后回到"最近"组。
+    #[test]
+    fn threads_order_pinned_first() {
+        let store = SqliteAgentStore::open_in_memory().unwrap();
+        let mut older = thread("older");
+        older.updated_at = 10;
+        let mut newer = thread("newer");
+        newer.updated_at = 20;
+        let mut pinned_first = thread("pinned-first");
+        pinned_first.updated_at = 1; // 最旧,但置顶后必须在最前
+        pinned_first.pinned_at = Some(100);
+        let mut pinned_second = thread("pinned-second");
+        pinned_second.updated_at = 30;
+        pinned_second.pinned_at = Some(50);
+        for record in [&pinned_second, &older, &pinned_first, &newer] {
+            store.upsert_thread(record).unwrap();
+        }
+
+        let ordered: Vec<(String, Option<i64>)> = store
+            .threads()
+            .unwrap()
+            .into_iter()
+            .map(|record| (record.id, record.pinned_at))
+            .collect();
+        assert_eq!(
+            ordered,
+            vec![
+                ("pinned-first".into(), Some(100)),
+                ("pinned-second".into(), Some(50)),
+                ("newer".into(), None),
+                ("older".into(), None),
+            ]
+        );
+
+        // 取消置顶:pinned_at 回 NULL,按原更新时间回到"最近"组末尾。
+        let mut unpinned = pinned_first;
+        unpinned.pinned_at = None;
+        store.upsert_thread(&unpinned).unwrap();
+        let ids: Vec<String> = store
+            .threads()
+            .unwrap()
+            .into_iter()
+            .map(|record| record.id)
+            .collect();
+        assert_eq!(ids, vec!["pinned-second", "newer", "older", "pinned-first"]);
     }
 
     /// 消息按窗口取尾部并正序返回;线程时间被刷新。

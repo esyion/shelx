@@ -74,6 +74,8 @@ pub struct ThreadRecord {
     pub updated_at: i64,
     /// 归档时间(`None` 表示未归档)。
     pub archived_at: Option<i64>,
+    /// 置顶时间(`None` 表示未置顶;列表里置顶在前、按置顶时间倒序)。
+    pub pinned_at: Option<i64>,
 }
 
 /// 一次运行的持久化记录(重启后据此解释"上次为什么没跑完")。
