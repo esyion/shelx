@@ -71,8 +71,7 @@ const AGENT_APPROVAL_OPTIONS: Record<string, string> = {
 };
 
 /** 设置项文案表(缺失即不渲染)。 */
-export const SETTING_COPY: Partial<Record<SettingPath, SettingCopy>> = {
-  "appearance.theme": {
+export const SETTING_COPY: Partial<Record<SettingPath, SettingCopy>> = {  "appearance.theme": {
     label: "主题",
     hint: "深浅色外观,默认跟随系统",
     groupTitle: "通用",
@@ -212,4 +211,35 @@ export const SETTING_COPY: Partial<Record<SettingPath, SettingCopy>> = {
     label: "显示助手的思考过程",
     hint: "对话里折叠展示助手怎么想的,点开可看原文;关闭后只留下做了哪些操作",
   },
+  "window.closeToTray": {
+    label: "关闭窗口时最小化到托盘",
+    hint: "点关闭按钮不退出,程序缩到系统托盘,终端与会话继续保活;从托盘图标找回窗口或退出",
+    groupTitle: "窗口与系统",
+    groupHint: "窗口行为与系统集成,修改即时生效",
+  },
+  "window.launchAtStartup": {
+    label: "开机自动启动",
+    hint: "登录系统后自动启动 shelx;配合托盘常驻,随时找回窗口",
+  },
+  "window.showShortcut": {
+    label: "全局唤起快捷键",
+    hint: "在任何程序里按下组合键,把 shelx 主窗口带到最前",
+    options: {
+      disabled: "关闭",
+      alt_shift_s: "Alt + Shift + S",
+      ctrl_alt_s: "Ctrl + Alt + S",
+    },
+  },
+  "window.systemNotifications": {
+    label: "不在前台时用系统通知提醒",
+    hint: "切到别的程序时,传输完成、连接断开经系统通知提醒;正在使用 shelx 时只弹应用内提示",
+  },
 };
+
+/**
+ * 全局唤起快捷键的契约路径单点。
+ *
+ * 快捷键页要用文案表里这项的 spec/copy 渲染真实控件,跨文件引用常量
+ * 而不是再写一份路径字面量(本文件是路径字面量唯一允许出现的地方)。
+ */
+export const GLOBAL_SHORTCUT_PATH: SettingPath = "window.showShortcut";

@@ -39,6 +39,13 @@
     ]
   },
   "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "ssh"
+        ]
+      }
+    },
     "updater": {
       "endpoints": [
         "https://github.com/esyion/shelx/releases/latest/download/latest.json"

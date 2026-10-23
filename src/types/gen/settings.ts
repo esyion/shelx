@@ -74,6 +74,7 @@ export interface AppSettings {
   terminal: TerminalSettings;
   transfer: TransferSettings;
   update: UpdateSettings;
+  window: WindowSettings;
 }
 /**
  * Agent 设置(M5,docs/AGENT_DESIGN.md)。
@@ -237,6 +238,28 @@ export interface UpdateSettings {
    * 自动检查更新;关闭后后台循环跳过网络请求。
    */
   autoCheck: boolean;
+}
+/**
+ * 窗口与系统集成设置(托盘/自启/全局快捷键/系统通知)。
+ */
+export interface WindowSettings {
+  /**
+   * 关闭窗口时最小化到托盘:拦截关闭改隐藏,SSH 会话后台保活,
+   * 从托盘图标找回窗口或退出。
+   */
+  closeToTray: boolean;
+  /**
+   * 开机自启:登录系统后自动启动;启动期把注册表收敛到本值。
+   */
+  launchAtStartup: boolean;
+  /**
+   * 全局唤起主窗口的快捷键档位(档位而非自由文本:组合键合法性由枚举单点保证)。
+   */
+  showShortcut: "disabled" | "alt_shift_s" | "ctrl_alt_s";
+  /**
+   * 窗口不在前台时经系统通知提醒(传输完成/连接断开);前台时只用应用内提示。
+   */
+  systemNotifications: boolean;
 }
 /**
  * 单个设置项契约。

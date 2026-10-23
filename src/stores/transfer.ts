@@ -10,6 +10,7 @@ import { create } from "zustand";
 import type { TransferProgressEvent, TransferTask } from "@/types";
 import { useSettingsStore } from "@/stores/settings";
 import { useUiStore } from "@/stores/ui";
+import { notifyWhenUnfocused } from "@/services/notify";
 
 /** 进度事件与任务快照的合并形态。 */
 export interface TransferItem extends Partial<TransferTask> {
@@ -45,6 +46,10 @@ function notifyCompleted(
   if (!useSettingsStore.getState().settings?.transfer.notifyOnComplete) return;
   const name = next.fileName ?? "未知文件";
   useUiStore.getState().toast(`传输完成：${name}`);
+  // 窗口不在前台时补一条系统通知(渠道开关 window.systemNotifications)。
+  if (useSettingsStore.getState().settings?.window.systemNotifications) {
+    void notifyWhenUnfocused("传输完成", name);
+  }
 }
 
 export const useTransferStore = create<TransferStore>((set, get) => ({

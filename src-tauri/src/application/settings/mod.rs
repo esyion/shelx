@@ -97,6 +97,26 @@ impl Language {
     pub const ALL: &'static [Self] = &[Self::Zh, Self::En];
 }
 
+/// 全局唤起主窗口的快捷键档位(档位而非自由文本:组合键合法性由枚举单点保证)。
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ShowShortcut {
+    /// 关闭(默认)。
+    #[default]
+    Disabled,
+    /// Alt + Shift + S。
+    AltShiftS,
+    /// Ctrl + Alt + S。
+    CtrlAltS,
+}
+
+impl ShowShortcut {
+    /// 全部候选值(顺序即设置界面顺序)。
+    pub const ALL: &'static [Self] = &[Self::Disabled, Self::AltShiftS, Self::CtrlAltS];
+}
+
 /// 光标样式。
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, schemars::JsonSchema,
@@ -277,6 +297,21 @@ pub struct UpdateSettings {
     pub auto_check: bool,
 }
 
+/// 窗口与系统集成设置(托盘/自启/全局快捷键/系统通知)。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WindowSettings {
+    /// 关闭窗口时最小化到托盘:拦截关闭改隐藏,SSH 会话后台保活,
+    /// 从托盘图标找回窗口或退出。
+    pub close_to_tray: bool,
+    /// 开机自启:登录系统后自动启动;启动期把注册表收敛到本值。
+    pub launch_at_startup: bool,
+    /// 全局唤起主窗口的快捷键档位;关闭时不注册任何系统级组合键。
+    pub show_shortcut: ShowShortcut,
+    /// 窗口不在前台时经系统通知提醒(传输完成/连接断开);前台时只用应用内提示。
+    pub system_notifications: bool,
+}
+
 /// Agent 设置(M5,docs/AGENT_DESIGN.md)。
 ///
 /// 区间与档位只在 [`schema`] 登记一次,校验与界面下拉同源;
@@ -347,6 +382,8 @@ pub struct AppSettings {
     pub monitor: MonitorSettings,
     /// 更新。
     pub update: UpdateSettings,
+    /// 窗口与系统集成。
+    pub window: WindowSettings,
     /// AI Agent(M5)。
     pub agent: AgentSettings,
     /// 数据迁移。
@@ -405,6 +442,19 @@ impl Default for UpdateSettings {
     /// 更新分组默认值:开启自动检查(PRD #66)。
     fn default() -> Self {
         Self { auto_check: true }
+    }
+}
+
+impl Default for WindowSettings {
+    /// 窗口分组默认值:关闭即退出、不自启、无全局快捷键;系统通知默认开
+    /// (只在窗口不在前台时触发,不打扰正在使用的用户)。
+    fn default() -> Self {
+        Self {
+            close_to_tray: false,
+            launch_at_startup: false,
+            show_shortcut: ShowShortcut::Disabled,
+            system_notifications: true,
+        }
     }
 }
 

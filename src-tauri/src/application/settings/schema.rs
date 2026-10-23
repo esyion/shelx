@@ -15,8 +15,8 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::{
-    AppSettings, ConflictPolicy, CursorStyle, DefaultAuthMethod, Language, TerminalColorScheme,
-    ThemeMode,
+    AppSettings, ConflictPolicy, CursorStyle, DefaultAuthMethod, Language, ShowShortcut,
+    TerminalColorScheme, ThemeMode,
 };
 
 /// 滚动缓冲行数上限(PRD §6.3:默认 5000,最大 100000)。
@@ -264,6 +264,29 @@ fn raw_specs() -> Vec<RawSpec> {
             path: "monitor.defaultIntervalSecs",
             unit: Some("秒"),
             kind: ints(2, 60, &[2, 5, 10, 30, 60]),
+        },
+        // ---- 窗口与系统(登记顺序即设置页分组顺序:监控之后、更新之前)----
+        RawSpec {
+            path: "window.closeToTray",
+            unit: None,
+            kind: SettingKind::Bool,
+        },
+        RawSpec {
+            path: "window.launchAtStartup",
+            unit: None,
+            kind: SettingKind::Bool,
+        },
+        RawSpec {
+            path: "window.showShortcut",
+            unit: None,
+            kind: SettingKind::Enum {
+                options: enum_values(ShowShortcut::ALL),
+            },
+        },
+        RawSpec {
+            path: "window.systemNotifications",
+            unit: None,
+            kind: SettingKind::Bool,
         },
         RawSpec {
             path: "update.autoCheck",

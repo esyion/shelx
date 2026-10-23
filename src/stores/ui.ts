@@ -32,6 +32,16 @@ export interface ToastItem {
   variant: "info" | "error";
 }
 
+/** ssh:// 深链解析出的快速连接预填目标(载荷即 DeepLinkTargetDto 形状)。 */
+export interface QuickLink {
+  /** 主机(IP 或域名),必非空。 */
+  host: string;
+  /** 用户名;链接未提供为 null(沿用表单默认)。 */
+  username: string | null;
+  /** 端口;链接未提供为 22。 */
+  port: number;
+}
+
 /** 布局 + UI store。 */
 export interface UiStore {
   /** 侧栏是否折叠（Ctrl+B）。 */
@@ -52,6 +62,8 @@ export interface UiStore {
   agentOpen: boolean;
   /** AI 助手右栏宽度占主区百分比(20-60);null = 未持久化,用默认 35。 */
   agentPanelSplit: number | null;
+  /** 待消费的 ssh:// 深链目标;null = 无。由连接树消费后立即清空。 */
+  pendingQuickLink: QuickLink | null;
   /** 启动时从后端恢复布局（幂等）。 */
   restoreLayout(): Promise<void>;
   /** 折叠/展开侧栏。 */
@@ -76,6 +88,8 @@ export interface UiStore {
   toggleAgent(): void;
   /** 调整 AI 助手右栏宽度占比（拖拽手柄回调驱动，内部钳制到 [20, 60]）。 */
   setAgentPanelSplit(percent: number): void;
+  /** 设置待消费的 ssh:// 深链目标(null 清除);由深链事件监听写入。 */
+  setPendingQuickLink(link: QuickLink | null): void;
 }
 
 let toastSeq = 0;
@@ -107,6 +121,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
   conflictTaskId: null,
   agentOpen: false,
   agentPanelSplit: null,
+  pendingQuickLink: null,
 
   async restoreLayout() {
     try {
@@ -225,5 +240,9 @@ export const useUiStore = create<UiStore>((set, get) => ({
     );
     set({ agentPanelSplit: clamped });
     persistLayout(get());
+  },
+
+  setPendingQuickLink(link) {
+    set({ pendingQuickLink: link });
   },
 }));

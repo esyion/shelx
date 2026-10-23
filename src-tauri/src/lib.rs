@@ -26,13 +26,54 @@ mod ipc_contract;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // 单实例必须第一个注册:二次启动把主窗口带回前台,不开新进程窗口。
+        // 注意回调里不得做耗时工作,会阻塞新进程退出。
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            use tauri::Manager;
+            tracing::info!(args = ?args.len(), "检测到二次启动,唤起已有窗口");
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+            // Windows 上经协议拉起的二次启动把 ssh:// 链接放在 argv,转发给本实例。
+            for arg in &args {
+                if arg.starts_with("ssh://") {
+                    infrastructure::deep_link::handle_ssh_url(app, arg);
+                }
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // 系统通知:窗口不在前台时提醒传输完成/连接断开(经 services/notify 触发)。
+        .plugin(tauri_plugin_notification::init())
+        // ssh:// 协议深链:链接在 Rust 侧解析(deep_link 适配器),事件交前端预填。
+        .plugin(tauri_plugin_deep_link::init())
+        // 窗口状态记忆:插件初始化先于配置窗口创建,恢复才能生效。
+        .plugin(tauri_plugin_window_state::Builder::default().build())
+        // 开机自启:注册表读写经插件;实际同步在 setup 里按设置收敛。
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
+        // 全局快捷键:按下任意已注册组合键都把主窗口带到最前(唤起是唯一用途,
+        // 具体注册哪个组合键由 window_integration 按设置档位动态维护)。
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        infrastructure::tray::show_main_window(app);
+                    }
+                })
+                .build(),
+        )
         .setup(|app| {
             use tauri::Manager;
+            // 系统托盘:常驻回到入口(显示主窗口/退出);失败属不可恢复装配错误。
+            infrastructure::tray::setup(app.handle())?;
             // 设置/布局落在平台配置目录(AGENTS.md §10);此目录必须可用。
             let config_dir = app.path().app_config_dir().expect("无法解析应用配置目录");
             std::fs::create_dir_all(&config_dir)
@@ -87,7 +128,59 @@ pub fn run() {
                 settings,
                 &resolution,
             ));
+
+            // 开机自启收敛:设置文件是事实来源,启动时对齐注册表(仅正式包;
+            // 读取失败只跳过本次同步,不按默认值误关用户的自启)。
+            match app.state::<state::AppState>().settings.get() {
+                Ok(current) => {
+                    if let Err(message) =
+                        infrastructure::window_integration::apply(app.handle(), &current)
+                    {
+                        tracing::warn!(reason = %message, "启动同步开机自启失败");
+                    }
+                }
+                Err(err) => {
+                    tracing::warn!(error = %err, "读取设置失败,跳过开机自启同步");
+                }
+            }
+
+            // ssh:// 协议关联:Windows/Linux 运行时注册,macOS 由配置写入 Info.plist。
+            // 注册失败不致命(功能不可用但应用可跑);打开链接时解析目标并预填快速连接。
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                if let Err(err) = app.deep_link().register_all() {
+                    tracing::warn!(error = %err, "注册 ssh:// 协议关联失败,深链功能不可用");
+                }
+                let handle = app.handle().clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        infrastructure::deep_link::handle_ssh_url(&handle, url.as_str());
+                    }
+                });
+            }
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // 关闭拦截:设置「关闭窗口时最小化到托盘」开启时,点 X 改为隐藏窗口,
+            // SSH/SFTP 会话后台保活;托盘菜单「退出」走 app.exit(0),不经此处。
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                use tauri::Manager;
+                let close_to_tray = window
+                    .app_handle()
+                    .state::<state::AppState>()
+                    .settings
+                    .get()
+                    .map(|s| s.window.close_to_tray)
+                    .unwrap_or_else(|err| {
+                        tracing::warn!(error = %err, "读取关闭行为设置失败,按退出处理");
+                        false
+                    });
+                if close_to_tray {
+                    api.prevent_close();
+                    let _ = window.hide();
+                    tracing::info!("窗口关闭转入托盘常驻");
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_meta::get_app_version,
@@ -106,6 +199,7 @@ pub fn run() {
             commands::settings::update_settings,
             commands::settings::get_layout,
             commands::settings::save_layout,
+            commands::window::apply_window_settings,
             commands::migration::get_data_migration_status,
             commands::migration::approve_data_migration,
             commands::migration::dismiss_data_migration,

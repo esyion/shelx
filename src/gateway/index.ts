@@ -8,6 +8,7 @@ export {
   listenEvent,
   setWindowTheme,
   APP_UPDATE_EVENTS,
+  DEEP_LINK_EVENTS,
   SESSION_EVENTS,
 } from "./tauri";
 export * as agentApi from "./agent";
@@ -19,8 +20,11 @@ export * as migrationApi from "./migration";
 export { relaunchForMigration } from "./migration";
 export * as terminalsApi from "./terminals";
 export * as transferApi from "./transfer";
+export * as windowApi from "./window";
 export * as localFsApi from "./local_fs";
 export * as monitorApi from "./monitor";
+export { sendSystemNotification } from "./notification";
+export { isWindowFocused, setWindowAlwaysOnTop } from "./window";
 export * as systemInfoApi from "./system-info";
 export * as appMetaApi from "./app-meta";
 export * as openerApi from "./opener";

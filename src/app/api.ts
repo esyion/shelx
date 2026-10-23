@@ -18,6 +18,7 @@ import {
   transferApi,
   openerApi,
   clipboardApi,
+  windowApi,
 } from "@/gateway";
 
 /** 列出连接树。 */
@@ -247,3 +248,9 @@ export const listAgentMemories = agentApi.listAgentMemories;
 export const upsertAgentMemory = agentApi.upsertAgentMemory;
 /** 删除共享记忆。 */
 export const deleteAgentMemory = agentApi.deleteAgentMemory;
+
+/** 应用「窗口与系统」设置到操作系统(开机自启等,保存后即时生效)。 */
+export const applyWindowSettings = windowApi.applyWindowSettings;
+
+/** 设置主窗口是否置顶(监控盯盘场景;离开场景由调用方还原)。 */
+export const setWindowAlwaysOnTop = windowApi.setWindowAlwaysOnTop;

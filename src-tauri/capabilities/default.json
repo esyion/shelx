@@ -8,6 +8,8 @@
   "permissions": [
     "core:default",
     "core:window:allow-set-theme",
+    "core:window:allow-set-always-on-top",
+    "notification:default",
     "opener:default",
     "dialog:default",
     "updater:default",

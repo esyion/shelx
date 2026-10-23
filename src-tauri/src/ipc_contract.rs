@@ -158,6 +158,9 @@ fn document_uncanonical() -> Value {
             "update": build_module(&[
                 ("UpdateNotice", refer::<crate::dto::update::UpdateNotice>),
             ]),
+            "deepLink": build_module(&[
+                ("DeepLinkTargetDto", refer::<crate::dto::deep_link::DeepLinkTargetDto>),
+            ]),
             "agent": build_module(&[
                 ("ProtocolKind", refer::<crate::domain::agent::ProtocolKind>),
                 ("ApprovalMode", refer::<crate::domain::agent::ApprovalMode>),

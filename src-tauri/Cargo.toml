@@ -19,7 +19,8 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 # --- Tauri 框架与插件 ---
-tauri = { version = "2", features = [] }
+# tray-icon:系统托盘(关闭最小化到托盘时保活 SSH 会话的回到入口)。
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
 tauri-plugin-process = "2"
 # 系统剪贴板:WKWebView 拒绝 Web Clipboard API(NotAllowedError),
@@ -30,6 +31,28 @@ tauri-plugin-clipboard-manager = "=2.3.3"
 # 应用内更新:GitHub Releases endpoint + minisign 签名校验。
 # 公钥见 src-tauri/keys/minisign.pub(随仓库发布);私钥经 GitHub Secret 注入 CI。
 tauri-plugin-updater = "2"
+# 记住窗口大小/位置/最大化状态:注册即自动在退出时保存、建窗时恢复。
+# 回滚:删除本依赖与 lib.rs 注册行即可,窗口回到 tauri.conf.json 的固定几何。
+tauri-plugin-window-state = "2"
+# 单实例:二次启动(含双击 ssh:// 链接拉起的新进程)不再开新窗口,
+# 而是把已有主窗口带回前台;回调必须注册为第一个插件。
+# 回滚:删除本依赖与 lib.rs 注册行即可恢复多开行为。
+tauri-plugin-single-instance = "2"
+# 开机自启:设置项驱动,启动期收敛注册表与设置文件的一致性。
+# dev 构建跳过注册表写入(避免 dev/安装版互相覆写自启指向)。
+# 回滚:删除本依赖、lib.rs 注册行与 window_integration 同步逻辑即可。
+tauri-plugin-autostart = "2"
+# 全局快捷键:任意界面唤起主窗口;档位枚举进设置契约,无自由文本输入。
+# 回滚:删除本依赖、lib.rs 注册行与 window_integration 的快捷键同步即可。
+tauri-plugin-global-shortcut = "2"
+# 系统通知:窗口不在前台时提醒传输完成/连接断开;crate 与 npm
+# @tauri-apps/plugin-notification 保持 2.x 对齐。
+# 回滚:删除本依赖、lib.rs 注册行、capability 与 services/notify.ts 即可。
+tauri-plugin-notification = "2"
+# ssh:// 协议深链:浏览器/文档点击链接直达快速连接(解析在 Rust,事件交前端)。
+# Windows/Linux 运行时注册协议关联,macOS 经 tauri.conf.json 写入 Info.plist。
+# 回滚:删除本依赖、注册行、deep_link 适配器与配置里的 schemes 即可。
+tauri-plugin-deep-link = "2"
 
 # --- 序列化与配置(JSON)---
 serde = { version = "1", features = ["derive"] }

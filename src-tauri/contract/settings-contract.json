@@ -279,6 +279,47 @@
       "default": 5.0
     },
     {
+      "path": "window.closeToTray",
+      "group": "window",
+      "unit": null,
+      "kind": {
+        "kind": "bool"
+      },
+      "default": false
+    },
+    {
+      "path": "window.launchAtStartup",
+      "group": "window",
+      "unit": null,
+      "kind": {
+        "kind": "bool"
+      },
+      "default": false
+    },
+    {
+      "path": "window.showShortcut",
+      "group": "window",
+      "unit": null,
+      "kind": {
+        "kind": "enum",
+        "options": [
+          "disabled",
+          "alt_shift_s",
+          "ctrl_alt_s"
+        ]
+      },
+      "default": "disabled"
+    },
+    {
+      "path": "window.systemNotifications",
+      "group": "window",
+      "unit": null,
+      "kind": {
+        "kind": "bool"
+      },
+      "default": true
+    },
+    {
       "path": "update.autoCheck",
       "group": "update",
       "unit": null,
@@ -473,6 +514,12 @@
     },
     "update": {
       "autoCheck": true
+    },
+    "window": {
+      "closeToTray": false,
+      "launchAtStartup": false,
+      "showShortcut": "disabled",
+      "systemNotifications": true
     },
     "agent": {
       "maxTurns": 12,

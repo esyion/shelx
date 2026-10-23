@@ -2621,6 +2621,49 @@
       ],
       "type": "object"
     },
+    "deepLink": {
+      "$defs": {
+        "DeepLinkTargetDto": {
+          "description": "ssh:// 链接解析结果(`deep-link-connect` 事件载荷,用于预填快速连接)。",
+          "properties": {
+            "host": {
+              "description": "主机(IP 或域名);必然非空(解析失败不发事件)。",
+              "type": "string"
+            },
+            "port": {
+              "description": "端口;链接未提供时为 22。",
+              "format": "uint16",
+              "maximum": 65535,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "username": {
+              "description": "用户名;链接未提供时为 None(前端沿用表单默认值)。",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "host",
+            "username",
+            "port"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "DeepLinkTargetDto": {
+          "$ref": "#/$defs/DeepLinkTargetDto"
+        }
+      },
+      "required": [
+        "DeepLinkTargetDto"
+      ],
+      "type": "object"
+    },
     "ipc": {
       "$defs": {
         "IpcError": {
@@ -3769,6 +3812,16 @@
                 "autoCheck": true
               },
               "description": "更新。"
+            },
+            "window": {
+              "$ref": "#/$defs/WindowSettings",
+              "default": {
+                "closeToTray": false,
+                "launchAtStartup": false,
+                "showShortcut": "disabled",
+                "systemNotifications": true
+              },
+              "description": "窗口与系统集成。"
             }
           },
           "required": [
@@ -3778,6 +3831,7 @@
             "transfer",
             "monitor",
             "update",
+            "window",
             "agent",
             "migration"
           ],
@@ -4224,6 +4278,26 @@
           ],
           "type": "object"
         },
+        "ShowShortcut": {
+          "description": "全局唤起主窗口的快捷键档位(档位而非自由文本:组合键合法性由枚举单点保证)。",
+          "oneOf": [
+            {
+              "const": "disabled",
+              "description": "关闭(默认)。",
+              "type": "string"
+            },
+            {
+              "const": "alt_shift_s",
+              "description": "Alt + Shift + S。",
+              "type": "string"
+            },
+            {
+              "const": "ctrl_alt_s",
+              "description": "Ctrl + Alt + S。",
+              "type": "string"
+            }
+          ]
+        },
         "TerminalColorScheme": {
           "description": "终端配色方案(PRD 用户故事 19;GitHub Light 为默认)。",
           "oneOf": [
@@ -4400,6 +4474,38 @@
           },
           "required": [
             "autoCheck"
+          ],
+          "type": "object"
+        },
+        "WindowSettings": {
+          "description": "窗口与系统集成设置(托盘/自启/全局快捷键/系统通知)。",
+          "properties": {
+            "closeToTray": {
+              "default": false,
+              "description": "关闭窗口时最小化到托盘:拦截关闭改隐藏,SSH 会话后台保活,\n从托盘图标找回窗口或退出。",
+              "type": "boolean"
+            },
+            "launchAtStartup": {
+              "default": false,
+              "description": "开机自启:登录系统后自动启动;启动期把注册表收敛到本值。",
+              "type": "boolean"
+            },
+            "showShortcut": {
+              "$ref": "#/$defs/ShowShortcut",
+              "default": "disabled",
+              "description": "全局唤起主窗口的快捷键档位;关闭时不注册任何系统级组合键。"
+            },
+            "systemNotifications": {
+              "default": true,
+              "description": "窗口不在前台时经系统通知提醒(传输完成/连接断开);前台时只用应用内提示。",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "closeToTray",
+            "launchAtStartup",
+            "showShortcut",
+            "systemNotifications"
           ],
           "type": "object"
         }

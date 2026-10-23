@@ -1,6 +1,8 @@
 /**
- * 设置页「快捷键」分组:静态只读表格,列出应用全部键盘快捷键。
- * 与 layout.tsx 全局快捷键实现一一对应;新增/调整快捷键时须同步本表。
+ * 设置页「快捷键」分组:全局唤起快捷键的真实控件 + 应用内快捷键只读表格。
+ *
+ * 表格与 layout.tsx 全局快捷键实现一一对应;新增/调整快捷键时须同步本表。
+ * 全局唤起快捷键(OS 级)是契约驱动的活控件,与「通用」页的窗口组同源联动。
  */
 "use client";
 
@@ -13,7 +15,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { applyWindowSettings } from "@/app/api";
+import { pickSettingValue } from "@/lib/settings-path";
+import { useSettingsStore } from "@/stores/settings";
+import type { SettingsSaveResult } from "@/stores/settings";
+import { useUiStore } from "@/stores/ui";
+import type { SettingPath } from "@/types";
 import { Section } from "./form-controls";
+import {
+  GLOBAL_SHORTCUT_PATH,
+  SETTING_COPY,
+} from "./settings-copy";
+import { SettingControl, type SettingValue } from "./setting-control";
 
 /** 快捷键条目。 */
 interface ShortcutItem {
@@ -58,13 +71,65 @@ function ShortcutRow({ item }: { item: ShortcutItem }) {
   );
 }
 
+/**
+ * 全局唤起快捷键卡片:契约驱动的真实控件,与「通用」页窗口组读写同一设置。
+ *
+ * 设置/契约未就绪时给可见说明而不是空卡片,不伪造控件、不留死状态。
+ */
+function GlobalShortcutCard() {
+  const settings = useSettingsStore((s) => s.settings);
+  const schema = useSettingsStore((s) => s.schema);
+  const toast = useUiStore((s) => s.toast);
+  const spec =
+    schema?.find((item) => item.path === GLOBAL_SHORTCUT_PATH) ?? null;
+  const copy = spec ? SETTING_COPY[spec.path] : undefined;
+
+  /** 与通用页一致的保存链路:落库成功后同步到操作系统,失败 toast 后端原文。 */
+  const onSave = async (
+    path: SettingPath,
+    value: SettingValue,
+  ): Promise<SettingsSaveResult> => {
+    const result = await useSettingsStore.getState().setSetting(path, value);
+    if (result.ok) {
+      void applyWindowSettings().catch((err: unknown) => {
+        toast(err instanceof Error ? err.message : String(err), "error");
+      });
+    } else if (result.error) {
+      toast(result.error, "error");
+    }
+    return result;
+  };
+
+  return (
+    <Section
+      title="全局唤起快捷键"
+      hint="在 shelx 之外的任何界面按下组合键,都能把主窗口带到最前;修改即刻生效"
+    >
+      {spec && copy && settings ? (
+        <SettingControl
+          spec={spec}
+          copy={copy}
+          value={pickSettingValue(settings, spec.path)}
+          onSave={onSave}
+        />
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          设置还没加载出来,稍后再进本页;也可到「通用」页的窗口分组修改。
+        </p>
+      )}
+    </Section>
+  );
+}
+
 /** 设置页「快捷键」分组。 */
 export function ShortcutsSection() {
   return (
-    <Section
-      title="快捷键"
-      hint="除「打开设置」外,以下快捷键仅在终端工作区生效"
-    >
+    <>
+      <GlobalShortcutCard />
+      <Section
+        title="应用内快捷键"
+        hint="除「打开设置」外,以下快捷键仅在终端工作区生效"
+      >
       <Table>
         <TableHeader>
           <TableRow>
@@ -81,6 +146,7 @@ export function ShortcutsSection() {
           ))}
         </TableBody>
       </Table>
-    </Section>
+      </Section>
+    </>
   );
 }
