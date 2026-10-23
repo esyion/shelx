@@ -71,8 +71,7 @@ const AGENT_APPROVAL_OPTIONS: Record<string, string> = {
 };
 
 /** 设置项文案表(缺失即不渲染)。 */
-export const SETTING_COPY: Partial<Record<SettingPath, SettingCopy>> = {
-  "appearance.theme": {
+export const SETTING_COPY: Partial<Record<SettingPath, SettingCopy>> = {  "appearance.theme": {
     label: "主题",
     hint: "深浅色外观,默认跟随系统",
     groupTitle: "通用",
@@ -236,3 +235,11 @@ export const SETTING_COPY: Partial<Record<SettingPath, SettingCopy>> = {
     hint: "切到别的程序时,传输完成、连接断开经系统通知提醒;正在使用 shelx 时只弹应用内提示",
   },
 };
+
+/**
+ * 全局唤起快捷键的契约路径单点。
+ *
+ * 快捷键页要用文案表里这项的 spec/copy 渲染真实控件,跨文件引用常量
+ * 而不是再写一份路径字面量(本文件是路径字面量唯一允许出现的地方)。
+ */
+export const GLOBAL_SHORTCUT_PATH: SettingPath = "window.showShortcut";

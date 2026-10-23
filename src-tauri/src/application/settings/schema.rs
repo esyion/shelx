@@ -265,11 +265,7 @@ fn raw_specs() -> Vec<RawSpec> {
             unit: Some("秒"),
             kind: ints(2, 60, &[2, 5, 10, 30, 60]),
         },
-        RawSpec {
-            path: "update.autoCheck",
-            unit: None,
-            kind: SettingKind::Bool,
-        },
+        // ---- 窗口与系统(登记顺序即设置页分组顺序:监控之后、更新之前)----
         RawSpec {
             path: "window.closeToTray",
             unit: None,
@@ -289,6 +285,11 @@ fn raw_specs() -> Vec<RawSpec> {
         },
         RawSpec {
             path: "window.systemNotifications",
+            unit: None,
+            kind: SettingKind::Bool,
+        },
+        RawSpec {
+            path: "update.autoCheck",
             unit: None,
             kind: SettingKind::Bool,
         },

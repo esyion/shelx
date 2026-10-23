@@ -279,15 +279,6 @@
       "default": 5.0
     },
     {
-      "path": "update.autoCheck",
-      "group": "update",
-      "unit": null,
-      "kind": {
-        "kind": "bool"
-      },
-      "default": true
-    },
-    {
       "path": "window.closeToTray",
       "group": "window",
       "unit": null,
@@ -322,6 +313,15 @@
     {
       "path": "window.systemNotifications",
       "group": "window",
+      "unit": null,
+      "kind": {
+        "kind": "bool"
+      },
+      "default": true
+    },
+    {
+      "path": "update.autoCheck",
+      "group": "update",
       "unit": null,
       "kind": {
         "kind": "bool"
