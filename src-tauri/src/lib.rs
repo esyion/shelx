@@ -31,6 +31,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // 窗口状态记忆:插件初始化先于配置窗口创建,恢复才能生效。
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
             use tauri::Manager;
             // 设置/布局落在平台配置目录(AGENTS.md §10);此目录必须可用。

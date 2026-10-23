@@ -30,6 +30,9 @@ tauri-plugin-clipboard-manager = "=2.3.3"
 # 应用内更新:GitHub Releases endpoint + minisign 签名校验。
 # 公钥见 src-tauri/keys/minisign.pub(随仓库发布);私钥经 GitHub Secret 注入 CI。
 tauri-plugin-updater = "2"
+# 记住窗口大小/位置/最大化状态:注册即自动在退出时保存、建窗时恢复。
+# 回滚:删除本依赖与 lib.rs 注册行即可,窗口回到 tauri.conf.json 的固定几何。
+tauri-plugin-window-state = "2"
 
 # --- 序列化与配置(JSON)---
 serde = { version = "1", features = ["derive"] }
