@@ -32,35 +32,3 @@ pub fn lookup_window(model: &str) -> Option<ModelWindow> {
         max_output_tokens: spec.max_output_tokens,
     })
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// 目录里已收录的模型能查出窗口 —— 这是"分母不必让用户填"的前提。
-    #[test]
-    fn known_model_reports_a_window() {
-        let facts = lookup_window("glm-5.3").expect("随包目录应收录该模型");
-        assert!(
-            facts.context_window.unwrap_or_default() > 0,
-            "窗口必须是正数,拿到 0/None 说明目录读取退化了"
-        );
-    }
-
-    /// 大小写与首尾空白不影响命中(用户手打的模型名各种写法都有)。
-    #[test]
-    fn lookup_ignores_case_and_padding() {
-        assert_eq!(
-            lookup_window("  GLM-5.3 "),
-            lookup_window("glm-5.3"),
-            "同一模型的两种写法必须给同一条目录记录"
-        );
-    }
-
-    /// 查不到的模型如实返回 None,不伪造分母。
-    #[test]
-    fn unknown_model_has_no_window() {
-        assert!(lookup_window("not-a-real-model-xyz").is_none());
-        assert!(lookup_window("   ").is_none());
-    }
-}

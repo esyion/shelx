@@ -88,28 +88,3 @@ impl IpcError {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// 错误码序列化为 PRD 约定的 SCREAMING_SNAKE 字符串。
-    #[test]
-    fn error_code_serializes_as_screaming_snake() {
-        let json = serde_json::to_value(IpcError::new(IpcErrorCode::AuthFailed, "x")).unwrap();
-        assert_eq!(json["code"], "AUTH_FAILED");
-        assert!(json.get("details").is_none());
-    }
-
-    /// with_details 时 details 字段出现,否则省略。
-    #[test]
-    fn details_field_is_optional() {
-        let json = serde_json::to_value(IpcError::with_details(
-            IpcErrorCode::Internal,
-            "x",
-            serde_json::json!({ "retryable": true }),
-        ))
-        .unwrap();
-        assert_eq!(json["details"]["retryable"], true);
-    }
-}

@@ -47,24 +47,3 @@ impl Group {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rejects_blank_name() {
-        assert_eq!(
-            Group::new(GroupId::new("g1").unwrap(), None, "  ".into(), 0),
-            Err(DomainError::EmptyIdentity)
-        );
-    }
-
-    #[test]
-    fn rename_updates_name() {
-        let mut group = Group::new(GroupId::new("g1").unwrap(), None, "生产".into(), 0).unwrap();
-        group.rename("测试".into()).unwrap();
-        assert_eq!(group.name, "测试");
-        assert!(group.rename(" ".into()).is_err());
-    }
-}

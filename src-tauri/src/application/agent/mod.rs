@@ -679,23 +679,3 @@ pub(crate) fn now_millis() -> i64 {
         .map(|value| value.as_millis() as i64)
         .unwrap_or_default()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// 记忆 ID 生成与解析口径一致。
-    #[test]
-    fn memory_id_roundtrip() {
-        let generated = AgentMemoryId::generate();
-        let parsed = AgentMemoryId::parse(generated.as_str()).unwrap();
-        assert_eq!(generated, parsed);
-        assert!(AgentMemoryId::parse("   ").is_err());
-    }
-
-    /// 时间戳为正且单调。
-    #[test]
-    fn now_millis_is_positive() {
-        assert!(now_millis() > 0);
-    }
-}

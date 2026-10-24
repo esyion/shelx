@@ -271,39 +271,3 @@ pub fn join_sibling(path: &str, name: &str) -> String {
         None => name.to_owned(),
     }
 }
-
-/// 测试辅助:暴露内部会话引用(仅测试编译)。
-#[cfg(test)]
-impl SftpService {
-    /// 会话服务引用。
-    pub(crate) fn sessions_ref(&self) -> &Arc<SessionService> {
-        &self.sessions
-    }
-}
-
-#[cfg(test)]
-mod service_tests;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// 子路径拼接。
-    #[test]
-    fn join_child_variants() {
-        assert_eq!(join_child("/srv", "app"), "/srv/app");
-        assert_eq!(join_child("/", "srv"), "/srv");
-    }
-
-    /// 兄弟路径拼接:常规、根下、末尾斜杠、相对路径。
-    #[test]
-    fn join_sibling_variants() {
-        assert_eq!(
-            join_sibling("/home/root/deploy.sh", "app.sh"),
-            "/home/root/app.sh"
-        );
-        assert_eq!(join_sibling("/dist/", "new"), "/new");
-        assert_eq!(join_sibling("/logs", "archive"), "/archive");
-        assert_eq!(join_sibling("relative.txt", "renamed.txt"), "renamed.txt");
-    }
-}

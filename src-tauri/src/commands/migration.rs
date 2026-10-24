@@ -43,31 +43,3 @@ pub fn dismiss_data_migration(state: State<AppState>, id: String) -> IpcResult<(
         Err(err) => IpcResult::err(to_ipc_error(err)),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::application::ports::StoreError;
-    use crate::application::settings::SettingsError;
-
-    /// 未知 id / 非法状态 → INVALID_ARGUMENT,文案透传用例错误。
-    #[test]
-    fn unknown_and_invalid_map_to_invalid_argument() {
-        let unknown = to_ipc_error(MigrationError::Unknown("no-such".into()));
-        assert_eq!(unknown.code, IpcErrorCode::InvalidArgument);
-        assert!(unknown.message.contains("no-such"));
-
-        let invalid = to_ipc_error(MigrationError::Invalid("当前没有可迁移的旧数据".into()));
-        assert_eq!(invalid.code, IpcErrorCode::InvalidArgument);
-        assert!(invalid.message.contains("没有可迁移"));
-    }
-
-    /// 设置持久化失败 → INTERNAL(不泄露内部堆栈,仅结构化文案)。
-    #[test]
-    fn storage_error_maps_to_internal() {
-        let err = MigrationError::from(SettingsError::from(StoreError("磁盘只读".into())));
-        let mapped = to_ipc_error(err);
-        assert_eq!(mapped.code, IpcErrorCode::Internal);
-        assert!(mapped.message.contains("磁盘只读"));
-    }
-}

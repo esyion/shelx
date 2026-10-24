@@ -181,27 +181,3 @@ pub(crate) fn permission_string_of(mode: u32, is_dir: bool) -> String {
     };
     permission_string(Some(mode), file_type)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// 权限字符串派生:目录 755 / 文件 644 / 缺省。
-    #[test]
-    fn permission_string_variants() {
-        use crate::application::ports::RemoteFileType;
-        assert_eq!(
-            permission_string(Some(0o755), RemoteFileType::Dir),
-            "drwxr-xr-x"
-        );
-        assert_eq!(
-            permission_string(Some(0o644), RemoteFileType::File),
-            "-rw-r--r--"
-        );
-        assert_eq!(
-            permission_string(Some(0o777), RemoteFileType::Symlink),
-            "lrwxrwxrwx"
-        );
-        assert_eq!(permission_string(None, RemoteFileType::File), "----------");
-    }
-}

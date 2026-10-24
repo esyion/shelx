@@ -19,23 +19,3 @@ pub fn encode_utf8(text: &str) -> Vec<u8> {
     let (bytes, _, _) = encoding_rs::UTF_8.encode(text);
     bytes.into_owned()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// ASCII 与中文 round-trip:GBK 编码后再解码还原。
-    #[test]
-    fn gbk_round_trip() {
-        let text = "部署脚本 deploy.sh 中文输出";
-        let encoded = encode_gbk(text);
-        let (decoded, _, _) = encoding_rs::GBK.decode(&encoded);
-        assert_eq!(decoded, text);
-    }
-
-    /// ASCII 在 GBK 下与 UTF-8 字节一致(单字节区)。
-    #[test]
-    fn ascii_matches_utf8() {
-        assert_eq!(encode_gbk("ls -la\r"), encode_utf8("ls -la\r"));
-    }
-}

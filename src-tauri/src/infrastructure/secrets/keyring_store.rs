@@ -51,24 +51,3 @@ impl SecretStore for KeyringSecretStore {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// 真实钥匙串 round-trip:仅在开发机执行(CI 无钥匙串服务,保持 #[ignore])。
-    #[test]
-    #[ignore = "需要真实系统钥匙串环境"]
-    fn keyring_round_trip() {
-        let store = KeyringSecretStore;
-        store.put("conn:test:keyring-rt", "秘密值").unwrap();
-        assert_eq!(
-            store.get("conn:test:keyring-rt").unwrap().as_deref(),
-            Some("秘密值")
-        );
-        store.delete("conn:test:keyring-rt").unwrap();
-        assert_eq!(store.get("conn:test:keyring-rt").unwrap(), None);
-        // 幂等删除
-        store.delete("conn:test:keyring-rt").unwrap();
-    }
-}

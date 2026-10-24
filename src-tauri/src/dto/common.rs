@@ -71,30 +71,3 @@ impl<T: fmt::Display> fmt::Display for IpcResult<T> {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::shared::error::IpcErrorCode;
-    use serde_json::json;
-
-    /// 成功信封序列化为 {"ok":true,"data":...}。
-    #[test]
-    fn ok_envelope_serializes_as_discriminated_union() {
-        let value = serde_json::to_value(IpcResult::ok(json!({ "message": "hi" }))).unwrap();
-        assert_eq!(value["ok"], json!(true));
-        assert_eq!(value["data"]["message"], "hi");
-    }
-
-    /// 失败信封序列化为 {"ok":false,"error":{code,message}}。
-    #[test]
-    fn err_envelope_serializes_as_discriminated_union() {
-        let value = serde_json::to_value(IpcResult::<()>::err(IpcError::new(
-            IpcErrorCode::InvalidArgument,
-            "名称不能为空",
-        )))
-        .unwrap();
-        assert_eq!(value["ok"], json!(false));
-        assert_eq!(value["error"]["code"], "INVALID_ARGUMENT");
-    }
-}

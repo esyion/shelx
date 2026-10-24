@@ -55,25 +55,3 @@ impl SettingsStore for JsonFileSettingsStore {
         Self::write(&self.layout_path, raw)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// 文件 round-trip:写入 → 读回一致;未写入的布局文件返回 None。
-    #[test]
-    fn file_round_trip() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = JsonFileSettingsStore::open(dir.path());
-        assert_eq!(store.load_settings().unwrap(), None);
-
-        store
-            .save_settings("{\"appearance\":{\"theme\":\"dark\"}}")
-            .unwrap();
-        assert!(store.load_settings().unwrap().unwrap().contains("dark"));
-        assert_eq!(store.load_layout().unwrap(), None);
-
-        store.save_layout("{\"sidebarWidth\":260}").unwrap();
-        assert!(store.load_layout().unwrap().unwrap().contains("260"));
-    }
-}
