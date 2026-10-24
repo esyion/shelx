@@ -1,150 +1,134 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="public/shelx.svg">
-    <img src="public/shelx-light.svg" alt="shelx" height="40">
-  </picture>
-</p>
+<div align="center">
 
-<p align="center">
-  <strong>English</strong> · <a href="README.zh-CN.md">简体中文</a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/esyion/shelx/releases/latest"><img src="https://img.shields.io/github/v/release/esyion/shelx" alt="latest release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT"></a>
-</p>
+<img src="src-tauri/icons/128x128@2x.png" width="96" alt="shelx logo" />
 
 # shelx
 
-A terminal, a file pane, a look at CPU — and, since 0.3, an assistant that can do the digging for you.
+**SSH terminal · file manager · live monitoring · AI ops assistant — one lightweight desktop app**
 
-I built this because SSH clients keep getting heavier, and most of that weight is stuff I never open. Tunnels, plugin stores, remote desktop, packet tools, five kinds of session log. Fine for someone. For me — and, I think, for about 80% of people who "need a terminal" — the daily loop is: connect, type, copy a file, glance at whether the box is dying. One window should be enough. The assistant follows the same rule: it works over the SSH connections you already configured, it shows every step as it happens, and it waits for your click before it writes anything.
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/esyion/shelx?display_name=tag&include_prereleases)](https://github.com/esyion/shelx/releases)
+[![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)](https://github.com/esyion/shelx/releases)
 
-The layout is borrowed from [FinalShell](https://www.finalshell.net.cn/): connection tree on the left, tabs on top, and the workspace shared by terminal / monitor / files. I sat in that arrangement for years. It still feels like the right one. Thanks, FinalShell.
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-```
-┌──────────────┬─────────────────────────────────┬────────────┐
-│ connections  │  tabs                           │            │
-│              ├─────────────────────────────────┤  AI panel  │
-│  tree        │  terminal · monitor ·           │  (docked,  │
-│              │  processes · files              │  collapses)│
-│  cpu / mem   ├─────────────────────────────────┤            │
-│  / disks     │  transfers                      │            │
-└──────────────┴─────────────────────────────────┴────────────┘
-```
+</div>
 
-Desktop app for Windows, macOS, and Linux. The UI is Chinese right now.
+---
 
-## Install
+shelx is an open-source, cross-platform server management tool. A single SSH connection carries the terminal, SFTP file management, and agentless real-time monitoring at the same time — plus a built-in AI ops assistant that can investigate and operate across your configured hosts with per-host approval.
 
-Grab a build from [Releases](https://github.com/esyion/shelx/releases/latest):
+Everything stays local: connections live in a local database, credentials go into the OS keychain, and there is no account, no cloud sync, and no telemetry.
 
-| Platform | File |
-| --- | --- |
-| Windows x64 | `*-setup.exe` (NSIS) |
-| macOS Apple Silicon | `*_aarch64.dmg` |
-| macOS Intel | `*_x64.dmg` |
-| Linux x64 | `.deb`, `.rpm`, or AppImage |
+## Screenshots
 
-Installers are not Apple / Microsoft signed yet. On macOS, if Gatekeeper blocks it: right-click → Open, or System Settings → Privacy & Security → Open Anyway.
+| Monitoring dashboard | Process list |
+|:---:|:---:|
+| ![Monitoring](public/1.png) | ![Processes](public/2.png) |
 
-After install, shelx checks GitHub Releases on its own and verifies the package with minisign. When an update is out, the sidebar arrow turns blue.
+| Dual-pane file manager (SFTP) | AI assistant — operation log |
+|:---:|:---:|
+| ![Files](public/3.png) | ![AI agent](public/4.png) |
 
-## SSH
+## Features
 
-Double-click a host in the tree. Password, OpenSSH private key, keyboard-interactive (OTP), or「use my local SSH setup」— the agent and default keys (`~/.ssh/id_ed25519`, then `id_ecdsa`, then `id_rsa`). On Windows, the agent looks at `openssh-ssh-agent` first, then Pageant.
+### Connection management
 
-First connect shows the SHA-256 host fingerprint and waits (TOFU). shelx keeps its own known-hosts store — it never touches `~/.ssh/known_hosts`. If the fingerprint later changes, the connection is refused — nothing silent. Keepalive is 30s by default, three misses and it's down.
+- Grouped connection tree with instant search, remarks, and color tags
+- Password, private key (with passphrase), keyboard-interactive (OTP), and ssh-agent authentication
+- Credentials stored in the OS keychain (Windows Credential Manager / macOS Keychain / Linux Secret Service); "session only" and "never save" modes available
+- Host key fingerprint confirmation on first connect (TOFU); changed fingerprints block the connection with a loud warning
+- Quick connect without saving anything; `ssh://` links from the browser prefill it
 
-The terminal is xterm.js — WebGL when the GPU cooperates, DOM renderer when it doesn't. Copy-on-select and right-click paste are on by default, OSC 52 included, all through the native clipboard because WebViews like to refuse the web one. `Ctrl` + wheel changes the font size. Seven built-in color schemes (Dracula, Tokyo Night, One Dark, Nord, Solarized Dark / Light, GitHub Light); font, line height, cursor, scrollback live in settings and apply to open terminals immediately. Chinese IME input has its own guard, so pinyin doesn't shatter into `f rf ree -h`. Encoding is UTF-8 or GBK per host, for the older boxes.
+### SSH terminal
 
-One SSH session carries the terminal, the file pane, the monitor, and the process list. Switching views does not tear down the pty. Disconnect keeps the buffer so you can still read and copy; a banner has the reconnect button.
+- Multi-tab terminals; multiple terminals (channels) per connection
+- xterm.js with WebGL rendering; byte-stream end to end, switch between UTF-8 and GBK on the fly — no more mojibake on legacy Chinese servers
+- Keepalive, session status dots per tab, disconnect banner with one-click reconnect that keeps the scrollback
+- Themes, font size (Ctrl+scroll), copy-on-select, configurable buffer size
 
-## Files
+### Live monitoring (agentless)
 
-Dual pane: local left, remote right. List, mkdir, rename (`F2`), delete (`Del`), show-hidden, sort by name / size / mtime, permissions changed through a nine-checkbox grid instead of octal digits. Lists are virtualized, so a directory with ten thousand entries still scrolls. Drop files onto the window to upload into the current remote directory. Right-click to upload / download.
+- No agent or script to install — metrics are collected over SSH by parsing `/proc` with read-only commands
+- CPU (total + per-core), memory & swap, network throughput, disk usage per mount point, load 1/5/15, uptime
+- Adjustable sampling interval and time window; session-local history for lookback
+- Pauses when the connection drops and resumes automatically on reconnect
+- Process list with filtering and sorting (CPU, memory, cumulative CPU time)
 
-Transfers go through a queue in the bottom panel (`Ctrl+J`): progress, speed, ETA, cancel, retry. Same-name conflicts ask you — overwrite, skip, or keep both — with an "apply to the rest" box. Default concurrency is 2. Failed transfers retry twice with backoff; cancelled ones leave a `.shelx-partial` file. When the window isn't focused, a finished transfer says so through an OS notification.
+### File management (SFTP)
 
-## Monitor
+- Dual-pane local ⇄ remote browser: sort, hidden files, breadcrumbs, direct path input
+- Drag-and-drop upload/download with a background transfer queue, live progress, and cancel
+- Conflict policies (overwrite / skip / keep both), recursive directory transfer
+- New folder / rename / delete, visual chmod editor; virtual scrolling keeps 10,000+ entry directories smooth
 
-Linux servers only. It reads `/proc` over the same SSH connection — one shell call per sample, parsed in Rust. Not an agent, not SNMP, nothing to install on the box.
+### AI ops assistant
 
-CPU (donut + per-core), memory & swap, network, disks, load (with an idle / normal / busy badge), uptime. Disk bars turn orange past 85% and red past 95%. Compact bars sit under the connection tree — disks included; the workspace view is charts. Collection follows the session, not the view: switching tabs doesn't stop it, and the last hour stays available with 5m / 15m / 30m / 1h windows. Sampling is 2 / 5 / 10 / 30 / 60 seconds. Non-Linux hosts say they aren't supported instead of inventing numbers.
+- Docked side panel — asks nothing of your workspace while it works
+- Natural-language operations across all configured hosts (offline ones included; it connects on its own)
+- Read-only / automatic execution modes; every write operation is held for per-host approval (once / always / reject), with the full command shown before you decide
+- Streaming output with a visible chain of thought: reasoning, one timeline step per tool call, per-host progress, and a separate operation log to review everything afterwards
+- Conversations persist: pinned, renamed, auto-named, reusable; an active terminal session can be bound as context, or the assistant roams freely
+- Works with OpenAI (Responses API), Anthropic (Messages API), or a custom verified endpoint; token usage is tracked against your budget
 
-Processes are their own workspace tab — a task-manager table (name, user, PID, state, CPU%, memory, cumulative time), every column sortable, with a filter box. Current CPU% is diffed between two snapshots the way `top` does it, because `ps` reports a lifetime average. Killing a process asks first, shows the full command line, and sends SIGTERM — no fake "force" option that doesn't exist.
+## Download
 
-The monitor view can be pinned always-on-top while you work in the terminal.
+Grab the latest installer from [GitHub Releases](https://github.com/esyion/shelx/releases):
 
-## The assistant
+- **Windows** — installer with in-place (passive) updates
+- **macOS** — Apple Silicon & Intel
+- **Linux** — standard Tauri packages
 
-The AI panel docks on the right — it squeezes the workspace instead of covering it, and closing it doesn't stop a running turn. You describe the problem in plain language; it picks hosts from your connection list (connecting itself if needed), runs commands, reads files, tails logs, and answers with the evidence inline.
+shelx checks for updates automatically and updates itself from GitHub Releases.
 
-- **Two protocols, on purpose**: OpenAI Responses and Anthropic Messages. `/chat/completions` is not supported — the old protocol can't carry the reasoning and tool streams this needs. Custom base URLs are fine; an OpenAI-style gateway must pass a live probe of `{base_url}/responses` before the profile saves, because most compatibility gateways only speak chat completions and would fail mid-task. Model names and context windows come from a bundled catalog and can be overridden per profile.
-- **Thirteen tools**: list hosts, host details, connect, server info, run commands, read file, list directory, tail log, write file, delete, rename, chmod, save a memory.
-- **Approval gate**: read-only commands (a whitelist — `nginx -t` is read-only, `nginx` is not) run on their own in the default mode; anything that writes waits, per host, for a three-way decision — allow once, allow for this thread + host + tool, or deny. Deny is the default when the 10-minute timer runs out. Commands travel as argv arrays — no shell strings, no pipes, no redirects — and there are stricter modes if you want every command asked or read-only tools only.
-- **Batch across hosts**: pick targets by group, by what's online, or all configured hosts. Concurrency is capped in settings, each host is approved separately, results come back per host, and one failure doesn't stop the rest.
-- **Memory**: the assistant can propose notes — global or per-host — but a note only sticks when you approve it, and anything that looks like a credential is refused outright.
-- **Threads**: stored in SQLite and replayed as one ordered timeline per turn — thinking, steps, answer — not a pile of collapsed logs. If some thread is waiting on your approval while you're elsewhere, the sidebar badge says so.
-- **Metering & keys**: a context meter shows how full the model's window is, with a per-thread token budget behind it. API keys live in the OS keyring — never in SQLite, logs, or IPC payloads.
+## Build from source
 
-## Desktop manners
-
-Close-to-tray (opt-in) keeps SSH and SFTP sessions alive after the window closes; restore or quit from the tray. A second launch — including one pulled up by an `ssh://user@host:port` link from a browser or doc — brings the existing window forward instead of a new process, with quick connect prefilled. Window size and position are remembered. Autostart is a setting. A global shortcut (preset tiers, managed on the shortcuts page) summons the window from anywhere. The theme is one truth across three places: the setting, the UI, and the native title bar.
-
-## Connections
-
-The left tree is the address book. Groups, search, drag to rearrange, remarks. Right-click to connect, edit, clone, or delete. Clone copies the host, not the secrets. The form can test a connection before you save it; failures keep what you typed.
-
-Passwords never go into SQLite. They go to the OS keyring (Keychain / Credential Manager / Secret Service). If the keyring isn't there, they land in an AES-GCM file under `~/.shelx`. You can also keep a password for this session only, or not save it at all.
-
-No jump host. No port forwarding. No plugin system. On purpose.
-
-## Settings
-
-The settings screen renders from a contract the backend owns: which controls exist, their ranges, presets, units — the same schema that validates the write on the Rust side. A patch with an unknown field is rejected instead of silently dropped, so a setting can't look like it works while doing nothing. Saves are instant; a rejected save keeps your input and explains itself. Groups: general, terminal, transfer, monitor, window, AI, shortcuts, data.
-
-## Shortcuts
-
-| Key | Action |
-| --- | --- |
-| `Ctrl+,` | Settings |
-| `Ctrl+B` | Sidebar |
-| `Ctrl+J` | Transfer panel |
-| `Ctrl+W` | Close tab |
-| `Ctrl+Tab` | Next tab |
-| `Alt+1` / `2` / `3` / `4` | Terminal / monitor / processes / files |
-| `Ctrl` + mouse wheel | Terminal font size |
-
-## Build
-
-Need [Rust](https://rustup.rs/), [Bun](https://bun.sh/), and the [Tauri 2 prerequisites](https://v2.tauri.app/start/prerequisites/) for your OS.
+Prerequisites: [Rust](https://rustup.rs/) (stable) and [bun](https://bun.sh). On Linux you also need the usual Tauri dependencies (webkit2gtk, etc. — see the [Tauri prerequisites guide](https://tauri.app/start/prerequisites/)).
 
 ```bash
-git clone https://github.com/esyion/shelx.git
-cd shelx
-bun install
-bun tauri dev      # run
-bun tauri build    # installer
+bun install        # install frontend dependencies
+bun tauri dev      # run in dev mode with hot reload
+bun tauri build    # produce installers for your platform
 ```
 
-Data lives in `~/.shelx` (SQLite, logs, fallback secrets). Settings and layout go in the OS app-config directory (`com.krmeow.shelx`).
+Quality gates before committing:
 
-Stack: Tauri 2, russh, russh-sftp, rig (the agent loop), SQLite, OS keyring. Frontend is a Next.js static export with xterm.js, shadcn/ui, and Zustand.
+```bash
+bun run build
+bun run check:ipc
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+cargo test --manifest-path src-tauri/Cargo.toml
+```
 
-## Under the hood
+## Architecture
 
-- The Rust side is layered — commands → application → domain, infrastructure behind port traits — and stays testable without a window.
-- The IPC contract is generated, not hand-copied: Rust DTOs export JSON Schema, `bun run gen:ipc` compiles it into TypeScript, and `check:ipc` fails CI on drift. The frontend cannot quietly mirror a backend type.
-- 260+ Rust tests, a dockerized sshd suite for auth / transfer round-trips, and a vitest suite over user-visible behavior. Dependency advisories are scanned in CI.
-- No telemetry, no accounts, no cloud. Design docs (PRD, technical design, agent design, IPC contract) live in [`docs/`](docs/). Engineering rules are [`AGENTS.md`](AGENTS.md); the short path for PRs is [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Tauri 2 desktop app with a strict split:
 
-## Thanks
+- **Rust core** — SSH/SFTP via [russh](https://github.com/Eugeny/russh), monitoring collection, transfer engine, and the AI agent loop ([rig](https://github.com/0xPlaygrounds/rig)); layered as commands → application → domain → infrastructure
+- **Frontend** — Next.js (static export) + React 19 + TypeScript + Tailwind CSS + shadcn/ui (Base UI), xterm.js for the terminal, Recharts for monitoring, Zustand for state
+- One SSH connection (one authentication) multiplexes all terminal, SFTP, and monitoring channels
+- The IPC contract is defined once on the Rust side, exported as JSON Schema, and generated into TypeScript types (`bun run gen:ipc`) — the frontend never hand-writes mirror types. See [docs/IPC_CONTRACT.md](docs/IPC_CONTRACT.md)
 
-The window is a straight nod to **FinalShell**. If you've used it, you'll know where everything is in about ten seconds.
+## Security & privacy
 
-Bugs and ideas: [Issues](https://github.com/esyion/shelx/issues). How to hack on it: [CONTRIBUTING.md](CONTRIBUTING.md). Security reports go through [SECURITY.md](.github/SECURITY.md), not a public issue.
+- Credentials only ever live in the OS keychain (or encrypted fallback); never in plain files, logs, or IPC responses
+- Host keys are verified with TOFU; a changed key cannot be silently accepted
+- No telemetry, no cloud, no accounts, no ads
+- The AI assistant runs remote commands as argv arrays against an allowlist; write operations require explicit per-host approval, and a read-only mode keeps it from touching anything
+
+## Documentation
+
+- [docs/PRD.md](docs/PRD.md) — product requirements
+- [docs/TECHNICAL_DESIGN.md](docs/TECHNICAL_DESIGN.md) — technical design
+- [docs/AGENT_DESIGN.md](docs/AGENT_DESIGN.md) — AI agent design
+- [docs/IPC_CONTRACT.md](docs/IPC_CONTRACT.md) — IPC contract workflow
+- [docs/UI_LAYOUT.md](docs/UI_LAYOUT.md) — UI layout conventions
+
+## Contributing
+
+Issues and pull requests are welcome. Please read [AGENTS.md](AGENTS.md) first — it defines the layering, security, and quality rules every change must follow.
 
 ## License
 
-[MIT](LICENSE). © 2026 [esyion](https://github.com/esyion)
+[MIT](LICENSE) © 2026 esyion
