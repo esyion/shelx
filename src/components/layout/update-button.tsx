@@ -172,11 +172,6 @@ export function UpdateButton({ collapsed = false }: { collapsed?: boolean }) {
                     : "正在准备版本信息…"}
             </DialogDescription>
             {/* 前置条件不等报错才说:自动更新只对通过安装包装好的版本开放。 */}
-            {!isAvailable && !hasError && !isInstalling && (
-              <p className="text-xs text-muted-foreground">
-                自动更新仅在通过安装包装好的 shelx 上可用；如果你是在开发环境或解压目录里运行，这里只会显示当前版本。
-              </p>
-            )}
           </DialogHeader>
           {isInstalling ? (
             // 安装/下载中原位进度区:已知百分比用 Progress 条,
@@ -194,7 +189,7 @@ export function UpdateButton({ collapsed = false }: { collapsed?: boolean }) {
             </div>
           ) : hasError ? (
             <p className="rounded-md border bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground">
-              无法连接到更新服务,稍后重试或访问项目页面查看。
+              无法连接到更新服务,稍后重试
             </p>
           ) : (
             <div className="max-h-72 overflow-y-auto rounded-md border bg-muted/30 p-3 text-xs leading-relaxed">

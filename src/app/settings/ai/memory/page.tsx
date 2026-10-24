@@ -20,7 +20,7 @@ export default function MemorySettingsPage() {
     <div className="flex flex-col gap-4 pb-6">
       <PageHeader
         title="记忆"
-        description="在工作区中保存并复用长期上下文，新会话生效。开启后可能增加模型调用和 Token 成本。"
+        description="新会话生效。开启后可能增加模型调用和 Token 成本。"
       />
       <MemoryManager />
     </div>

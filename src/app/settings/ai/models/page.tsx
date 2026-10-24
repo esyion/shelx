@@ -21,7 +21,7 @@ export default function ModelsSettingsPage() {
     <div className="flex flex-col gap-4 pb-6">
       <PageHeader
         title="模型配置"
-        description="配置 AI 助手用的模型:填协议、模型名与密钥,自建网关先点「测试并确认协议」。对话里可在会话标题栏随时切换。"
+        description=""
       />
       <ProfileManager />
     </div>

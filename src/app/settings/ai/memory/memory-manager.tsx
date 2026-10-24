@@ -140,9 +140,6 @@ export function MemoryManager() {
                 <Brain />
               </EmptyMedia>
               <EmptyTitle>{loading ? "正在加载记忆…" : "还没有记忆"}</EmptyTitle>
-              <EmptyDescription>
-                在工作区中保存并复用长期上下文，新会话生效。开启后可能增加模型调用和 Token 成本。
-              </EmptyDescription>
             </EmptyHeader>
             <EmptyContent>
               <Button
