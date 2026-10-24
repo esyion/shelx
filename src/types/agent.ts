@@ -27,12 +27,14 @@ export type {
   RespondApprovalRequestDto,
   RunDto,
   RunState,
+  SaveWebSearchKeyRequestDto,
   SendMessageRequestDto,
   SendAcceptedDto,
   TargetDto,
   TargetScope,
   TargetStatus,
   TestProfileRequestDto,
+  TestWebSearchRequestDto,
   ThreadDto,
   ThreadIdRequestDto,
   ThreadSnapshotDto,
@@ -41,6 +43,8 @@ export type {
   UpdateThreadRequestDto,
   UpsertMemoryRequestDto,
   UpsertProfileRequestDto,
+  WebSearchProbeDto,
+  WebSearchStatusDto,
   ApprovalMode,
 } from "./gen/agent";
 

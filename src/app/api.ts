@@ -257,6 +257,12 @@ export const listAgentMemories = agentApi.listAgentMemories;
 export const upsertAgentMemory = agentApi.upsertAgentMemory;
 /** 删除共享记忆。 */
 export const deleteAgentMemory = agentApi.deleteAgentMemory;
+/** 联网搜索配置状态。 */
+export const getWebSearchStatus = agentApi.getWebSearchStatus;
+/** 保存联网搜索密钥。 */
+export const saveWebSearchKey = agentApi.saveWebSearchKey;
+/** 测试联网搜索密钥。 */
+export const testWebSearchKey = agentApi.testWebSearchKey;
 
 /** 应用「窗口与系统」设置到操作系统(开机自启等,保存后即时生效)。 */
 export const applyWindowSettings = windowApi.applyWindowSettings;

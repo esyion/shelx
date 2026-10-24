@@ -18,8 +18,8 @@ use super::types::{
 };
 use crate::application::connections::{ConnectionDraft, CredentialInput};
 use crate::application::ports::{
-    AuthPromptRequest, HostKeyConfirmRequest, SecretSaveMode, SessionEventSink, SessionStatusEvent,
-    SshTransport,
+    AuthPromptRequest, HostKeyConfirmRequest, SecretSaveMode, SecretStore, SessionEventSink,
+    SessionStatusEvent, SshTransport,
 };
 use crate::application::sessions::SessionService;
 use crate::application::sftp::SftpService;
@@ -128,7 +128,64 @@ struct Harness {
     host: Arc<SshToolHost>,
     approvals: Arc<ApprovalCenter>,
     transport: Arc<FakeTransport>,
+    secrets: Arc<MemorySecrets>,
     conn_id: String,
+}
+
+/// 内存凭据存储 fake(联网搜索密钥放这里)。
+#[derive(Default)]
+struct MemorySecrets {
+    entries: std::sync::Mutex<HashMap<String, String>>,
+}
+
+impl crate::application::ports::SecretStore for MemorySecrets {
+    fn put(
+        &self,
+        key: &str,
+        secret: &str,
+    ) -> Result<(), crate::application::ports::SecretStoreError> {
+        self.entries
+            .lock()
+            .expect("凭据锁")
+            .insert(key.to_owned(), secret.to_owned());
+        Ok(())
+    }
+    fn get(
+        &self,
+        key: &str,
+    ) -> Result<Option<String>, crate::application::ports::SecretStoreError> {
+        Ok(self.entries.lock().expect("凭据锁").get(key).cloned())
+    }
+    fn delete(&self, key: &str) -> Result<(), crate::application::ports::SecretStoreError> {
+        self.entries.lock().expect("凭据锁").remove(key);
+        Ok(())
+    }
+}
+
+/// 固定回放两条命中的搜索 fake。
+struct FixedSearch;
+
+#[async_trait::async_trait]
+impl super::types::WebSearch for FixedSearch {
+    async fn search(
+        &self,
+        _api_key: &str,
+        query: &str,
+        _max_results: u8,
+    ) -> Result<Vec<super::types::WebSearchHit>, super::types::WebSearchFault> {
+        Ok(vec![
+            super::types::WebSearchHit {
+                title: format!("关于 {query} 的文档"),
+                url: "https://example.com/docs".into(),
+                content: "内容摘要".into(),
+            },
+            super::types::WebSearchHit {
+                title: "第二条".into(),
+                url: "https://example.com/2".into(),
+                content: "另一段".into(),
+            },
+        ])
+    }
 }
 
 /// 组装被测件:真实 ConnectionService/SessionService 挂内存 fake 端口。
@@ -152,6 +209,7 @@ fn harness() -> Harness {
     let sftp = Arc::new(SftpService::new(Arc::clone(&sessions)));
     let store: Arc<dyn AgentStore> = Arc::new(NullStore);
     let approvals = Arc::new(ApprovalCenter::new());
+    let secrets: Arc<MemorySecrets> = Arc::new(MemorySecrets::default());
     let host = Arc::new(SshToolHost::new(
         connections,
         sessions,
@@ -159,11 +217,14 @@ fn harness() -> Harness {
         store,
         Arc::new(ThreadEventHub::new()),
         Arc::clone(&approvals),
+        Arc::clone(&secrets) as Arc<dyn crate::application::ports::SecretStore>,
+        Arc::new(FixedSearch),
     ));
     Harness {
         host,
         approvals,
         transport,
+        secrets,
         conn_id: config.id.as_str().to_owned(),
     }
 }
@@ -178,6 +239,7 @@ fn context() -> Arc<RunContext> {
         batch_limit: 8,
         parallel_hosts: 2,
         exec_timeout_secs: 10,
+        web_search_enabled: false,
         cancel: CancelToken::new(),
     })
 }
@@ -278,4 +340,55 @@ async fn ensure_session_category_still_requires_approval() {
     let tool = super::tools::spec("ensure_session").expect("工具应已定义");
     assert_eq!(tool.category_for(None), ToolCategory::Connect);
     assert!(ApprovalMode::ReadOnlyAuto.requires_approval(ToolCategory::Connect));
+}
+
+/// 联网搜索:配置了密钥即命中回放结果,输出带来源链接(只读类,不经批准门)。
+#[tokio::test]
+async fn web_search_returns_hits_with_key() {
+    let harness = harness();
+    harness
+        .secrets
+        .put(super::types::WEB_SEARCH_SECRET_REF, "tvly-test")
+        .expect("凭据写入应成功");
+    let outcome = harness
+        .host
+        .invoke(
+            context(),
+            "web_search",
+            json!({ "query": "nginx 最新版本" }),
+        )
+        .await;
+    assert!(outcome.ok, "应成功:{}", outcome.summary);
+    assert!(outcome.summary.contains("命中 2 条"));
+    assert_eq!(outcome.targets.len(), 1);
+    let target = &outcome.targets[0];
+    assert_eq!(target.status, TargetStatus::Ok);
+    assert!(
+        target.output.as_deref().is_some_and(|text| {
+            text.contains("https://example.com/docs") && text.contains("nginx 最新版本")
+        }),
+        "输出应带来源链接与查询词:{:?}",
+        target.output
+    );
+}
+
+/// 联网搜索:未配置密钥时必须明确报错并指引入口,不得假成功。
+#[tokio::test]
+async fn web_search_without_key_reports_configuration() {
+    let harness = harness();
+    let outcome = harness
+        .host
+        .invoke(context(), "web_search", json!({ "query": "anything" }))
+        .await;
+    assert!(!outcome.ok);
+    assert!(
+        outcome.summary.contains("尚未配置联网搜索密钥"),
+        "summary={}",
+        outcome.summary
+    );
+    assert!(
+        outcome.summary.contains("联网搜索"),
+        "指引里要有入口名:{}",
+        outcome.summary
+    );
 }

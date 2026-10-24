@@ -605,6 +605,51 @@ pub struct UpsertProfileRequestDto {
     pub max_output_tokens: Option<u32>,
 }
 
+/// 联网搜索配置状态(界面只显示"已配置",永不回显密钥本体)。
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WebSearchStatusDto {
+    /// 是否已配置 Tavily 密钥(配置后对话里的助手即具备联网搜索工具)。
+    pub configured: bool,
+}
+
+/// 保存联网搜索密钥请求;`apiKey` 传 null 或空白表示清除已存密钥。
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SaveWebSearchKeyRequestDto {
+    /// 密钥明文(只在写入方向传递,永不回显、不入日志)。
+    #[serde(default)]
+    pub api_key: Option<String>,
+}
+
+/// 测试联网搜索请求:密钥优先用本轮填写的,留空回落已存;两者都没有则拒绝。
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TestWebSearchRequestDto {
+    /// 本轮填写的密钥;空则回落已存密钥。永不回显、不入日志。
+    #[serde(default)]
+    pub api_key: Option<String>,
+}
+
+/// 联网搜索连通性测试结论。
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WebSearchProbeDto {
+    /// 是否可用。
+    pub ok: bool,
+    /// 人话结论(失败原因同样用这一句)。
+    pub message: String,
+}
+
+impl From<crate::application::agent::WebSearchProbe> for WebSearchProbeDto {
+    fn from(probe: crate::application::agent::WebSearchProbe) -> Self {
+        Self {
+            ok: probe.ok,
+            message: probe.message,
+        }
+    }
+}
+
 /// 查模型目录里的窗口事实(接入点表单自动带出用)。
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

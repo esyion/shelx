@@ -11,8 +11,9 @@ use serde_json::Value;
 
 use super::tool_host::{excerpt, int_field, string_field};
 use super::tools::{ToolOutcome, ToolTargetOutcome};
-use super::types::{AgentStore, RunContext};
+use super::types::{AgentStore, RunContext, WebSearch, WEB_SEARCH_SECRET_REF};
 use crate::application::connections::ConnectionService;
+use crate::application::ports::SecretStore;
 use crate::application::sessions::SessionService;
 use crate::application::sftp::SftpService;
 use crate::domain::agent::command_policy::{
@@ -123,6 +124,46 @@ pub(crate) async fn remember(store: &Arc<dyn AgentStore>, arguments: &Value) -> 
             error: None,
         }],
     )
+}
+
+/// 联网搜索(不针对远端主机;密钥从凭据存储读取)。
+///
+/// 未配置密钥时工具不会注册进模型,走到这里是防御性兜底,必须明确报错而不是假成功。
+pub(crate) async fn web_search(
+    secrets: &Arc<dyn SecretStore>,
+    search: &Arc<dyn WebSearch>,
+    arguments: &Value,
+) -> ToolOutcome {
+    let Some(query) = string_field(arguments, "query") else {
+        return ToolOutcome::failed("缺少 query(搜索关键词)");
+    };
+    let max_results = int_field(arguments, "maxResults").unwrap_or(5).clamp(1, 10) as u8;
+    let Some(key) = secrets
+        .get(WEB_SEARCH_SECRET_REF)
+        .ok()
+        .flatten()
+        .filter(|key| !key.trim().is_empty())
+    else {
+        return ToolOutcome::failed(
+            "尚未配置联网搜索密钥:请在 设置 → AI → 联网搜索 里填写 Tavily API 密钥",
+        );
+    };
+    match search.search(&key, &query, max_results).await {
+        Ok(hits) => {
+            let payload = serde_json::to_string(&hits).unwrap_or_else(|_| "[]".to_owned());
+            ToolOutcome::succeeded(
+                format!("联网搜索“{query}”,命中 {} 条", hits.len()),
+                vec![ToolTargetOutcome {
+                    conn_id: "-".into(),
+                    conn_name: "联网搜索".into(),
+                    status: TargetStatus::Ok,
+                    output: Some(excerpt(&payload)),
+                    error: None,
+                }],
+            )
+        }
+        Err(err) => ToolOutcome::failed(format!("联网搜索失败:{err}")),
+    }
 }
 
 /// 在一台已批准的主机上执行工具,产出逐台结果。

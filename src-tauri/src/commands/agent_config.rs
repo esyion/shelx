@@ -5,8 +5,9 @@ use tauri::State;
 use crate::domain::agent::{ApprovalDecision, MemoryScope, ProtocolKind};
 use crate::dto::agent::{
     AgentEnumsDto, AgentIdRequestDto, LookupModelRequestDto, MemoryDto, ModelWindowDto, ProbeDto,
-    ProfileDto, ProfileLimitsDto, ResolveTargetsRequestDto, TargetDto, TestProfileRequestDto,
-    UpsertMemoryRequestDto, UpsertProfileRequestDto,
+    ProfileDto, ProfileLimitsDto, ResolveTargetsRequestDto, SaveWebSearchKeyRequestDto, TargetDto,
+    TestProfileRequestDto, TestWebSearchRequestDto, UpsertMemoryRequestDto,
+    UpsertProfileRequestDto, WebSearchProbeDto, WebSearchStatusDto,
 };
 use crate::dto::common::IpcResult;
 use crate::shared::error::{IpcError, IpcErrorCode};
@@ -230,6 +231,46 @@ pub fn list_agent_enums() -> IpcResult<AgentEnumsDto> {
         memory_scopes: MemoryScope::ALL.to_vec(),
         profile_limits: ProfileLimitsDto::from_domain(),
     })
+}
+
+/// 联网搜索配置状态(只报"是否已配置",永不回显密钥)。
+#[tauri::command]
+pub fn get_web_search_status(state: State<AppState>) -> IpcResult<WebSearchStatusDto> {
+    IpcResult::ok(WebSearchStatusDto {
+        configured: state.agent.web_search_key_present(),
+    })
+}
+
+/// 保存或清除联网搜索密钥(密钥只写系统安全存储;null/空白 = 清除)。
+#[tauri::command]
+pub fn save_web_search_key(
+    state: State<AppState>,
+    request: SaveWebSearchKeyRequestDto,
+) -> IpcResult<WebSearchStatusDto> {
+    map_err(
+        state
+            .agent
+            .save_web_search_key(request.api_key.as_deref())
+            .map(|configured| WebSearchStatusDto { configured }),
+    )
+}
+
+/// 测试联网搜索:真发一次最小搜索验证密钥(消耗 1 次额度);
+/// 密钥优先用本轮填写的,留空回落已存。
+#[tauri::command]
+pub async fn test_web_search_key(
+    state: State<'_, AppState>,
+    request: TestWebSearchRequestDto,
+) -> Result<IpcResult<WebSearchProbeDto>, String> {
+    let probe = match state
+        .agent
+        .probe_web_search(request.api_key.as_deref())
+        .await
+    {
+        Ok(probe) => probe,
+        Err(err) => return Ok(IpcResult::err(to_ipc_error(err))),
+    };
+    Ok(IpcResult::ok(WebSearchProbeDto::from(probe)))
 }
 
 /// provider 构造/探测失败的包装:借道应用层错误,保持错误码单一口径。

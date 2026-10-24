@@ -348,6 +348,8 @@ impl AgentService {
         })?;
 
         let cancel = self.runs.register(&run_id, &thread_id);
+        // 密钥存在性只在这一处判定:工具注册(RunContext)与提示词(RunPlan)共用同一口径。
+        let web_search = self.web_search_key().is_some();
         let context = Arc::new(RunContext {
             thread_id: thread_id.clone(),
             run_id: run_id.clone(),
@@ -356,6 +358,7 @@ impl AgentService {
             batch_limit: settings.batch_limit.max(1) as usize,
             parallel_hosts: settings.parallel_hosts.max(1) as usize,
             exec_timeout_secs: settings.exec_timeout_secs.max(1) as u64,
+            web_search_enabled: web_search,
             cancel,
         });
         let plan = Arc::new(RunPlan {
@@ -364,6 +367,7 @@ impl AgentService {
                 context.bound_conn_id.as_deref(),
                 &model.record,
                 settings.inject_memories,
+                web_search,
             )?,
             profile,
             api_key: model.api_key,
@@ -584,6 +588,7 @@ impl AgentService {
         bound: Option<&str>,
         profile: &super::types::ProfileRecord,
         inject_memories: bool,
+        web_search: bool,
     ) -> Result<String, AgentError> {
         let configured = self.connections.all_connections()?;
         let online: Vec<String> = self
@@ -625,6 +630,7 @@ impl AgentService {
             &memories,
             bound,
             approval,
+            web_search,
         ))
     }
 }

@@ -17,13 +17,17 @@ import type {
   AuditDto,
   ModelWindowDto,
   ProbeDto,
+  SaveWebSearchKeyRequestDto,
   SendAcceptedDto,
   TargetDto,
   TargetScope,
   TestProfileRequestDto,
+  TestWebSearchRequestDto,
   ThreadSnapshotDto,
   UpsertMemoryRequestDto,
   UpsertProfileRequestDto,
+  WebSearchProbeDto,
+  WebSearchStatusDto,
 } from "@/types";
 import { invokeUnwrapped } from "./tauri";
 
@@ -230,4 +234,23 @@ export function upsertAgentMemory(
 /** 删除共享记忆。 */
 export function deleteAgentMemory(id: string): Promise<void> {
   return invokeUnwrapped("delete_agent_memory", { request: { id } });
+}
+
+/** 联网搜索配置状态(只报"是否已配置",永不回显密钥)。 */
+export function getWebSearchStatus(): Promise<WebSearchStatusDto> {
+  return invokeUnwrapped("get_web_search_status");
+}
+
+/** 保存联网搜索密钥(空串/null 表示清除已存密钥)。 */
+export function saveWebSearchKey(
+  request: SaveWebSearchKeyRequestDto,
+): Promise<WebSearchStatusDto> {
+  return invokeUnwrapped("save_web_search_key", { request });
+}
+
+/** 测试联网搜索(真发一次最小搜索验证密钥,消耗 1 次额度)。 */
+export function testWebSearchKey(
+  request: TestWebSearchRequestDto,
+): Promise<WebSearchProbeDto> {
+  return invokeUnwrapped("test_web_search_key", { request });
 }

@@ -224,6 +224,42 @@ pub struct SendRequest {
     pub bound_session_id: Option<String>,
 }
 
+/// 联网搜索密钥在凭据存储里的引用键(与 `llm:<id>:api_key` 同一存储,AGENTS.md §7)。
+pub const WEB_SEARCH_SECRET_REF: &str = "tavily:api_key";
+
+/// 一条联网搜索命中(与具体搜索服务商无关的形态;只进模型载荷,不进 IPC 契约)。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebSearchHit {
+    /// 结果标题。
+    pub title: String,
+    /// 来源链接。
+    pub url: String,
+    /// 内容摘要。
+    pub content: String,
+}
+
+/// 联网搜索端口:查询公网最新信息(实现见 infrastructure/agent/web_search)。
+#[async_trait::async_trait]
+pub trait WebSearch: Send + Sync {
+    /// 执行一次搜索;`api_key` 由调用方从凭据存储取出传入,禁止落日志。
+    /// `query` 非空、`max_results` 在 1..=10 由调用方保证。
+    ///
+    /// # Errors
+    /// 网络、凭据或额度问题,消息已脱敏(不含密钥)。
+    async fn search(
+        &self,
+        api_key: &str,
+        query: &str,
+        max_results: u8,
+    ) -> Result<Vec<WebSearchHit>, WebSearchFault>;
+}
+
+/// 搜索端口错误(消息已脱敏,不含密钥)。
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
+pub struct WebSearchFault(pub String);
+
 /// 运行上下文:一次运行期间工具执行需要的环境。
 #[derive(Debug, Clone)]
 pub struct RunContext {
@@ -241,6 +277,8 @@ pub struct RunContext {
     pub parallel_hosts: usize,
     /// 单条命令超时秒数。
     pub exec_timeout_secs: u64,
+    /// 联网搜索是否注册(`web_search` 工具只在密钥已配置的本轮出现)。
+    pub web_search_enabled: bool,
     /// 取消令牌。
     pub cancel: super::hub::CancelToken,
 }

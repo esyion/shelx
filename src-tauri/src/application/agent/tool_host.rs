@@ -14,8 +14,9 @@ use tokio::sync::Semaphore;
 use super::events::{AgentEvent, AgentEventPayload, ApprovalRequest};
 use super::hub::{ApprovalCenter, ThreadEventHub};
 use super::tools::{spec, ToolHost, ToolOutcome, ToolTargetOutcome};
-use super::types::{AgentStore, RunContext};
+use super::types::{AgentStore, RunContext, WebSearch};
 use crate::application::connections::ConnectionService;
+use crate::application::ports::SecretStore;
 use crate::application::sessions::SessionService;
 use crate::application::sftp::SftpService;
 use crate::domain::agent::command_policy::{classify_command, quote_argv};
@@ -34,6 +35,10 @@ pub struct SshToolHost {
     store: Arc<dyn AgentStore>,
     hub: Arc<ThreadEventHub>,
     approvals: Arc<ApprovalCenter>,
+    /// 凭据存储(联网搜索密钥从这里取,不在运行间缓存)。
+    secrets: Arc<dyn SecretStore>,
+    /// 联网搜索端口。
+    search: Arc<dyn WebSearch>,
     /// 本线程内已"永久允许"的 (线程, 主机, 工具)。
     always_allowed: RwLock<HashSet<(String, String, String)>>,
 }
@@ -49,6 +54,8 @@ impl SshToolHost {
         store: Arc<dyn AgentStore>,
         hub: Arc<ThreadEventHub>,
         approvals: Arc<ApprovalCenter>,
+        secrets: Arc<dyn SecretStore>,
+        search: Arc<dyn WebSearch>,
     ) -> Self {
         Self {
             connections,
@@ -57,6 +64,8 @@ impl SshToolHost {
             store,
             hub,
             approvals,
+            secrets,
+            search,
             always_allowed: RwLock::new(HashSet::new()),
         }
     }
@@ -136,6 +145,12 @@ impl ToolHost for SshToolHost {
         }
         if name == "remember" {
             let outcome = super::tool_ops::remember(&self.store, &arguments).await;
+            self.finish_call(&context, &call_id, name, category, &outcome);
+            return outcome;
+        }
+        if name == "web_search" {
+            let outcome =
+                super::tool_ops::web_search(&self.secrets, &self.search, &arguments).await;
             self.finish_call(&context, &call_id, name, category, &outcome);
             return outcome;
         }

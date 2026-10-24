@@ -109,6 +109,8 @@ impl AppState {
         let agent_gateway: Arc<dyn crate::application::agent::types::LlmGateway> = Arc::new(
             crate::infrastructure::agent::RigGateway::new(Arc::clone(&agent_store)),
         );
+        let agent_search: Arc<dyn crate::application::agent::types::WebSearch> =
+            Arc::new(crate::infrastructure::agent::TavilySearch::shared());
         let agent = Arc::new(crate::application::agent::AgentService::new(
             agent_store,
             agent_gateway,
@@ -117,6 +119,7 @@ impl AppState {
             sftp.clone(),
             settings.clone(),
             agent_secrets,
+            agent_search,
         ));
         agent.recover_unfinished_runs();
 

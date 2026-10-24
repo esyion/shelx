@@ -233,6 +233,7 @@ const TOOL_ACTION_DISPLAY: Record<string, string> = {
   remove_path: "删除文件或目录",
   rename_path: "重命名或移动",
   set_permissions: "修改权限",
+  web_search: "联网搜索",
   remember: "记住这条事实",
 };
 

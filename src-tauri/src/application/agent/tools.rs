@@ -118,6 +118,12 @@ pub const ALL_TOOLS: &[ToolSpec] = &[
         policy: ToolPolicy::Fixed(ToolCategory::Mutating),
     },
     ToolSpec {
+        name: "web_search",
+        description: "联网搜索公网最新信息(新闻、版本发布、文档、报错解法、价格等时效性内容),返回带来源链接的摘要。服务器上的事实仍以现场取证工具为准,不要用搜索结果替代。",
+        parameters: r#"{"type":"object","properties":{"query":{"type":"string","description":"搜索关键词"},"maxResults":{"type":"integer","minimum":1,"maximum":10,"description":"返回条数,默认 5"}},"required":["query"],"additionalProperties":false}"#,
+        policy: ToolPolicy::Fixed(ToolCategory::ReadOnly),
+    },
+    ToolSpec {
         name: "remember",
         description: "把一条运维事实写入共享记忆(跨对话可用)。写入前需要用户确认,禁止写入凭据、密钥或个人隐私。",
         parameters: r#"{"type":"object","properties":{"content":{"type":"string","maxLength":500},"scope":{"type":"string","enum":["global","connection"]},"connId":{"type":"string"}},"required":["content","scope"],"additionalProperties":false}"#,
@@ -133,13 +139,15 @@ pub fn spec(name: &str) -> Option<&'static ToolSpec> {
 /// 给定审批模式下允许注册进模型的工具集。
 ///
 /// "只读模式"直接把写工具从工具表里拿掉,而不是注册后再拒绝 —— 模型看不见才不会反复试探。
-pub fn tools_for(mode: ApprovalMode) -> Vec<&'static ToolSpec> {
+/// `web_search` 只在密钥已配置时注册:模型看得见却调不通的能力是死状态(AGENTS.md §4.1.1)。
+pub fn tools_for(mode: ApprovalMode, web_search: bool) -> Vec<&'static ToolSpec> {
     ALL_TOOLS
         .iter()
         .filter(|tool| match tool.policy {
             ToolPolicy::Fixed(ToolCategory::ReadOnly) => true,
             _ => mode.allows_mutating_tools(),
         })
+        .filter(|tool| tool.name != "web_search" || web_search)
         .collect()
 }
 
@@ -263,15 +271,21 @@ mod tests {
         }
     }
 
-    /// 只读模式下写工具不注册,只读工具保留。
+    /// 只读模式下写工具不注册,只读工具保留;web_search 随密钥配置开关注册。
     #[test]
     fn read_only_mode_drops_mutating_tools() {
-        let read_only = tools_for(ApprovalMode::ReadOnlyOnly);
+        let read_only = tools_for(ApprovalMode::ReadOnlyOnly, false);
         assert!(read_only.iter().all(|tool| tool.name != "write_file"));
         assert!(read_only.iter().any(|tool| tool.name == "list_connections"));
-        let auto = tools_for(ApprovalMode::ReadOnlyAuto);
+        assert!(
+            read_only.iter().all(|tool| tool.name != "web_search"),
+            "未配置密钥时不注册 web_search"
+        );
+        let auto = tools_for(ApprovalMode::ReadOnlyAuto, false);
         assert!(auto.iter().any(|tool| tool.name == "write_file"));
         assert!(auto.len() > read_only.len());
+        let with_search = tools_for(ApprovalMode::ReadOnlyOnly, true);
+        assert!(with_search.iter().any(|tool| tool.name == "web_search"));
     }
 
     /// exec 的类别由 argv 决定。

@@ -289,8 +289,8 @@ impl LlmGateway for RigGateway {
                 .unwrap_or(FALLBACK_MAX_OUTPUT_TOKENS),
         );
 
-        // 工具:按审批档位裁剪后注册;执行一律落到 ToolHost。
-        let dynamic_tools: Vec<DynamicTool> = tools_for(context.approval)
+        // 工具:按审批档位与联网搜索配置裁剪后注册;执行一律落到 ToolHost。
+        let dynamic_tools: Vec<DynamicTool> = tools_for(context.approval, context.web_search_enabled)
             .into_iter()
             .filter_map(|spec| {
                 let parameters: serde_json::Value =
@@ -556,6 +556,7 @@ mod tests {
             batch_limit: 4,
             parallel_hosts: 2,
             exec_timeout_secs: 5,
+            web_search_enabled: false,
             cancel: CancelToken::new(),
         });
         (hub, context)

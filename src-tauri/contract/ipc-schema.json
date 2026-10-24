@@ -1202,6 +1202,24 @@
             }
           ]
         },
+        "SaveWebSearchKeyRequestDto": {
+          "additionalProperties": false,
+          "description": "保存联网搜索密钥请求;`apiKey` 传 null 或空白表示清除已存密钥。",
+          "properties": {
+            "apiKey": {
+              "default": null,
+              "description": "密钥明文(只在写入方向传递,永不回显、不入日志)。",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "apiKey"
+          ],
+          "type": "object"
+        },
         "SendAcceptedDto": {
           "description": "发起一轮的受理结果。",
           "properties": {
@@ -1464,6 +1482,24 @@
             "protocol",
             "model",
             "baseUrl",
+            "apiKey"
+          ],
+          "type": "object"
+        },
+        "TestWebSearchRequestDto": {
+          "additionalProperties": false,
+          "description": "测试联网搜索请求:密钥优先用本轮填写的,留空回落已存;两者都没有则拒绝。",
+          "properties": {
+            "apiKey": {
+              "default": null,
+              "description": "本轮填写的密钥;空则回落已存密钥。永不回显、不入日志。",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
             "apiKey"
           ],
           "type": "object"
@@ -1822,6 +1858,37 @@
             "maxOutputTokens"
           ],
           "type": "object"
+        },
+        "WebSearchProbeDto": {
+          "description": "联网搜索连通性测试结论。",
+          "properties": {
+            "message": {
+              "description": "人话结论(失败原因同样用这一句)。",
+              "type": "string"
+            },
+            "ok": {
+              "description": "是否可用。",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "ok",
+            "message"
+          ],
+          "type": "object"
+        },
+        "WebSearchStatusDto": {
+          "description": "联网搜索配置状态(界面只显示\"已配置\",永不回显密钥本体)。",
+          "properties": {
+            "configured": {
+              "description": "是否已配置 Tavily 密钥(配置后对话里的助手即具备联网搜索工具)。",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "configured"
+          ],
+          "type": "object"
         }
       },
       "additionalProperties": false,
@@ -1904,6 +1971,9 @@
         "RunState": {
           "$ref": "#/$defs/RunState"
         },
+        "SaveWebSearchKeyRequestDto": {
+          "$ref": "#/$defs/SaveWebSearchKeyRequestDto"
+        },
         "SendAcceptedDto": {
           "$ref": "#/$defs/SendAcceptedDto"
         },
@@ -1921,6 +1991,9 @@
         },
         "TestProfileRequestDto": {
           "$ref": "#/$defs/TestProfileRequestDto"
+        },
+        "TestWebSearchRequestDto": {
+          "$ref": "#/$defs/TestWebSearchRequestDto"
         },
         "ThreadDto": {
           "$ref": "#/$defs/ThreadDto"
@@ -1942,6 +2015,12 @@
         },
         "UpsertProfileRequestDto": {
           "$ref": "#/$defs/UpsertProfileRequestDto"
+        },
+        "WebSearchProbeDto": {
+          "$ref": "#/$defs/WebSearchProbeDto"
+        },
+        "WebSearchStatusDto": {
+          "$ref": "#/$defs/WebSearchStatusDto"
         }
       },
       "required": [
@@ -1981,6 +2060,10 @@
         "TestProfileRequestDto",
         "LookupModelRequestDto",
         "ModelWindowDto",
+        "WebSearchStatusDto",
+        "SaveWebSearchKeyRequestDto",
+        "TestWebSearchRequestDto",
+        "WebSearchProbeDto",
         "AgentIdRequestDto",
         "UpsertMemoryRequestDto",
         "ResolveTargetsRequestDto"

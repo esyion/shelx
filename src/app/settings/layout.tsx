@@ -21,6 +21,7 @@ const NAV_GROUPS: { label: string | null; entries: { href: string; label: string
     entries: [
       { href: "/settings/ai/memory", label: "记忆" },
       { href: "/settings/ai/models", label: "模型配置" },
+      { href: "/settings/ai/search", label: "联网搜索" },
     ],
   },
   {

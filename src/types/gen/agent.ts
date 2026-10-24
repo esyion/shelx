@@ -675,6 +675,15 @@ export interface RunDto {
   usage: AgentUsage | null;
 }
 /**
+ * 保存联网搜索密钥请求;`apiKey` 传 null 或空白表示清除已存密钥。
+ */
+export interface SaveWebSearchKeyRequestDto {
+  /**
+   * 密钥明文(只在写入方向传递,永不回显、不入日志)。
+   */
+  apiKey: string | null;
+}
+/**
  * 发起一轮的受理结果。
  */
 export interface SendAcceptedDto {
@@ -740,6 +749,15 @@ export interface TestProfileRequestDto {
    */
   model: string;
   protocol: ProtocolKind;
+}
+/**
+ * 测试联网搜索请求:密钥优先用本轮填写的,留空回落已存;两者都没有则拒绝。
+ */
+export interface TestWebSearchRequestDto {
+  /**
+   * 本轮填写的密钥;空则回落已存密钥。永不回显、不入日志。
+   */
+  apiKey: string | null;
 }
 /**
  * 线程。
@@ -902,4 +920,26 @@ export interface UpsertProfileRequestDto {
    * 是否已确认支持要求的协议。
    */
   responsesVerified: boolean;
+}
+/**
+ * 联网搜索连通性测试结论。
+ */
+export interface WebSearchProbeDto {
+  /**
+   * 人话结论(失败原因同样用这一句)。
+   */
+  message: string;
+  /**
+   * 是否可用。
+   */
+  ok: boolean;
+}
+/**
+ * 联网搜索配置状态(界面只显示"已配置",永不回显密钥本体)。
+ */
+export interface WebSearchStatusDto {
+  /**
+   * 是否已配置 Tavily 密钥(配置后对话里的助手即具备联网搜索工具)。
+   */
+  configured: boolean;
 }

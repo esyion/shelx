@@ -30,12 +30,22 @@ use hub::{ApprovalCenter, RunRegistry, ThreadEventHub};
 use tool_host::SshToolHost;
 use types::{
     AgentMemory, AgentStore, LlmGateway, NewThread, ProfileDraft, ProfileRecord, StoreFault,
-    ThreadRecord,
+    ThreadRecord, WebSearch, WEB_SEARCH_SECRET_REF,
 };
 
 /// 新线程的默认标题;首轮自动命名(见 `run::auto_title`)以它为"还没起过名"的判据,
 /// 用户改过名(任何不等于默认值的标题)就不再覆盖。
 pub(crate) const DEFAULT_THREAD_TITLE: &str = "新对话";
+
+/// 联网搜索连通性测试结论(如实带回失败原文,不吞错)。
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WebSearchProbe {
+    /// 是否可用。
+    pub ok: bool,
+    /// 人话结论(失败原因同样用这一句)。
+    pub message: String,
+}
 
 /// 运行记录的最小可见形状(界面状态与死状态恢复用)。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -156,11 +166,14 @@ pub struct AgentService {
     pub(crate) settings: Arc<SettingsService>,
     /// 密钥存储。
     pub(crate) secrets: Arc<dyn SecretStore>,
+    /// 联网搜索端口(工具执行与连通性测试共用)。
+    pub(crate) search: Arc<dyn WebSearch>,
 }
 
 impl AgentService {
     /// 组装服务:中枢与批准中心先建,再注入工具执行器。
     #[must_use]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         store: Arc<dyn AgentStore>,
         gateway: Arc<dyn LlmGateway>,
@@ -169,6 +182,7 @@ impl AgentService {
         sftp: Arc<crate::application::sftp::SftpService>,
         settings: Arc<SettingsService>,
         secrets: Arc<dyn SecretStore>,
+        search: Arc<dyn WebSearch>,
     ) -> Self {
         let hub = Arc::new(ThreadEventHub::new());
         let approvals = Arc::new(ApprovalCenter::new());
@@ -179,6 +193,8 @@ impl AgentService {
             Arc::clone(&store),
             Arc::clone(&hub),
             Arc::clone(&approvals),
+            Arc::clone(&secrets),
+            Arc::clone(&search),
         ));
         Self {
             store,
@@ -191,6 +207,7 @@ impl AgentService {
             sessions,
             settings,
             secrets,
+            search,
         }
     }
 
@@ -493,6 +510,74 @@ impl AgentService {
     /// 读取 profile 的密钥(仅在本机内存中流转,禁止进 IPC 响应与日志)。
     pub(crate) fn profile_key(&self, record: &ProfileRecord) -> Option<String> {
         self.secrets.get(&record.secret_ref).ok().flatten()
+    }
+
+    /// 联网搜索密钥是否已配置(界面只显示"已配置",永不回显内容)。
+    pub fn web_search_key_present(&self) -> bool {
+        self.web_search_key().is_some()
+    }
+
+    /// 读取联网搜索密钥(仅在本机内存中流转,禁止进 IPC 响应与日志)。
+    pub(crate) fn web_search_key(&self) -> Option<String> {
+        self.secrets
+            .get(WEB_SEARCH_SECRET_REF)
+            .ok()
+            .flatten()
+            .filter(|key| !key.trim().is_empty())
+    }
+
+    /// 保存或清除联网搜索密钥,返回保存后的配置状态。
+    ///
+    /// `None`(或空白)表示清除:助手将失去联网搜索能力,进行中的轮次不受影响。
+    ///
+    /// # Errors
+    /// 密钥长度越界、凭据写入失败。
+    pub fn save_web_search_key(&self, api_key: Option<&str>) -> Result<bool, AgentError> {
+        match api_key.map(str::trim).filter(|value| !value.is_empty()) {
+            Some(key) => {
+                let len = key.chars().count();
+                if !(8..=512).contains(&len) {
+                    return Err(AgentError::Invalid(
+                        "密钥长度需在 8–512 字符之间(Tavily 密钥以 tvly- 开头)".into(),
+                    ));
+                }
+                self.secrets.put(WEB_SEARCH_SECRET_REF, key)?;
+            }
+            None => self.secrets.delete(WEB_SEARCH_SECRET_REF)?,
+        }
+        Ok(self.web_search_key_present())
+    }
+
+    /// 用给定密钥(空白则回落已存)真发一次最小搜索,验证联网搜索可用。
+    ///
+    /// 与接入点连通性测试同一原则:探测不落库,结果如实带回(AGENTS.md §4.1.1 试跑自检)。
+    ///
+    /// # Errors
+    /// 两个来源都没有密钥时拒绝。
+    pub async fn probe_web_search(
+        &self,
+        api_key: Option<&str>,
+    ) -> Result<WebSearchProbe, AgentError> {
+        let key = match api_key.map(str::trim).filter(|value| !value.is_empty()) {
+            Some(key) => key.to_owned(),
+            None => self.web_search_key().ok_or(AgentError::Invalid(
+                "先填 Tavily 密钥再测试(或先保存一份)".into(),
+            ))?,
+        };
+        match self
+            .search
+            .search(&key, "shelx connectivity check", 1)
+            .await
+        {
+            Ok(hits) => Ok(WebSearchProbe {
+                ok: true,
+                message: format!("密钥可用,联网搜索已就绪(测试命中 {} 条)", hits.len()),
+            }),
+            Err(err) => Ok(WebSearchProbe {
+                ok: false,
+                message: err.to_string(),
+            }),
+        }
     }
 
     /// 解析目标作用域 → 主机清单(界面与工具共用)。
