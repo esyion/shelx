@@ -227,7 +227,8 @@ ${c("dim", "如果你确认 Secret 已配置,可以一次性 push:")
 /** 主流程串联。 */
 function main() {
   // 允许 "prerelease rc" 这类带空格的模式:合并所有 CLI 参数。
-  const arg = process.argv.slice(2).join(" ");
+  // 无参时 join 得到空串(非 nullish,?? 默认值不生效),归一为 undefined。
+  const arg = process.argv.slice(2).join(" ") || undefined;
   if (arg === "--help" || arg === "-h") {
     console.log(`用法: bun run release [patch|minor|major|prerelease [preid]|x.y.z[-pre]]
 
