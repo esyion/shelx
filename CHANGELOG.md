@@ -7,6 +7,54 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > Versions prior to `0.2.0` were internal iterations before the project
 > was open-sourced; their changes are summarized under "Unreleased / 0.2.0".
 
+## [0.4.0] - 2026-10-24
+
+Web-search release: the assistant can now consult the live web. Configure
+a Tavily API key once in settings and every new conversation round gains a
+read-only「联网搜索」tool that returns sourced answers — versions, news,
+docs and fresh error messages no longer depend on the model's training
+cutoff.
+
+### Added
+
+- **Web search for the assistant (Tavily)** — a new page at
+  设置 → AI → 联网搜索 manages the key. The key lives only in the
+  system secure storage (same store as model keys): it is write-only over
+  IPC, never echoed back, never logged, and the page shows only
+  已启用 / 未配置. Saving validates length bounds; a「测试连接」button
+  runs one real minimal search (1 credit) and shows the verdict verbatim;
+  an apply link opens app.tavily.com in the system browser (free tier:
+  1,000 credits/month, no credit card).
+- **Capability follows configuration** — `web_search` registers into the
+  model's tool set only for rounds where a key exists, so the model never
+  sees a tool it cannot call; the system prompt gains one line telling it
+  to verify time-sensitive questions via search first. Changes take
+  effect from the next round and are stated on the page.
+- **Readable failures** — Tavily errors are classified for humans
+  (key rejected / rate limited / quota exhausted, with the original
+  detail attached) under one overall 20-second timeout.
+
+### Changed
+
+- IPC contract: the agent module gains `WebSearchStatusDto`,
+  `SaveWebSearchKeyRequestDto`, `TestWebSearchRequestDto`,
+  `WebSearchProbeDto` and three commands (`get_web_search_status`,
+  `save_web_search_key`, `test_web_search_key`); backward compatible, no
+  existing shape changed.
+- Bilingual README rewritten with application screenshots.
+
+### Fixed
+
+- `bun run release` with no argument now performs a patch bump as
+  documented (previously it errored out).
+
+### Removed
+
+- The inline Rust unit-test suites were dropped from most modules. Kept:
+  the IPC-contract freshness/export tests, the tool-host target-resolution
+  regressions, and the `ssh_smoke` integration test. Contributors should
+  be aware domain invariants no longer have automated regression coverage.
+
 ## [0.3.3] - 2026-10-24
 
 Conversation-management release: the thread switcher gains the ability to
