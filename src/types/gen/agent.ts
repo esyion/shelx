@@ -240,6 +240,20 @@ export type TargetScope =
  * `Paused` 只因连续执行轮数到达上限,断点上下文随运行记录保存,继续时另起新 Run。
  */
 export type RunState = "running" | "awaiting_approval" | "completed" | "failed" | "cancelled" | "paused";
+/**
+ * 对话线程的生命周期状态机。
+ *
+ * 合法流转:
+ * - `Draft → Active`(首条消息落库成功后由应用层幂等升级)
+ * - `Active → Archived`(用户归档;有进行中运行时拒绝)
+ * - `Archived → Active`(用户恢复)
+ *
+ * 运行中/等待批准**不是**生命周期取值:它们由快照(`running[]`/`pending[]`)派生,
+ * 落盘的运行态在进程被杀后会说谎。`Draft` 全库至多一个(存储层部分唯一索引强制),
+ * 它是「点了新对话但一个字都没发出去」的对话;归档收起的是有内容的对话,
+ * 所以 `Draft` 不允许归档(空对话的出口是删除或用掉)。
+ */
+export type ThreadLifecycle = "draft" | "active" | "archived";
 
 /**
  * 界面候选枚举的单点来源(AGENTS.md §5:前端禁止自己抄一份取值)。
@@ -765,6 +779,10 @@ export interface TestWebSearchRequestDto {
 export interface ThreadDto {
   approvalMode: ApprovalMode;
   /**
+   * 归档时间;未归档为 null(何时归档的时间戳,状态真源是 lifecycle)。
+   */
+  archivedAt: number | null;
+  /**
    * 手动绑定的会话 ID。
    */
   boundSessionId: string | null;
@@ -776,6 +794,7 @@ export interface ThreadDto {
    * ID。
    */
   id: string;
+  lifecycle: ThreadLifecycle;
   /**
    * 置顶时间(`None` = 未置顶;列表置顶在前、按置顶时间倒序)。
    */

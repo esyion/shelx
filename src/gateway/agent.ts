@@ -14,6 +14,7 @@ import type {
   AgentThread,
   ApprovalChoice,
   ApprovalDto,
+  ApprovalMode,
   AuditDto,
   ModelWindowDto,
   ProbeDto,
@@ -41,11 +42,11 @@ export function getAgentThread(threadId: string): Promise<ThreadSnapshotDto> {
   return invokeUnwrapped("get_agent_thread", { request: { threadId } });
 }
 
-/** 新建线程。 */
+/** 新建线程(取或建唯一草稿:已有「未发送」对话时后端原样返回它)。 */
 export function createAgentThread(request: {
   profileId: string;
   title?: string;
-  approvalMode?: "read_only_auto" | "all_confirm" | "read_only_only";
+  approvalMode?: ApprovalMode;
   boundSessionId?: string | null;
 }): Promise<AgentThread> {
   return invokeUnwrapped("create_agent_thread", {
@@ -62,7 +63,7 @@ export function createAgentThread(request: {
 export function updateAgentThread(request: {
   threadId: string;
   title?: string;
-  approvalMode?: "read_only_auto" | "all_confirm" | "read_only_only";
+  approvalMode?: ApprovalMode;
   boundSessionId?: string | null;
   profileId?: string;
   pinned?: boolean;
@@ -82,6 +83,21 @@ export function updateAgentThread(request: {
 /** 删除线程(连带消息、运行、审计与记忆日志)。 */
 export function deleteAgentThread(threadId: string): Promise<void> {
   return invokeUnwrapped("delete_agent_thread", { request: { threadId } });
+}
+
+/** 归档对话(收起有内容的对话;「未发送」草稿与进行中的对话会被拒绝)。 */
+export function archiveAgentThread(threadId: string): Promise<AgentThread> {
+  return invokeUnwrapped("archive_agent_thread", { request: { threadId } });
+}
+
+/** 恢复归档对话(数据一直保留,恢复后可继续)。 */
+export function restoreAgentThread(threadId: string): Promise<AgentThread> {
+  return invokeUnwrapped("restore_agent_thread", { request: { threadId } });
+}
+
+/** 已归档对话列表(按归档时间倒序,归档弹窗用)。 */
+export function listArchivedAgentThreads(): Promise<AgentThread[]> {
+  return invokeUnwrapped("list_archived_agent_threads");
 }
 
 /**

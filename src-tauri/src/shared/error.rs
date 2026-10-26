@@ -46,6 +46,8 @@ pub enum IpcErrorCode {
     AgentProtocolUnsupported,
     /// Agent:该对话已有一轮在进行,需先取消或等待(M5)。
     AgentBusy,
+    /// Agent:对话已归档,不能继续发送;前端应引导去归档列表恢复。
+    AgentThreadArchived,
     /// Agent:目标主机不在用户配置列表内,或超出批量上限(M5)。
     AgentTargetRejected,
     /// 未归类的内部错误;details 可携带脱敏上下文。

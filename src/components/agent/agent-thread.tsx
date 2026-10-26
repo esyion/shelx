@@ -194,7 +194,9 @@ export function AgentThread({ threadId }: { threadId: string }) {
                       <EmptyHeader>
                         <EmptyTitle>问它一件运维上的事</EmptyTitle>
                         <EmptyDescription>
-                          取证类操作会自动执行;任何改动都会先请你逐台批准。
+                          {snapshot.thread.lifecycle === "draft"
+                            ? "发第一条消息后,这个对话会自动命名并出现在对话列表里。取证类操作会自动执行;任何改动都会先请你逐台批准。"
+                            : "取证类操作会自动执行;任何改动都会先请你逐台批准。"}
                         </EmptyDescription>
                       </EmptyHeader>
                       <div className="flex flex-wrap gap-2">

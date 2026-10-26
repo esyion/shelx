@@ -20,10 +20,14 @@ import { useUiStore } from "@/stores/ui";
 
 const api = vi.hoisted(() => ({
   listAgentThreads: vi.fn(),
+  listArchivedAgentThreads: vi.fn(),
   listAgentProfiles: vi.fn(),
   listAgentMemories: vi.fn(),
   listAgentEnums: vi.fn(),
   getAgentThread: vi.fn(),
+  createAgentThread: vi.fn(),
+  archiveAgentThread: vi.fn(),
+  restoreAgentThread: vi.fn(),
   attachAgentThread: vi.fn(),
   detachAgentThread: vi.fn(),
   cancelAgentRun: vi.fn(),
@@ -135,8 +139,12 @@ beforeEach(() => {
         createdAt: 1,
         updatedAt: 2,
         pinnedAt: null,
+        archivedAt: null,
+        lifecycle: "active",
       },
     ],
+    archivedThreads: [],
+    creatingThread: null,
     profiles: [],
     memories: [],
     activeThreadId: "t1",
@@ -146,6 +154,7 @@ beforeEach(() => {
     loading: false,
   });
   api.listAgentThreads.mockResolvedValue([]);
+  api.listArchivedAgentThreads.mockResolvedValue([]);
   api.listAgentProfiles.mockResolvedValue([]);
   api.listAgentMemories.mockResolvedValue([]);
   api.listAgentEnums.mockResolvedValue({
@@ -350,6 +359,52 @@ describe("新对话的接入点拦截", () => {
     expect(routerPush).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "去添加" }));
     expect(routerPush).toHaveBeenCalledWith("/settings/ai/models");
+  });
+});
+
+describe("新对话连点回归(原缺陷:连点堆出多个空对话)", () => {
+  it("连点两次只发一次创建 IPC,打开的是同一个「未发送」草稿", async () => {
+    // 面板打开会重拉列表:可用接入点必须从 API mock 进来,预置 state 会被覆盖。
+    api.listAgentProfiles.mockResolvedValue([{ id: "p1", enabled: true, hasKey: true }]);
+    useAgentStore.setState({ activeThreadId: null });
+    api.createAgentThread.mockResolvedValue({
+      id: "d1",
+      title: "新对话",
+      approvalMode: "read_only_auto",
+      boundSessionId: null,
+      profileId: "p1",
+      createdAt: 3,
+      updatedAt: 3,
+      pinnedAt: null,
+      archivedAt: null,
+      lifecycle: "draft",
+    });
+    api.getAgentThread.mockResolvedValue({
+      ...snapshot,
+      thread: { ...snapshot.thread, id: "d1", lifecycle: "draft" },
+      runs: [],
+      messages: [],
+      pending: [],
+      running: [],
+    } as unknown as ThreadSnapshotDto);
+    render(<AppShell />);
+    useUiStore.setState({ agentOpen: true });
+    // 等接入点加载完成,否则第一下点击会走「去设置页」指引而不是创建。
+    await waitFor(() =>
+      expect(useAgentStore.getState().profiles.some((profile) => profile.hasKey)).toBe(true),
+    );
+    const button = screen.getByRole("button", { name: "新对话" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    // 第二下落在进行中的创建上:只有一次真实建线程 IPC。
+    await waitFor(() => expect(api.createAgentThread).toHaveBeenCalledTimes(1));
+    await screen.findByLabelText("向 Agent 提问");
+    // 选择器分组的数据源里恰好一个「未发送」,且打开的就是它。
+    const drafts = useAgentStore
+      .getState()
+      .threads.filter((thread) => thread.lifecycle === "draft");
+    expect(drafts).toHaveLength(1);
+    expect(useAgentStore.getState().activeThreadId).toBe("d1");
   });
 });
 

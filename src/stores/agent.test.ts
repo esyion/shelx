@@ -16,6 +16,9 @@ const api = vi.hoisted(() => ({
   createAgentThread: vi.fn(),
   updateAgentThread: vi.fn(),
   deleteAgentThread: vi.fn(),
+  archiveAgentThread: vi.fn(),
+  restoreAgentThread: vi.fn(),
+  listArchivedAgentThreads: vi.fn(),
   sendAgentMessage: vi.fn(),
   attachAgentThread: vi.fn(),
   detachAgentThread: vi.fn(),
@@ -76,6 +79,8 @@ beforeEach(() => {
   api.detachAgentThread.mockResolvedValue(undefined);
   useAgentStore.setState({
     threads: [],
+    archivedThreads: [],
+    creatingThread: null,
     profiles: [],
     memories: [],
     activeThreadId: null,
@@ -85,6 +90,9 @@ beforeEach(() => {
     error: null,
     loading: false,
   });
+  // 终态/发送后的后台列表刷新会用到;默认给空列表。
+  api.listAgentThreads.mockResolvedValue([]);
+  api.listArchivedAgentThreads.mockResolvedValue([]);
 });
 
 describe("加载与打开线程", () => {
@@ -266,6 +274,88 @@ describe("批准与取消", () => {
     useAgentStore.setState({ activeThreadId: "t1" });
     await useAgentStore.getState().cancel("r1");
     expect(api.cancelAgentRun).toHaveBeenCalledWith("t1", "r1");
+  });
+});
+
+describe("新对话与生命周期(回归:连点不得堆出多个空对话)", () => {
+  /** 造一条线程记录。 */
+  function threadOf(id: string, lifecycle: "draft" | "active" | "archived") {
+    return {
+      id,
+      title: id === "d1" ? "新对话" : "排查",
+      approvalMode: "read_only_auto",
+      boundSessionId: null,
+      profileId: "p1",
+      createdAt: 1,
+      updatedAt: 2,
+      pinnedAt: null,
+      archivedAt: lifecycle === "archived" ? 9 : null,
+      lifecycle,
+    } as const;
+  }
+
+  it("连点两次「新对话」只发一次创建 IPC,并落在同一线程上", async () => {
+    let release: (value: unknown) => void = () => {};
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    api.createAgentThread.mockImplementation(() =>
+      gate.then(() => threadOf("d1", "draft")),
+    );
+    api.getAgentThread.mockResolvedValue(
+      snapshot({ thread: { ...snapshot().thread, id: "d1", lifecycle: "draft" } }),
+    );
+    const first = useAgentStore.getState().createThread("p1");
+    const second = useAgentStore.getState().createThread("p1");
+    release(undefined);
+    const [a, b] = await Promise.all([first, second]);
+    expect(api.createAgentThread).toHaveBeenCalledTimes(1);
+    expect(a).toBe("d1");
+    expect(b).toBe("d1");
+    // 后端复用路径按 id 去重:下拉里不会出现两行同一线程。
+    const drafts = useAgentStore.getState().threads.filter(
+      (item) => item.lifecycle === "draft",
+    );
+    expect(drafts).toHaveLength(1);
+  });
+
+  it("已有可用草稿时点「新对话」直接打开,不再发创建 IPC", async () => {
+    useAgentStore.setState({
+      threads: [threadOf("d1", "draft")],
+      profiles: [{ id: "p1", enabled: true, hasKey: true } as never],
+      activeThreadId: null,
+    });
+    api.getAgentThread.mockResolvedValue(
+      snapshot({ thread: { ...snapshot().thread, id: "d1", lifecycle: "draft" } }),
+    );
+    const id = await useAgentStore.getState().createThread("p1");
+    expect(api.createAgentThread).not.toHaveBeenCalled();
+    expect(id).toBe("d1");
+    expect(useAgentStore.getState().activeThreadId).toBe("d1");
+  });
+
+  it("归档当前打开的线程:列表移除、选中清空;恢复后回到列表", async () => {
+    useAgentStore.setState({ threads: [threadOf("t1", "active")], activeThreadId: "t1" });
+    api.archiveAgentThread.mockResolvedValue(threadOf("t1", "archived"));
+    await useAgentStore.getState().archiveThread("t1");
+    expect(useAgentStore.getState().threads).toHaveLength(0);
+    expect(useAgentStore.getState().activeThreadId).toBeNull();
+
+    api.restoreAgentThread.mockResolvedValue(threadOf("t1", "active"));
+    const restored = await useAgentStore.getState().restoreThread("t1");
+    expect(restored).toBe("t1");
+    expect(useAgentStore.getState().threads[0]?.lifecycle).toBe("active");
+  });
+
+  it("归档失败错误可见,列表与选中不动", async () => {
+    useAgentStore.setState({ threads: [threadOf("t1", "active")], activeThreadId: "t1" });
+    api.archiveAgentThread.mockRejectedValue(
+      new GatewayError("AGENT_BUSY", "该对话已有一轮在进行,请先等待或取消"),
+    );
+    await useAgentStore.getState().archiveThread("t1");
+    expect(useAgentStore.getState().error).toBe("该对话已有一轮在进行,请先等待或取消");
+    expect(useAgentStore.getState().threads).toHaveLength(1);
+    expect(useAgentStore.getState().activeThreadId).toBe("t1");
   });
 });
 

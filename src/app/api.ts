@@ -206,6 +206,12 @@ export const createAgentThread = agentApi.createAgentThread;
 export const updateAgentThread = agentApi.updateAgentThread;
 /** 删除线程。 */
 export const deleteAgentThread = agentApi.deleteAgentThread;
+/** 归档对话。 */
+export const archiveAgentThread = agentApi.archiveAgentThread;
+/** 恢复归档对话。 */
+export const restoreAgentThread = agentApi.restoreAgentThread;
+/** 已归档对话列表。 */
+export const listArchivedAgentThreads = agentApi.listArchivedAgentThreads;
 /** 发起一轮(流式)。 */
 export const sendAgentMessage = agentApi.sendAgentMessage;
 /** 订阅线程事件(重挂续接)。 */

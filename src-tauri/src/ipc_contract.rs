@@ -170,6 +170,10 @@ fn document_uncanonical() -> Value {
                     refer::<crate::dto::agent::AgentEnumsDto>,
                 ),
                 ("RunState", refer::<crate::domain::agent::RunState>),
+                (
+                    "ThreadLifecycle",
+                    refer::<crate::domain::agent::ThreadLifecycle>,
+                ),
                 ("TargetStatus", refer::<crate::domain::agent::TargetStatus>),
                 ("ToolCategory", refer::<crate::domain::agent::ToolCategory>),
                 ("MemoryScope", refer::<crate::domain::agent::MemoryScope>),

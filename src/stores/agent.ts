@@ -32,8 +32,12 @@ type Subscriptions = Record<string, string>;
 
 /** Agent store 形状。 */
 export interface AgentStore {
-  /** 线程列表。 */
+  /** 线程列表(未归档)。 */
   threads: AgentThread[];
+  /** 已归档线程列表(打开归档弹窗时拉取)。 */
+  archivedThreads: AgentThread[];
+  /** 进行中的「新对话」创建(连点共享同一次 IPC;放 store 里便于测试重置)。 */
+  creatingThread: Promise<string | null> | null;
   /** 模型接入点。 */
   profiles: AgentProfile[];
   /** 共享记忆。 */
@@ -60,10 +64,16 @@ export interface AgentStore {
   openThread(threadId: string): Promise<void>;
   /** 关闭当前订阅(离开页面时调用)。 */
   closeThread(): void;
-  /** 新建并打开线程。 */
+  /** 新建并打开线程(取或建唯一「未发送」草稿;连点共享同一次创建)。 */
   createThread(profileId: string, title?: string): Promise<string | null>;
   /** 删除线程(成功返回 true;失败把原因写入 error 并返回 false,供确认弹窗保持打开)。 */
   removeThread(threadId: string): Promise<boolean>;
+  /** 归档线程(归档当前打开的线程时清空选中,回空态;成功返回 true,失败原因写入 error)。 */
+  archiveThread(threadId: string): Promise<boolean>;
+  /** 恢复归档线程(成功返回线程 ID,调用方决定是否顺手打开)。 */
+  restoreThread(threadId: string): Promise<string | null>;
+  /** 拉取已归档线程列表。 */
+  loadArchivedThreads(): Promise<void>;
   /** 改线程属性(置顶/改名后按后端同款顺序重排:置顶在前,其余按更新时间倒序;成功返回 true,失败原因写入 error)。 */
   patchThread(
     threadId: string,
@@ -143,6 +153,8 @@ function messageOf(error: unknown): string {
 
 export const useAgentStore = create<AgentStore>((set, get) => ({
   threads: [],
+  archivedThreads: [],
+  creatingThread: null,
   profiles: [],
   memories: [],
   // 枚举进页时由 load() 拉取;区间在到位前是 0,表单据此知道"还没加载完"。
@@ -214,15 +226,41 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   },
 
   async createThread(profileId, title) {
-    try {
-      const thread = await api.createAgentThread({ profileId, title });
-      set({ threads: [thread, ...get().threads] });
-      await get().openThread(thread.id);
-      return thread.id;
-    } catch (error) {
-      set({ error: messageOf(error) });
-      return null;
+    // 本地已有可用「未发送」草稿:直接打开它,零 IPC 即时响应 ——
+    // 连点「新对话」永远落在同一个空对话上(后端取或建语义兜底,这里只是省一跳)。
+    // 草稿绑的接入点已不可用时仍走 IPC,让后端做 profile 自愈。
+    const draft = get().threads.find((thread) => thread.lifecycle === "draft");
+    const draftUsable =
+      draft &&
+      get().profiles.some(
+        (profile) =>
+          profile.id === draft.profileId && profile.enabled && profile.hasKey,
+      );
+    if (draft && draftUsable) {
+      await get().openThread(draft.id);
+      return draft.id;
     }
+    // single-flight:创建进行中时,重复点击共享同一次 IPC,不再发第二条。
+    if (!get().creatingThread) {
+      const flight = (async () => {
+        try {
+          const thread = await api.createAgentThread({ profileId, title });
+          // 后端可能复用既有草稿(并发窗口):按 id 去重,下拉里不许出现两行同一线程。
+          set({
+            threads: [thread, ...get().threads.filter((item) => item.id !== thread.id)],
+          });
+          await get().openThread(thread.id);
+          return thread.id;
+        } catch (error) {
+          set({ error: messageOf(error) });
+          return null;
+        } finally {
+          set({ creatingThread: null });
+        }
+      })();
+      set({ creatingThread: flight });
+    }
+    return get().creatingThread;
   },
 
   async removeThread(threadId) {
@@ -233,6 +271,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       const wasActive = get().activeThreadId === threadId;
       set({
         threads: get().threads.filter((thread) => thread.id !== threadId),
+        archivedThreads: get().archivedThreads.filter((thread) => thread.id !== threadId),
         snapshots,
         activeThreadId: wasActive ? null : get().activeThreadId,
       });
@@ -241,6 +280,48 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     } catch (error) {
       set({ error: messageOf(error) });
       return false;
+    }
+  },
+
+  async archiveThread(threadId) {
+    try {
+      const archived = await api.archiveAgentThread(threadId);
+      const wasActive = get().activeThreadId === threadId;
+      set({
+        threads: get().threads.filter((thread) => thread.id !== threadId),
+        activeThreadId: wasActive ? null : get().activeThreadId,
+      });
+      if (wasActive) get().closeThread();
+      // 归档可逆,不弹确认;toast 把恢复路径随操作送达,不留"东西去哪了"的疑惑。
+      useUiStore.getState().toast(`已归档“${archived.title}”,可在“已归档的对话”里恢复`);
+      void get().loadArchivedThreads();
+      return true;
+    } catch (error) {
+      set({ error: messageOf(error) });
+      return false;
+    }
+  },
+
+  async restoreThread(threadId) {
+    try {
+      const restored = await api.restoreAgentThread(threadId);
+      set({
+        threads: [restored, ...get().threads.filter((item) => item.id !== restored.id)],
+      });
+      useUiStore.getState().toast(`已恢复“${restored.title}”`);
+      void get().loadArchivedThreads();
+      return restored.id;
+    } catch (error) {
+      set({ error: messageOf(error) });
+      return null;
+    }
+  },
+
+  async loadArchivedThreads() {
+    try {
+      set({ archivedThreads: await api.listArchivedAgentThreads() });
+    } catch (error) {
+      set({ error: messageOf(error) });
     }
   },
 
@@ -286,7 +367,8 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       set({
         subscriptions: { ...get().subscriptions, [threadId]: accepted.subscriptionId },
       });
-      // 用户消息在受理前已落库,立刻刷一次快照,否则要等切走再切回才看得见。
+      // 用户消息在受理前已落库,立刻刷一次快照,否则要等切走再切回才看得见;
+      // 快照里的线程记录同步回列表(首轮自动命名、草稿升为正式对话都在这一步可见)。
       await refreshSnapshot(threadId, set, get);
     } catch (error) {
       set({ error: messageOf(error) });
@@ -301,6 +383,10 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     const next = applyEvent(current, event);
     set({ streams: { ...get().streams, [event.threadId]: next } });
     if (event.kind === "approval_required" || event.kind === "final_response") {
+      // 终态快照同步回列表(草稿升为正式对话、自动命名都在这一步可见)。
+      void refreshSnapshot(event.threadId, set, get);
+    }
+    if (event.kind === "run_failed" || event.kind === "run_cancelled") {
       void refreshSnapshot(event.threadId, set, get);
     }
     if (event.kind === "run_cancelled") {

@@ -244,10 +244,13 @@ pub fn run() {
             commands::update::get_update_notice,
             // ---- Agent(M5)docs/AGENT_DESIGN.md ----
             commands::agent::list_agent_threads,
+            commands::agent::list_archived_agent_threads,
             commands::agent::get_agent_thread,
             commands::agent::create_agent_thread,
             commands::agent::update_agent_thread,
             commands::agent::delete_agent_thread,
+            commands::agent::archive_agent_thread,
+            commands::agent::restore_agent_thread,
             commands::agent::send_agent_message,
             commands::agent::attach_agent_thread,
             commands::agent::detach_agent_thread,

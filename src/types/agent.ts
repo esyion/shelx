@@ -37,6 +37,7 @@ export type {
   TestWebSearchRequestDto,
   ThreadDto,
   ThreadIdRequestDto,
+  ThreadLifecycle,
   ThreadSnapshotDto,
   TokenRangeDto,
   ToolCategory,

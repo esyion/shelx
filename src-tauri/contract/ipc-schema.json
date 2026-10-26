@@ -1511,6 +1511,14 @@
               "$ref": "#/$defs/ApprovalMode",
               "description": "审批档位。"
             },
+            "archivedAt": {
+              "description": "归档时间;未归档为 null(何时归档的时间戳,状态真源是 lifecycle)。",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
             "boundSessionId": {
               "description": "手动绑定的会话 ID。",
               "type": [
@@ -1526,6 +1534,10 @@
             "id": {
               "description": "ID。",
               "type": "string"
+            },
+            "lifecycle": {
+              "$ref": "#/$defs/ThreadLifecycle",
+              "description": "生命周期:未发送 / 对话 / 已归档。"
             },
             "pinnedAt": {
               "description": "置顶时间(`None` = 未置顶;列表置顶在前、按置顶时间倒序)。",
@@ -1557,7 +1569,9 @@
             "boundSessionId",
             "createdAt",
             "updatedAt",
-            "pinnedAt"
+            "pinnedAt",
+            "archivedAt",
+            "lifecycle"
           ],
           "type": "object"
         },
@@ -1574,6 +1588,26 @@
             "threadId"
           ],
           "type": "object"
+        },
+        "ThreadLifecycle": {
+          "description": "对话线程的生命周期状态机。\n\n合法流转:\n- `Draft → Active`(首条消息落库成功后由应用层幂等升级)\n- `Active → Archived`(用户归档;有进行中运行时拒绝)\n- `Archived → Active`(用户恢复)\n\n运行中/等待批准**不是**生命周期取值:它们由快照(`running[]`/`pending[]`)派生,\n落盘的运行态在进程被杀后会说谎。`Draft` 全库至多一个(存储层部分唯一索引强制),\n它是「点了新对话但一个字都没发出去」的对话;归档收起的是有内容的对话,\n所以 `Draft` 不允许归档(空对话的出口是删除或用掉)。",
+          "oneOf": [
+            {
+              "const": "draft",
+              "description": "草稿:已创建、还没有任何消息;全库至多一个。",
+              "type": "string"
+            },
+            {
+              "const": "active",
+              "description": "正常对话:至少落库过一条用户消息。",
+              "type": "string"
+            },
+            {
+              "const": "archived",
+              "description": "已归档:从主列表收起,数据保留,可恢复或删除。",
+              "type": "string"
+            }
+          ]
         },
         "ThreadSnapshotDto": {
           "description": "线程快照。",
@@ -2001,6 +2035,9 @@
         "ThreadIdRequestDto": {
           "$ref": "#/$defs/ThreadIdRequestDto"
         },
+        "ThreadLifecycle": {
+          "$ref": "#/$defs/ThreadLifecycle"
+        },
         "ThreadSnapshotDto": {
           "$ref": "#/$defs/ThreadSnapshotDto"
         },
@@ -2029,6 +2066,7 @@
         "ApprovalDecision",
         "AgentEnumsDto",
         "RunState",
+        "ThreadLifecycle",
         "TargetStatus",
         "ToolCategory",
         "MemoryScope",
@@ -2925,6 +2963,11 @@
             {
               "const": "AGENT_BUSY",
               "description": "Agent:该对话已有一轮在进行,需先取消或等待(M5)。",
+              "type": "string"
+            },
+            {
+              "const": "AGENT_THREAD_ARCHIVED",
+              "description": "Agent:对话已归档,不能继续发送;前端应引导去归档列表恢复。",
               "type": "string"
             },
             {

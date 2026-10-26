@@ -21,6 +21,7 @@ import type {
   RunState,
   TargetStatus,
   ThreadDto,
+  ThreadLifecycle,
   ToolCategory,
 } from "@/types";
 
@@ -120,6 +121,22 @@ export const RUN_STATE_DISPLAY: Record<RunState, AgentDisplay> = {
     description: "连续执行轮数到达上限,可从断点继续",
     tone: "warning",
   },
+};
+
+/**
+ * 线程生命周期 → 中文(枚举原值只允许出现在这里的键上)。
+ *
+ * 「未发送」就是用户说的草稿:开了头但一条消息都没发出;
+ * 正常对话不贴任何徽标 —— 列表分组已在表达它,不再加重心智负担。
+ */
+export const THREAD_LIFECYCLE_DISPLAY: Record<ThreadLifecycle, AgentDisplay> = {
+  draft: {
+    label: "未发送",
+    description: "还没发出第一条消息",
+    tone: "neutral",
+  },
+  active: { label: "对话", description: "正常使用的对话", tone: "neutral" },
+  archived: { label: "已归档", description: "已收起,可随时恢复", tone: "neutral" },
 };
 
 /** 单台主机状态 → 中文。 */

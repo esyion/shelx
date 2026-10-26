@@ -38,6 +38,7 @@ import { toolActionLabel, WARNING_CARD_CLASS } from "@/lib/agent-events";
 import { useAgentStore } from "@/stores/agent";
 import { useUiStore } from "@/stores/ui";
 import { AgentThread } from "./agent-thread";
+import { ArchivedThreadsDialog } from "./archived-threads-dialog";
 import { AuditList } from "./audit-list";
 import { ThreadSelector } from "./thread-selector";
 
@@ -53,6 +54,7 @@ export function AgentPanel() {
   const error = useAgentStore((state) => state.error);
   const load = useAgentStore((state) => state.load);
   const createThread = useAgentStore((state) => state.createThread);
+  const creating = useAgentStore((state) => state.creatingThread !== null);
   const openThread = useAgentStore((state) => state.openThread);
   const dismissError = useAgentStore((state) => state.dismissError);
   /** 其他对话里等你批准的操作(后台运行不会因为你收起面板而停下)。 */
@@ -61,6 +63,8 @@ export function AgentPanel() {
   const [tab, setTab] = useState("chat");
   /** 新对话被挡住的原因:一个可用接入点都没有,指引去设置页添加。 */
   const [needProfile, setNeedProfile] = useState(false);
+  /** 归档弹窗(恢复/彻底删除的入口,常驻在对话选择器底部)。 */
+  const [archivedOpen, setArchivedOpen] = useState(false);
 
   /** 打开时才拉数据:收着面板不产生额外 IPC 与网络。 */
   useEffect(() => {
@@ -118,13 +122,15 @@ export function AgentPanel() {
           threads={threads}
           activeThreadId={activeThreadId}
           onSelect={(threadId) => void openThread(threadId)}
+          onOpenArchived={() => setArchivedOpen(true)}
         />
         <Button
           variant="ghost"
           size="icon-sm"
           className="shrink-0"
           aria-label="新对话"
-          title="新对话"
+          title={creating ? "正在创建…" : "新对话"}
+          disabled={creating}
           onClick={() => void create()}
         >
           <Plus />
@@ -139,6 +145,8 @@ export function AgentPanel() {
           <span className="sr-only">关闭 AI 助手</span>
         </Button>
       </header>
+
+      <ArchivedThreadsDialog open={archivedOpen} onOpenChange={setArchivedOpen} />
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-4 pb-4 pt-3">
         {error && !(tab === "chat" && activeThreadId) && (

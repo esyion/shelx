@@ -5,6 +5,7 @@
 
 pub mod events;
 pub mod hub;
+pub mod lifecycle;
 pub mod prompt;
 pub mod tool_host;
 pub mod tool_ops;
@@ -29,8 +30,8 @@ use crate::domain::agent::{AgentDomainError, ApprovalDecision, ApprovalMode, Mem
 use hub::{ApprovalCenter, RunRegistry, ThreadEventHub};
 use tool_host::SshToolHost;
 use types::{
-    AgentMemory, AgentStore, LlmGateway, NewThread, ProfileDraft, ProfileRecord, StoreFault,
-    ThreadRecord, WebSearch, WEB_SEARCH_SECRET_REF,
+    AgentMemory, AgentStore, LlmGateway, ProfileDraft, ProfileRecord, StoreFault, ThreadRecord,
+    WebSearch, WEB_SEARCH_SECRET_REF,
 };
 
 /// 新线程的默认标题;首轮自动命名(见 `run::auto_title`)以它为"还没起过名"的判据,
@@ -116,6 +117,9 @@ pub enum AgentError {
     /// 运行仍在进行,不允许并发第二份。
     #[error("该对话已有一轮在进行,请先等待或取消")]
     AlreadyRunning,
+    /// 对话已归档,不能继续发言(前端应引导恢复)。
+    #[error("已归档的对话不能继续发送,请先恢复")]
+    ThreadArchived,
     /// 接入点协议不满足要求(禁止旧协议)。
     #[error("接入点不支持要求的协议")]
     ProtocolUnsupported,
@@ -211,7 +215,8 @@ impl AgentService {
         }
     }
 
-    /// 启动清理:上次退出时未结束的运行标记为失败,并说明原因(不允许死状态)。
+    /// 启动清理:上次退出时未结束的运行标记为失败,并说明原因(不允许死状态);
+    /// 顺带对账线程生命周期,把"有消息却仍是草稿"的漂修行修成对话。
     pub fn recover_unfinished_runs(&self) {
         match self.store.expire_unfinished_runs() {
             Ok(count) if count > 0 => {
@@ -219,6 +224,13 @@ impl AgentService {
             }
             Ok(_) => {}
             Err(err) => tracing::warn!("Agent 运行状态清理失败: {err}"),
+        }
+        match self.store.reconcile_thread_lifecycle() {
+            Ok(count) if count > 0 => {
+                tracing::info!(count, "已把带有消息的草稿修正为正常对话");
+            }
+            Ok(_) => {}
+            Err(err) => tracing::warn!("线程生命周期对账失败: {err}"),
         }
     }
 
@@ -228,34 +240,6 @@ impl AgentService {
     /// 存储失败时返回 [`AgentError::Store`]。
     pub fn list_threads(&self) -> Result<Vec<ThreadRecord>, AgentError> {
         Ok(self.store.threads()?)
-    }
-
-    /// 新建线程。
-    ///
-    /// # Errors
-    /// profile 不存在、存储失败或领域校验失败。
-    pub fn create_thread(&self, draft: NewThread) -> Result<ThreadRecord, AgentError> {
-        if self.profile(&draft.profile_id).is_none() {
-            return Err(AgentError::NotFound("模型配置"));
-        }
-        let now = now_millis();
-        let thread = ThreadRecord {
-            id: uuid::Uuid::new_v4().to_string(),
-            title: if draft.title.trim().is_empty() {
-                DEFAULT_THREAD_TITLE.to_owned()
-            } else {
-                draft.title.trim().chars().take(80).collect()
-            },
-            profile_id: draft.profile_id,
-            approval: draft.approval,
-            bound_session_id: draft.bound_session_id,
-            created_at: now,
-            updated_at: now,
-            archived_at: None,
-            pinned_at: None,
-        };
-        self.store.upsert_thread(&thread)?;
-        Ok(thread)
     }
 
     /// 线程快照(消息 + 状态 + 待批准)。

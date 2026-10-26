@@ -26,6 +26,10 @@ const MIGRATIONS: &[(i64, &str)] = &[
         7,
         include_str!("../../../migrations/0007_agent_thread_pinned.sql"),
     ),
+    (
+        8,
+        include_str!("../../../migrations/0008_agent_thread_lifecycle.sql"),
+    ),
 ];
 
 /// 将数据库迁移到最新版本;已是最新时为空操作。

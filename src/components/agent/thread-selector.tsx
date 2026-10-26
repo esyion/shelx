@@ -6,14 +6,16 @@
  * 选中即切换 —— 面板不再另立一行 "AI 助手" 标题,身份由触发键上的品牌字形与
  * `aside` 的 aria-label 承担(侧栏入口本就写着「AI 助手」,面板不必每次自我介绍)。
  *
- * 行悬浮露出管理三键(置顶 / 重命名 / 删除):置顶即时生效,行随列表重排进
- * 「置顶」组并常亮一枚图钉;重命名与删除走弹窗 —— 重命名失败保留草稿并回显
+ * 行悬浮露出管理四键(置顶 / 归档 / 重命名 / 删除):置顶即时生效,行随列表重排进
+ * 「置顶」组并常亮一枚图钉;归档只收起不删数据(「未发送」草稿不提供归档 ——
+ * 空对话的出口是用掉或删除);重命名与删除走弹窗 —— 重命名失败保留草稿并回显
  * 后端错误原文,删除确认说清连带删除的消息、运行、审计与记忆日志且不可恢复。
+ * 唯一草稿单独成组「未发送」;底部常驻「已归档的对话」入口(恢复/彻底删除)。
  */
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
+import { Archive, ChevronDown, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
 import type { AgentThread } from "@/types";
 import { formatRelativeTime } from "@/lib/agent-events";
 import {
@@ -38,6 +40,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -60,18 +63,22 @@ const THREAD_TITLE_MAX = 80;
  * @param threads 全部对话(置顶在前、组内按时间倒序,由 store 保证)。
  * @param activeThreadId 当前线程 ID;`null` = 还没选。
  * @param onSelect 选中回调(切换线程)。
+ * @param onOpenArchived 打开「已归档的对话」弹窗(入口常驻在菜单底部)。
  */
 export function ThreadSelector({
   threads,
   activeThreadId,
   onSelect,
+  onOpenArchived,
 }: {
   threads: AgentThread[];
   activeThreadId: string | null;
   onSelect: (threadId: string) => void;
+  onOpenArchived: () => void;
 }) {
   const patchThread = useAgentStore((state) => state.patchThread);
   const removeThread = useAgentStore((state) => state.removeThread);
+  const archiveThread = useAgentStore((state) => state.archiveThread);
   const error = useAgentStore((state) => state.error);
   const dismissError = useAgentStore((state) => state.dismissError);
   /** 菜单开关自持:打开重命名/删除弹窗前先收起菜单,弹窗回来不叠在菜单上。 */
@@ -86,8 +93,11 @@ export function ThreadSelector({
 
   const active = threads.find((thread) => thread.id === activeThreadId);
   const label = active ? active.title : threads.length === 0 ? "还没有对话" : "选择对话…";
-  const pinned = threads.filter((thread) => thread.pinnedAt != null);
-  const recent = threads.filter((thread) => thread.pinnedAt == null);
+  /** 唯一「未发送」草稿单独成组;置顶/最近只排正式对话。 */
+  const draft = threads.find((thread) => thread.lifecycle === "draft") ?? null;
+  const conversations = threads.filter((thread) => thread.lifecycle !== "draft");
+  const pinned = conversations.filter((thread) => thread.pinnedAt != null);
+  const recent = conversations.filter((thread) => thread.pinnedAt == null);
   const titleBlank = !title.trim();
   const saveBlockReason = titleBlank ? "先填一个对话名" : null;
 
@@ -117,9 +127,10 @@ export function ThreadSelector({
     if (ok) setDeleting(null);
   }
 
-  /** 一行对话:标题 + 相对时间;悬浮时右侧给管理三键,选中 ✓ 给三键让位。 */
+  /** 一行对话:标题 + 相对时间(草稿标「未发送」);悬浮时右侧给管理键,选中 ✓ 给管理键让位。 */
   function row(thread: AgentThread): React.ReactNode {
     const isPinned = thread.pinnedAt != null;
+    const isDraft = thread.lifecycle === "draft";
     // 管理键必须拦下冒泡:点它们不能顺带触发这一行的"选中并切换"。
     const guard = (event: React.MouseEvent) => event.stopPropagation();
     return (
@@ -136,22 +147,39 @@ export function ThreadSelector({
             </span>
           </span>
           <span className="text-xs text-muted-foreground">
-            {formatRelativeTime(thread.updatedAt)}
+            {isDraft ? "未发送" : formatRelativeTime(thread.updatedAt)}
           </span>
         </span>
         <span className="absolute top-1/2 right-1.5 z-10 hidden -translate-y-1/2 items-center gap-0.5 group-hover/row:flex">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={isPinned ? `取消置顶「${thread.title}」` : `置顶「${thread.title}」`}
-            title={isPinned ? "取消置顶" : "置顶"}
-            onClick={(event) => {
-              guard(event);
-              void patchThread(thread.id, { pinned: !isPinned });
-            }}
-          >
-            {isPinned ? <PinOff /> : <Pin />}
-          </Button>
+          {!isDraft && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={isPinned ? `取消置顶「${thread.title}」` : `置顶「${thread.title}」`}
+                title={isPinned ? "取消置顶" : "置顶"}
+                onClick={(event) => {
+                  guard(event);
+                  void patchThread(thread.id, { pinned: !isPinned });
+                }}
+              >
+                {isPinned ? <PinOff /> : <Pin />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`归档「${thread.title}」`}
+                title="归档(收起,可恢复)"
+                onClick={(event) => {
+                  guard(event);
+                  setMenuOpen(false);
+                  void archiveThread(thread.id);
+                }}
+              >
+                <Archive />
+              </Button>
+            </>
+          )}
           <Button
             variant="ghost"
             size="icon-sm"
@@ -205,6 +233,13 @@ export function ThreadSelector({
             value={activeThreadId ?? ""}
             onValueChange={(value) => onSelect(String(value))}
           >
+            {draft && (
+              <>
+                <DropdownMenuLabel>未发送</DropdownMenuLabel>
+                {row(draft)}
+                <DropdownMenuSeparator />
+              </>
+            )}
             {pinned.length > 0 ? (
               <>
                 <DropdownMenuLabel>置顶</DropdownMenuLabel>
@@ -220,12 +255,19 @@ export function ThreadSelector({
               </>
             )}
           </DropdownMenuRadioGroup>
-          {threads.length === 0 && (
+          {conversations.length === 0 && (
             <p className="px-2 py-1 text-xs text-muted-foreground">
-              还没有对话;点右侧「新对话」开始。
+              {draft
+                ? "发过消息的对话会出现在这里。"
+                : "还没有对话;点右侧「新对话」开始。"}
             </p>
           )}
         </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => onOpenArchived()}>
+          <Archive />
+          已归档的对话
+        </DropdownMenuItem>
       </DropdownMenuContent>
 
       {renaming !== null && (
@@ -287,8 +329,9 @@ export function ThreadSelector({
             <AlertDialogHeader>
               <AlertDialogTitle>删除这段对话?</AlertDialogTitle>
               <AlertDialogDescription>
-                「{deleting.title}」的消息、运行记录、操作审计与记忆日志会一并删除,
-                删除后无法恢复。
+                {deleting.lifecycle === "draft"
+                  ? "这个对话还没发送过消息,删除后无法恢复。"
+                  : `「${deleting.title}」的消息、运行记录、操作审计与记忆日志会一并删除,删除后无法恢复。只想收起来的话,悬浮行上用「归档」更合适 —— 归档不删任何数据。`}
                 {deleting.id === activeThreadId
                   ? "这是你正在查看的对话,删除后会回到未选中状态。"
                   : ""}

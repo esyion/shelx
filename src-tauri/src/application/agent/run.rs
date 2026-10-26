@@ -13,7 +13,7 @@ use super::types::{
 };
 use super::{AgentError, AgentService, DEFAULT_THREAD_TITLE};
 use crate::application::settings::AgentSettings;
-use crate::domain::agent::{ApprovalMode, ProtocolKind, RunState};
+use crate::domain::agent::{ApprovalMode, ProtocolKind, RunState, ThreadLifecycle};
 
 /// 单条用户输入长度上限(字符)。
 const MAX_PROMPT_CHARS: usize = 20_000;
@@ -212,6 +212,9 @@ impl AgentService {
             .store
             .thread(&thread_id)?
             .ok_or(AgentError::NotFound("对话线程"))?;
+        if thread.lifecycle == ThreadLifecycle::Archived {
+            return Err(AgentError::ThreadArchived);
+        }
         if !self.runs.running_of_thread(&thread_id).is_empty() {
             return Err(AgentError::AlreadyRunning);
         }
@@ -240,6 +243,17 @@ impl AgentService {
             content: prompt.clone(),
             created_at: now,
         })?;
+        // 首条消息落库成功后,草稿升为正式对话。放在 append 之后:
+        // append 失败留在草稿(用户重试,语义正确);升级失败只记日志不打断 ——
+        // 消息已在,这轮照跑,下次发送的幂等升级或启动对账都会补上。
+        if let Err(err) = self.store.transition_thread_lifecycle(
+            &thread_id,
+            ThreadLifecycle::Draft,
+            ThreadLifecycle::Active,
+            None,
+        ) {
+            tracing::warn!(thread_id = %thread_id, "草稿升级落库失败(对账会修复): {err}");
+        }
         self.start_run(
             &thread,
             prepared_model,
@@ -262,6 +276,9 @@ impl AgentService {
             .store
             .thread(thread_id)?
             .ok_or(AgentError::NotFound("对话线程"))?;
+        if thread.lifecycle == ThreadLifecycle::Archived {
+            return Err(AgentError::ThreadArchived);
+        }
         if !self.runs.running_of_thread(thread_id).is_empty() {
             return Err(AgentError::AlreadyRunning);
         }

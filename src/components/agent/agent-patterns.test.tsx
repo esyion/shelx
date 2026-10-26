@@ -488,7 +488,7 @@ describe("对话切换(Thread Selector pattern)", () => {
   it("键上回显当前线程标题,不再另立一行面板大标题", () => {
     cleanup();
     render(
-      <ThreadSelector threads={threads} activeThreadId="t1" onSelect={() => undefined} />,
+      <ThreadSelector threads={threads} activeThreadId="t1" onSelect={() => undefined} onOpenArchived={() => undefined} />,
     );
     expect(screen.getByRole("button", { name: /排查 web-01/ })).toBeTruthy();
   });
@@ -496,7 +496,7 @@ describe("对话切换(Thread Selector pattern)", () => {
   it("菜单列出全部对话并给相对时间,选中即切换", async () => {
     cleanup();
     const onSelect = vi.fn();
-    render(<ThreadSelector threads={threads} activeThreadId="t1" onSelect={onSelect} />);
+    render(<ThreadSelector threads={threads} activeThreadId="t1" onSelect={onSelect} onOpenArchived={() => undefined} />);
     fireEvent.click(screen.getByRole("button", { name: /排查 web-01/ }));
     const option = await screen.findByRole("menuitemradio", { name: /全量磁盘巡检/ });
     expect(screen.getAllByRole("menuitemradio")).toHaveLength(2);
@@ -510,7 +510,7 @@ describe("对话切换(Thread Selector pattern)", () => {
   it("行上给管理三键,点它们只做自己的事,不切换对话", async () => {
     cleanup();
     const onSelect = vi.fn();
-    render(<ThreadSelector threads={threads} activeThreadId="t1" onSelect={onSelect} />);
+    render(<ThreadSelector threads={threads} activeThreadId="t1" onSelect={onSelect} onOpenArchived={() => undefined} />);
     fireEvent.click(screen.getByRole("button", { name: /排查 web-01/ }));
     await screen.findByRole("menuitemradio", { name: /全量磁盘巡检/ });
     expect(screen.getByRole("button", { name: "置顶「全量磁盘巡检」" })).toBeTruthy();
@@ -534,7 +534,7 @@ describe("对话切换(Thread Selector pattern)", () => {
       threads[0],
     ] as unknown as AgentThread[];
     const { rerender } = render(
-      <ThreadSelector threads={pinned} activeThreadId="t1" onSelect={() => undefined} />,
+      <ThreadSelector threads={pinned} activeThreadId="t1" onSelect={() => undefined} onOpenArchived={() => undefined} />,
     );
     fireEvent.click(screen.getByRole("button", { name: /排查 web-01/ }));
     await screen.findByRole("menuitemradio", { name: /全量磁盘巡检/ });
@@ -543,14 +543,14 @@ describe("对话切换(Thread Selector pattern)", () => {
     // 两组标签都在,单组标题「切换对话」不再出现。
     expect(screen.queryByText("切换对话")).toBeNull();
     rerender(
-      <ThreadSelector threads={threads} activeThreadId="t1" onSelect={() => undefined} />,
+      <ThreadSelector threads={threads} activeThreadId="t1" onSelect={() => undefined} onOpenArchived={() => undefined} />,
     );
     expect(screen.getByText("切换对话")).toBeTruthy();
   });
 
   it("重命名走弹窗:保存按线程落库,失败保留输入并回显错误", async () => {
     cleanup();
-    render(<ThreadSelector threads={threads} activeThreadId="t1" onSelect={() => undefined} />);
+    render(<ThreadSelector threads={threads} activeThreadId="t1" onSelect={() => undefined} onOpenArchived={() => undefined} />);
     fireEvent.click(screen.getByRole("button", { name: /排查 web-01/ }));
     await screen.findByRole("menuitemradio", { name: /全量磁盘巡检/ });
     fireEvent.click(screen.getByRole("button", { name: "重命名「全量磁盘巡检」" }));
@@ -577,7 +577,7 @@ describe("对话切换(Thread Selector pattern)", () => {
 
   it("删除先说清连带后果,确认才落库,取消不动", async () => {
     cleanup();
-    render(<ThreadSelector threads={threads} activeThreadId="t1" onSelect={() => undefined} />);
+    render(<ThreadSelector threads={threads} activeThreadId="t1" onSelect={() => undefined} onOpenArchived={() => undefined} />);
     fireEvent.click(screen.getByRole("button", { name: /排查 web-01/ }));
     await screen.findByRole("menuitemradio", { name: /全量磁盘巡检/ });
     fireEvent.click(screen.getByRole("button", { name: "删除「全量磁盘巡检」" }));

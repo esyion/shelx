@@ -432,6 +432,67 @@ impl RunState {
     }
 }
 
+/// 对话线程的生命周期状态机。
+///
+/// 合法流转:
+/// - `Draft → Active`(首条消息落库成功后由应用层幂等升级)
+/// - `Active → Archived`(用户归档;有进行中运行时拒绝)
+/// - `Archived → Active`(用户恢复)
+///
+/// 运行中/等待批准**不是**生命周期取值:它们由快照(`running[]`/`pending[]`)派生,
+/// 落盘的运行态在进程被杀后会说谎。`Draft` 全库至多一个(存储层部分唯一索引强制),
+/// 它是「点了新对话但一个字都没发出去」的对话;归档收起的是有内容的对话,
+/// 所以 `Draft` 不允许归档(空对话的出口是删除或用掉)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ThreadLifecycle {
+    /// 草稿:已创建、还没有任何消息;全库至多一个。
+    Draft,
+    /// 正常对话:至少落库过一条用户消息。
+    Active,
+    /// 已归档:从主列表收起,数据保留,可恢复或删除。
+    Archived,
+}
+
+impl ThreadLifecycle {
+    /// 全部取值(供契约导出)。
+    pub const ALL: [Self; 3] = [Self::Draft, Self::Active, Self::Archived];
+
+    /// 稳定字面量。
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::Active => "active",
+            Self::Archived => "archived",
+        }
+    }
+
+    /// 判断能否流转到目标状态。
+    pub fn can_transition_to(self, next: Self) -> bool {
+        matches!(
+            (self, next),
+            (Self::Draft, Self::Active)
+                | (Self::Active, Self::Archived)
+                | (Self::Archived, Self::Active)
+        )
+    }
+
+    /// 消费当前状态执行流转;非法流转返回领域错误。
+    ///
+    /// # Errors
+    /// 非法流转 → [`AgentDomainError::InvalidStatusTransition`]。
+    pub fn transition_to(self, next: Self) -> Result<Self, AgentDomainError> {
+        if self.can_transition_to(next) {
+            Ok(next)
+        } else {
+            Err(AgentDomainError::InvalidStatusTransition {
+                from: self.as_str(),
+                to: next.as_str(),
+            })
+        }
+    }
+}
+
 /// 批量执行中单台主机的状态。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]

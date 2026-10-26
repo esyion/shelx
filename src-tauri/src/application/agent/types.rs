@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::application::agent::events::AgentUsage;
 pub use crate::domain::agent::{
     AgentMemory, ApprovalDecision, ApprovalMode, ModelProfile, ProtocolKind, RunState, ThreadId,
-    ToolCallRecord,
+    ThreadLifecycle, ToolCallRecord,
 };
 
 /// 消息角色。
@@ -76,6 +76,8 @@ pub struct ThreadRecord {
     pub archived_at: Option<i64>,
     /// 置顶时间(`None` 表示未置顶;列表里置顶在前、按置顶时间倒序)。
     pub pinned_at: Option<i64>,
+    /// 生命周期(唯一真源;`archived_at` 只是"何时归档"的时间戳)。
+    pub lifecycle: ThreadLifecycle,
 }
 
 /// 一次运行的持久化记录(重启后据此解释"上次为什么没跑完")。
@@ -329,8 +331,31 @@ pub trait AgentStore: Send + Sync {
     fn threads(&self) -> Result<Vec<ThreadRecord>, StoreFault>;
     /// 读取单线程。
     fn thread(&self, id: &str) -> Result<Option<ThreadRecord>, StoreFault>;
-    /// 写入线程(存在即整体替换)。
+    /// 写入线程(存在即整体替换;不更新 lifecycle/archived_at/created_at,状态只走 [`Self::transition_thread_lifecycle`])。
     fn upsert_thread(&self, thread: &ThreadRecord) -> Result<(), StoreFault>;
+    /// 取或建唯一草稿:已有草稿原样返回(不动其内容),否则插入 `draft`。
+    ///
+    /// 查找与插入必须在同一把存储锁内完成:并发调用(连点「新对话」)一次落库、
+    /// 另一次复用同一条,这是「全库至多一个草稿」不变量的应用层半边
+    /// (另半边是部分唯一索引)。将来若换成连接池实现,必须改为事务。
+    fn find_or_create_draft(&self, draft: &ThreadRecord) -> Result<ThreadRecord, StoreFault>;
+    /// 已归档线程列表(按归档时间倒序)。
+    fn archived_threads(&self) -> Result<Vec<ThreadRecord>, StoreFault>;
+    /// 守卫式状态流转:`WHERE id = ? AND lifecycle = from` 的单条 UPDATE。
+    ///
+    /// 命中返回更新后的线程;未命中(不存在或不在 `from` 态)返回 `None`,
+    /// 由应用层翻译成业务错误。幂等方向(重复同向流转)也返回 `None`。
+    fn transition_thread_lifecycle(
+        &self,
+        id: &str,
+        from: ThreadLifecycle,
+        to: ThreadLifecycle,
+        archived_at: Option<i64>,
+    ) -> Result<Option<ThreadRecord>, StoreFault>;
+    /// 启动对账:把"已有消息却仍是草稿"的漂修行修成正常对话(写路径失误的兜底)。
+    ///
+    /// 返回修复行数,供日志审计。
+    fn reconcile_thread_lifecycle(&self) -> Result<usize, StoreFault>;
     /// 删除线程(级联删除消息、运行、审计)。
     fn delete_thread(&self, id: &str) -> Result<(), StoreFault>;
     /// 追加消息。

@@ -14,7 +14,7 @@ use crate::application::agent::types::{
 use crate::application::agent::{PendingApprovalView, ResolvedTarget, TargetView};
 use crate::domain::agent::{
     AgentMemory, ApprovalDecision, ApprovalMode, MemoryScope, ProtocolKind, RunState, TargetStatus,
-    ToolCallRecord, ToolCategory,
+    ThreadLifecycle, ToolCallRecord, ToolCategory,
 };
 
 /// 时间戳(unix 毫秒,跨边界统一 number 仅用于时间而非 ID)。
@@ -40,6 +40,10 @@ pub struct ThreadDto {
     pub updated_at: Millis,
     /// 置顶时间(`None` = 未置顶;列表置顶在前、按置顶时间倒序)。
     pub pinned_at: Option<Millis>,
+    /// 归档时间;未归档为 null(何时归档的时间戳,状态真源是 lifecycle)。
+    pub archived_at: Option<Millis>,
+    /// 生命周期:未发送 / 对话 / 已归档。
+    pub lifecycle: ThreadLifecycle,
 }
 
 impl From<ThreadRecord> for ThreadDto {
@@ -54,6 +58,8 @@ impl From<ThreadRecord> for ThreadDto {
             created_at: value.created_at,
             updated_at: value.updated_at,
             pinned_at: value.pinned_at,
+            archived_at: value.archived_at,
+            lifecycle: value.lifecycle,
         }
     }
 }

@@ -51,6 +51,24 @@ impl AgentStore for NullStore {
     fn upsert_thread(&self, _thread: &ThreadRecord) -> Result<(), StoreFault> {
         Ok(())
     }
+    fn find_or_create_draft(&self, draft: &ThreadRecord) -> Result<ThreadRecord, StoreFault> {
+        Ok(draft.clone())
+    }
+    fn archived_threads(&self) -> Result<Vec<ThreadRecord>, StoreFault> {
+        Ok(Vec::new())
+    }
+    fn transition_thread_lifecycle(
+        &self,
+        _id: &str,
+        _from: crate::domain::agent::ThreadLifecycle,
+        _to: crate::domain::agent::ThreadLifecycle,
+        _archived_at: Option<i64>,
+    ) -> Result<Option<ThreadRecord>, StoreFault> {
+        Ok(None)
+    }
+    fn reconcile_thread_lifecycle(&self) -> Result<usize, StoreFault> {
+        Ok(0)
+    }
     fn delete_thread(&self, _id: &str) -> Result<(), StoreFault> {
         Ok(())
     }

@@ -50,6 +50,7 @@ pub(crate) fn to_ipc_error(err: AgentError) -> IpcError {
             IpcError::new(IpcErrorCode::AgentProtocolUnsupported, message)
         }
         AgentError::AlreadyRunning => IpcError::new(IpcErrorCode::AgentBusy, message),
+        AgentError::ThreadArchived => IpcError::new(IpcErrorCode::AgentThreadArchived, message),
         AgentError::Secret(store) => {
             IpcError::new(IpcErrorCode::KeyringUnavailable, store.to_string())
         }
@@ -72,14 +73,53 @@ pub(crate) fn map_err<T>(result: Result<T, AgentError>) -> IpcResult<T> {
 /// 列出线程。
 #[tauri::command]
 pub fn list_agent_threads(state: State<AppState>) -> IpcResult<Vec<crate::dto::agent::ThreadDto>> {
-    IpcResult::ok(
+    // 不吞存储错误:列表是主导航,故障必须如实报给界面而不是伪装成"全没了"。
+    map_err(
         state
             .agent
             .list_threads()
-            .unwrap_or_default()
-            .into_iter()
-            .map(Into::into)
-            .collect(),
+            .map(|items| items.into_iter().map(Into::into).collect()),
+    )
+}
+
+/// 已归档线程列表(归档弹窗用;按归档时间倒序)。
+#[tauri::command]
+pub fn list_archived_agent_threads(
+    state: State<AppState>,
+) -> IpcResult<Vec<crate::dto::agent::ThreadDto>> {
+    map_err(
+        state
+            .agent
+            .list_archived_threads()
+            .map(|items| items.into_iter().map(Into::into).collect()),
+    )
+}
+
+/// 归档对话(收起有内容的对话;草稿与进行中的对话会被拒绝)。
+#[tauri::command]
+pub fn archive_agent_thread(
+    state: State<AppState>,
+    request: ThreadIdRequestDto,
+) -> IpcResult<crate::dto::agent::ThreadDto> {
+    map_err(
+        state
+            .agent
+            .archive_thread(&request.thread_id)
+            .map(Into::into),
+    )
+}
+
+/// 恢复归档对话(数据保留,恢复后可继续)。
+#[tauri::command]
+pub fn restore_agent_thread(
+    state: State<AppState>,
+    request: ThreadIdRequestDto,
+) -> IpcResult<crate::dto::agent::ThreadDto> {
+    map_err(
+        state
+            .agent
+            .restore_thread(&request.thread_id)
+            .map(Into::into),
     )
 }
 

@@ -16,7 +16,7 @@ use crate::application::agent::types::{
 };
 use crate::domain::agent::{
     ApprovalDecision, CallId, MemoryId, MemoryScope, RunState, TargetStatus, ThreadId,
-    ToolCallRecord,
+    ThreadLifecycle, ToolCallRecord,
 };
 
 /// 中断运行的收尾说明(重启后必须让用户看得见原因,AGENTS.md §4.1.1 不许死状态)。
@@ -95,6 +95,7 @@ fn now() -> i64 {
 /// 线程行映射。
 fn row_to_thread(row: &rusqlite::Row<'_>) -> rusqlite::Result<ThreadRecord> {
     let approval: String = row.get(3)?;
+    let lifecycle: String = row.get(9)?;
     Ok(ThreadRecord {
         id: row.get(0)?,
         title: row.get(1)?,
@@ -105,6 +106,7 @@ fn row_to_thread(row: &rusqlite::Row<'_>) -> rusqlite::Result<ThreadRecord> {
         updated_at: row.get(6)?,
         archived_at: row.get(7)?,
         pinned_at: row.get(8)?,
+        lifecycle: wire(&lifecycle).map_err(row_fault)?,
     })
 }
 
@@ -152,14 +154,22 @@ fn row_to_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<RunRecord> {
 }
 
 const THREAD_COLUMNS: &str =
-    "id,title,profile_id,approval_mode,bound_session_id,created_at,updated_at,archived_at,pinned_at";
+    "id,title,profile_id,approval_mode,bound_session_id,created_at,updated_at,archived_at,pinned_at,lifecycle";
+
+/// 连接上查唯一草稿(部分唯一索引保证至多一条)。
+fn draft_of(conn: &Connection) -> rusqlite::Result<Option<ThreadRecord>> {
+    let sql =
+        format!("SELECT {THREAD_COLUMNS} FROM agent_threads WHERE lifecycle = 'draft' LIMIT 1");
+    conn.query_row(&sql, [], row_to_thread).optional()
+}
 
 impl AgentStore for SqliteAgentStore {
     fn threads(&self) -> Result<Vec<ThreadRecord>, StoreFault> {
         self.with_conn(|conn| {
-            // 置顶在前(SQLite 里 NULL 参与比较为真 → 1,置顶行 → 0),组内各按时间倒序。
+            // 置顶在前(SQLite 里 NULL 参与比较为真 → 1,置顶行 → 0),组内各按时间倒序;
+            // 归档线程不在主列表(lifecycle 是唯一真源)。
             let sql = format!(
-                "SELECT {THREAD_COLUMNS} FROM agent_threads WHERE archived_at IS NULL \
+                "SELECT {THREAD_COLUMNS} FROM agent_threads WHERE lifecycle <> 'archived' \
                  ORDER BY (pinned_at IS NULL), pinned_at DESC, updated_at DESC"
             );
             let mut stmt = conn.prepare(&sql)?;
@@ -177,12 +187,16 @@ impl AgentStore for SqliteAgentStore {
 
     fn upsert_thread(&self, thread: &ThreadRecord) -> Result<(), StoreFault> {
         let approval = wire_string(&thread.approval)?;
+        let lifecycle = wire_string(&thread.lifecycle)?;
         self.with_conn(|conn| {
+            // DO UPDATE 集合刻意不含 lifecycle/archived_at/created_at:更新线程是
+            // 跨两次锁的读-改-写,把状态列也写回会把中间发生的归档静默冲掉;
+            // 生命周期变更只允许走 transition_thread_lifecycle 单条守卫 UPDATE。
             conn.execute(
-                "INSERT INTO agent_threads (id,title,profile_id,approval_mode,bound_session_id,created_at,updated_at,archived_at,pinned_at)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)
+                "INSERT INTO agent_threads (id,title,profile_id,approval_mode,bound_session_id,created_at,updated_at,archived_at,pinned_at,lifecycle)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
                  ON CONFLICT(id) DO UPDATE SET title=?2, profile_id=?3, approval_mode=?4,
-                   bound_session_id=?5, updated_at=?7, archived_at=?8, pinned_at=?9",
+                   bound_session_id=?5, updated_at=?7, pinned_at=?9",
                 params![
                     thread.id,
                     thread.title,
@@ -192,16 +206,99 @@ impl AgentStore for SqliteAgentStore {
                     thread.created_at,
                     thread.updated_at,
                     thread.archived_at,
-                    thread.pinned_at
+                    thread.pinned_at,
+                    lifecycle
                 ],
             )
         })?;
         Ok(())
     }
 
-    fn delete_thread(&self, id: &str) -> Result<(), StoreFault> {
-        // 消息、运行、审计与 rig 日志随外键级联清理。
+    fn find_or_create_draft(&self, draft: &ThreadRecord) -> Result<ThreadRecord, StoreFault> {
+        let approval = wire_string(&draft.approval)?;
+        let inserted = draft.clone();
         self.with_conn(|conn| {
+            // 查与插在同一把锁内完成:并发「新对话」一次落库、另一次在这里就看见它。
+            if let Some(existing) = draft_of(conn)? {
+                return Ok(existing);
+            }
+            match conn.execute(
+                "INSERT INTO agent_threads (id,title,profile_id,approval_mode,bound_session_id,created_at,updated_at,archived_at,pinned_at,lifecycle)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'draft')",
+                params![
+                    draft.id,
+                    draft.title,
+                    draft.profile_id,
+                    approval,
+                    draft.bound_session_id,
+                    draft.created_at,
+                    draft.updated_at,
+                    draft.archived_at,
+                    draft.pinned_at
+                ],
+            ) {
+                Ok(_) => Ok(inserted),
+                Err(err) => {
+                    // 撞部分唯一索引 = 并发对手先插了草稿;复用它,竞态对用户不可见。
+                    tracing::debug!("草稿插入被唯一索引拒绝,转为复用: {err}");
+                    draft_of(conn)?.ok_or(err)
+                }
+            }
+        })
+    }
+
+    fn archived_threads(&self) -> Result<Vec<ThreadRecord>, StoreFault> {
+        self.with_conn(|conn| {
+            let sql = format!(
+                "SELECT {THREAD_COLUMNS} FROM agent_threads WHERE lifecycle = 'archived' ORDER BY archived_at DESC"
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map([], row_to_thread)?;
+            rows.collect()
+        })
+    }
+
+    fn transition_thread_lifecycle(
+        &self,
+        id: &str,
+        from: ThreadLifecycle,
+        to: ThreadLifecycle,
+        archived_at: Option<i64>,
+    ) -> Result<Option<ThreadRecord>, StoreFault> {
+        let from_literal = wire_string(&from)?;
+        let to_literal = wire_string(&to)?;
+        self.with_conn(|conn| {
+            let changed = conn.execute(
+                "UPDATE agent_threads SET lifecycle=?3, archived_at=?4 WHERE id=?1 AND lifecycle=?2",
+                params![id, from_literal, to_literal, archived_at],
+            )?;
+            if changed == 0 {
+                return Ok(None);
+            }
+            let sql = format!("SELECT {THREAD_COLUMNS} FROM agent_threads WHERE id = ?1");
+            conn.query_row(&sql, params![id], row_to_thread).optional()
+        })
+    }
+
+    fn reconcile_thread_lifecycle(&self) -> Result<usize, StoreFault> {
+        self.with_conn(|conn| {
+            conn.execute(
+                "UPDATE agent_threads SET lifecycle='active'
+                 WHERE lifecycle='draft'
+                   AND EXISTS(SELECT 1 FROM agent_messages m WHERE m.thread_id = agent_threads.id)",
+                [],
+            )
+        })
+    }
+
+    fn delete_thread(&self, id: &str) -> Result<(), StoreFault> {
+        // 消息、运行、审计与 rig 日志随外键级联清理;agent_approvals 没有
+        // 外键(0002 欠账),必须显式补删,否则"彻底删除"名不副实。
+        self.with_conn(|conn| {
+            conn.execute(
+                "DELETE FROM agent_approvals WHERE thread_id = ?1",
+                params![id],
+            )?;
             conn.execute("DELETE FROM agent_threads WHERE id = ?1", params![id])
         })?;
         Ok(())
