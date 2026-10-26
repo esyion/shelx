@@ -7,6 +7,57 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > Versions prior to `0.2.0` were internal iterations before the project
 > was open-sourced; their changes are summarized under "Unreleased / 0.2.0".
 
+## [0.4.1] - 2026-10-26
+
+Conversation lifecycle fix for the operations agent. Clicking 新对话 rapidly
+no longer piles up empty conversations: threads now carry an explicit
+`draft → active → archived` lifecycle, and at most one draft can exist —
+enforced by a partial unique index in SQLite, not by UI discipline.
+
+### Fixed
+
+- **Rapid clicks on「新对话」created one empty conversation per click.**
+  `create_agent_thread` is now get-or-create: an existing draft is returned
+  as-is (healing a stale model profile when its endpoint was removed), the
+  find-and-insert runs under one store lock, and the database itself rejects
+  a second draft row. The frontend additionally reuses the draft without an
+  IPC round-trip and shares a single in-flight creation between clicks.
+- **Deleting a conversation left orphaned approval rows behind** —
+  `agent_approvals` never had a foreign key to threads; `delete_thread` now
+  clears it too, and migration 0008 sweeps existing orphans so the
+  "permanently deleted" promise is true.
+- **`list_agent_threads` swallowed storage failures as an empty list** —
+  the list is primary navigation now, so errors surface honestly.
+- Removed an unused import that failed the strict type check.
+
+### Added
+
+- **Thread lifecycle: 未发送 / 对话 / 已归档.** The conversation selector
+  shows the single draft in its own「未发送」group; a draft that receives
+  its first message is promoted automatically.
+- **Archive & restore.** Selector rows gain an「归档」hover action (not
+  offered on drafts — an empty conversation should be used or deleted, not
+  archived); the「已归档的对话」entry at the bottom of the selector lists
+  archived conversations with restore and permanent-delete actions.
+  Archived threads reject sends and resumes with the `AGENT_THREAD_ARCHIVED`
+  error code.
+- **Draft-aware delete confirmation** — deleting an unsent conversation says
+  so plainly; deleting a real one states the actual cascade (messages, runs,
+  audit records, memory logs) and suggests archiving as the reversible
+  alternative.
+- Migration 0008: cleans up leftover zero-message threads (bug fallout),
+  adds the `lifecycle` column and the single-draft unique index.
+
+### Changed
+
+- IPC contract: `ThreadDto` gains `lifecycle` and `archivedAt`; new commands
+  `archive_agent_thread`, `restore_agent_thread`,
+  `list_archived_agent_threads`. Runtime states (running / awaiting
+  approval / paused) remain run-scoped and are never persisted on the
+  thread.
+- The gateway no longer hand-writes approval-mode literal unions; it uses
+  the generated contract types (AGENTS.md §5).
+
 ## [0.4.0] - 2026-10-24
 
 Web-search release: the assistant can now consult the live web. Configure
