@@ -30,6 +30,7 @@ import { useAgentStore } from "@/stores/agent";
 import { ContextUsage } from "./context-usage";
 import { ModeSelector } from "./mode-selector";
 import { ModelSelector } from "./model-selector";
+import { WorkspacePicker } from "./workspace-picker";
 
 /**
  * 渲染输入区。
@@ -39,6 +40,7 @@ import { ModelSelector } from "./model-selector";
  * @param runningId 当前运行 ID;有值才把发送键换成停止键。
  * @param profileId 线程当前选中的接入点 ID;空串 = 还没选。
  * @param approvalMode 线程当前选中的审批档位。
+ * @param workspaceId 线程当前绑定的本机工作区;`null` = 不使用本机。
  * @param used 整段对话已用 tokens(与后端预算闸门同口径)。
  * @param contextWindow 该接入点实际生效的模型窗口;`null` = 未知(用量不报百分比)。
  * @param usage 最近一轮用量,悬浮详情里拆开显示。
@@ -49,6 +51,7 @@ export function ThreadComposer({
   runningId,
   profileId,
   approvalMode,
+  workspaceId,
   used,
   contextWindow,
   usage,
@@ -58,6 +61,7 @@ export function ThreadComposer({
   runningId: string | null;
   profileId: string;
   approvalMode: ApprovalMode;
+  workspaceId: string | null;
   used: number;
   contextWindow: number | null;
   usage?: AgentUsage;
@@ -106,6 +110,7 @@ export function ThreadComposer({
           }}
         />
         <InputGroupAddon align="block-end">
+          <WorkspacePicker threadId={threadId} workspaceId={workspaceId} disabled={busy} />
           <ModeSelector threadId={threadId} approvalMode={approvalMode} disabled={busy} />
           <div className="ml-auto flex min-w-0 shrink items-center gap-2">
             <ModelSelector threadId={threadId} profileId={profileId} disabled={busy} />

@@ -354,6 +354,7 @@ export function AgentThread({ threadId }: { threadId: string }) {
         runningId={running[0] ?? null}
         profileId={snapshot?.thread.profileId ?? ""}
         approvalMode={snapshot?.thread.approvalMode ?? "read_only_auto"}
+        workspaceId={snapshot?.thread.workspaceId ?? null}
         used={usedTokens}
         contextWindow={contextWindow}
         usage={stream?.usage}

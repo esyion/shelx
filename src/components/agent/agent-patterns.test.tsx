@@ -322,6 +322,7 @@ describe("对话输入区(ThreadComposer)", () => {
         runningId={null}
         profileId=""
         approvalMode="read_only_auto"
+        workspaceId={null}
         used={0}
         contextWindow={1000}
       />,
@@ -340,6 +341,7 @@ describe("对话输入区(ThreadComposer)", () => {
         runningId="r1"
         profileId=""
         approvalMode="read_only_auto"
+        workspaceId={null}
         used={400}
         contextWindow={1000}
       />,
@@ -357,6 +359,7 @@ describe("对话输入区(ThreadComposer)", () => {
         runningId={null}
         profileId=""
         approvalMode="read_only_auto"
+        workspaceId={null}
         used={0}
         contextWindow={1000}
       />,
@@ -382,6 +385,7 @@ describe("输入区的模型选择(Model Selector pattern)", () => {
         runningId={null}
         profileId="p1"
         approvalMode="read_only_auto"
+        workspaceId={null}
         used={0}
         contextWindow={1000}
       />,
@@ -431,6 +435,7 @@ describe("输入区的模式切换(审批档位)", () => {
         runningId={null}
         profileId=""
         approvalMode="read_only_auto"
+        workspaceId={null}
         used={0}
         contextWindow={1000}
       />,
