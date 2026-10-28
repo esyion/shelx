@@ -7,6 +7,61 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > Versions prior to `0.2.0` were internal iterations before the project
 > was open-sourced; their changes are summarized under "Unreleased / 0.2.0".
 
+## [Unreleased]
+
+Claude Code-style local workspace for the operations agent. Conversations
+can now bind a local folder (workspace) and the agent gains `local_` tools
+that operate on the user's own machine: run shell commands in the workspace
+root, read/write/list files inside it — every command and write gated by the
+existing per-target approval flow. This intentionally supersedes the original
+design decision that listed "local shell / local file access" as a non-goal.
+
+### Added
+
+- **Workspaces (登记 + 对话绑定).** Pick a folder via the system directory
+  chooser, keep a saved list (most recently used first), and bind one per
+  conversation from the thread header. New conversations default to the most
+  recently used workspace; deleting a workspace unbinds its conversations
+  automatically (`ON DELETE SET NULL`, history preserved).
+- **`local_exec` — shell commands on the user's machine.** Full command
+  strings via the OS shell (`cmd /d /s /c` on Windows, `sh -c` elsewhere),
+  so pipes and redirects work like Claude Code. Always `mutating` category:
+  each command asks for approval, 「本对话内一直允许」 acts as the
+  session-wide allowlist. Killed on timeout (`agent.localExecTimeoutSecs`,
+  1–600 s, default 120), output capped at 256 KiB, non-zero exit codes bring
+  the output back to the model instead of being swallowed.
+- **`local_read_file` / `local_list_dir`** (read-only, auto-run under the
+  default approval mode) and **`local_write_file` / `local_remove_path` /
+  `local_rename_path`** (approval-gated). `local_remove_path` never recurses
+  and refuses the workspace root itself.
+- **Path confinement, two layers.** Lexical normalization rejects `..`,
+  drive-relative forms and absolute paths outside the root; canonicalize +
+  component-wise prefix check (symlinks resolved) is the real gate. Write
+  paths re-verify the parent directory around creation. The
+  check-then-open symlink race window is documented as accepted, same class
+  of trade-off as comparable tools.
+- **Fused local + remote scope.** A bound conversation keeps all SSH host
+  tools and gains the local ones; the system prompt explains both. Threads
+  without a workspace see no local tools at all (registration and prompt
+  share one source of truth, same pattern as `web_search`).
+- Audit list and timeline show local operations as 「本机」 (stable
+  `local` target id; zero event-contract changes, old timelines replay fine).
+
+### Changed
+
+- `tools_for` takes a third filter (workspace bound); `RunContext` carries a
+  workspace snapshot and the local exec timeout; `system_preamble` gains a
+  「# 本机工作区」 section when bound.
+
+### Migration
+
+- `0009_agent_workspace.sql`: `agent_workspaces` table (unique root),
+  `agent_threads.workspace_id` FK with `ON DELETE SET NULL`.
+- IPC contract: `ThreadDto`/`Create`/`UpdateThreadRequestDto` gain nullable
+  `workspaceId`; new `WorkspaceDto`, `AddWorkspaceRequestDto`,
+  `WorkspaceIdRequestDto`; new setting path `agent.localExecTimeoutSecs`.
+  All additive and backward compatible.
+
 ## [0.4.1] - 2026-10-26
 
 Conversation lifecycle fix for the operations agent. Clicking 新对话 rapidly

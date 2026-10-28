@@ -28,9 +28,9 @@ use crate::domain::agent::{
     AgentMemory, ApprovalDecision, ApprovalMode, TargetStatus, ToolCategory,
 };
 
-/// 不记录任何事件的会话事件槽。
+/// 不记录任何事件的会话事件槽(local_tests 复用)。
 #[derive(Default)]
-struct NoopSink;
+pub(crate) struct NoopSink;
 
 impl SessionEventSink for NoopSink {
     fn auth_prompt(&self, _request: &AuthPromptRequest) {}
@@ -38,8 +38,8 @@ impl SessionEventSink for NoopSink {
     fn status_changed(&self, _event: &SessionStatusEvent) {}
 }
 
-/// 全部返回空值的存储 fake(本组测试只关心目标解析与执行路径)。
-struct NullStore;
+/// 全部返回空值的存储 fake(本组测试只关心目标解析与执行路径;local_tests 复用)。
+pub(crate) struct NullStore;
 
 impl AgentStore for NullStore {
     fn threads(&self) -> Result<Vec<ThreadRecord>, StoreFault> {
@@ -150,9 +150,9 @@ struct Harness {
     conn_id: String,
 }
 
-/// 内存凭据存储 fake(联网搜索密钥放这里)。
+/// 内存凭据存储 fake(联网搜索密钥放这里;local_tests 复用)。
 #[derive(Default)]
-struct MemorySecrets {
+pub(crate) struct MemorySecrets {
     entries: std::sync::Mutex<HashMap<String, String>>,
 }
 
@@ -180,8 +180,8 @@ impl crate::application::ports::SecretStore for MemorySecrets {
     }
 }
 
-/// 固定回放两条命中的搜索 fake。
-struct FixedSearch;
+/// 固定回放两条命中的搜索 fake(local_tests 复用)。
+pub(crate) struct FixedSearch;
 
 #[async_trait::async_trait]
 impl super::types::WebSearch for FixedSearch {

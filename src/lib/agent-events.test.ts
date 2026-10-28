@@ -87,6 +87,15 @@ describe("Agent 中文映射", () => {
     expect(toolActionLabel("brand_new_tool")).toBe("brand_new_tool");
   });
 
+  it("本机工作区工具都有中文动作名", () => {
+    expect(toolActionLabel("local_exec")).toBe("在本机执行命令");
+    expect(toolActionLabel("local_read_file")).toBe("读取本机文件");
+    expect(toolActionLabel("local_list_dir")).toBe("列出本机目录");
+    expect(toolActionLabel("local_write_file")).toBe("写入本机文件");
+    expect(toolActionLabel("local_remove_path")).toBe("删除本机文件");
+    expect(toolActionLabel("local_rename_path")).toBe("重命名本机文件");
+  });
+
   it("逐台决策档位都写成用户能选的后果", () => {
     expect(APPROVAL_DECISION_DISPLAY.denied.description).toContain("不执行");
     expect(APPROVAL_DECISION_DISPLAY.allowed_always.label).toContain("本对话内");

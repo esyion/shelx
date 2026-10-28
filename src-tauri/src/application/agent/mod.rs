@@ -16,6 +16,8 @@ pub mod types;
 mod run;
 
 #[cfg(test)]
+mod local_tests;
+#[cfg(test)]
 mod tool_host_tests;
 
 use std::sync::Arc;
