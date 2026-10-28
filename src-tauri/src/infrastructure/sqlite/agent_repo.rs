@@ -102,6 +102,7 @@ fn row_to_thread(row: &rusqlite::Row<'_>) -> rusqlite::Result<ThreadRecord> {
         profile_id: row.get(2)?,
         approval: wire(&approval).map_err(row_fault)?,
         bound_session_id: row.get(4)?,
+        workspace_id: row.get(10)?,
         created_at: row.get(5)?,
         updated_at: row.get(6)?,
         archived_at: row.get(7)?,
@@ -153,8 +154,7 @@ fn row_to_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<RunRecord> {
     })
 }
 
-const THREAD_COLUMNS: &str =
-    "id,title,profile_id,approval_mode,bound_session_id,created_at,updated_at,archived_at,pinned_at,lifecycle";
+const THREAD_COLUMNS: &str = "id,title,profile_id,approval_mode,bound_session_id,created_at,updated_at,archived_at,pinned_at,lifecycle,workspace_id";
 
 /// 连接上查唯一草稿(部分唯一索引保证至多一条)。
 fn draft_of(conn: &Connection) -> rusqlite::Result<Option<ThreadRecord>> {
@@ -193,10 +193,10 @@ impl AgentStore for SqliteAgentStore {
             // 跨两次锁的读-改-写,把状态列也写回会把中间发生的归档静默冲掉;
             // 生命周期变更只允许走 transition_thread_lifecycle 单条守卫 UPDATE。
             conn.execute(
-                "INSERT INTO agent_threads (id,title,profile_id,approval_mode,bound_session_id,created_at,updated_at,archived_at,pinned_at,lifecycle)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
+                "INSERT INTO agent_threads (id,title,profile_id,approval_mode,bound_session_id,created_at,updated_at,archived_at,pinned_at,lifecycle,workspace_id)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
                  ON CONFLICT(id) DO UPDATE SET title=?2, profile_id=?3, approval_mode=?4,
-                   bound_session_id=?5, updated_at=?7, pinned_at=?9",
+                   bound_session_id=?5, updated_at=?7, pinned_at=?9, workspace_id=?11",
                 params![
                     thread.id,
                     thread.title,
@@ -207,7 +207,8 @@ impl AgentStore for SqliteAgentStore {
                     thread.updated_at,
                     thread.archived_at,
                     thread.pinned_at,
-                    lifecycle
+                    lifecycle,
+                    thread.workspace_id
                 ],
             )
         })?;
@@ -223,8 +224,8 @@ impl AgentStore for SqliteAgentStore {
                 return Ok(existing);
             }
             match conn.execute(
-                "INSERT INTO agent_threads (id,title,profile_id,approval_mode,bound_session_id,created_at,updated_at,archived_at,pinned_at,lifecycle)
-                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'draft')",
+                "INSERT INTO agent_threads (id,title,profile_id,approval_mode,bound_session_id,created_at,updated_at,archived_at,pinned_at,lifecycle,workspace_id)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'draft',?10)",
                 params![
                     draft.id,
                     draft.title,
@@ -234,7 +235,8 @@ impl AgentStore for SqliteAgentStore {
                     draft.created_at,
                     draft.updated_at,
                     draft.archived_at,
-                    draft.pinned_at
+                    draft.pinned_at,
+                    draft.workspace_id
                 ],
             ) {
                 Ok(_) => Ok(inserted),

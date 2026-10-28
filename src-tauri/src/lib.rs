@@ -272,6 +272,10 @@ pub fn run() {
             commands::agent_config::get_web_search_status,
             commands::agent_config::save_web_search_key,
             commands::agent_config::test_web_search_key,
+            // ---- 本机工作区 ----
+            commands::workspace::list_agent_workspaces,
+            commands::workspace::add_agent_workspace,
+            commands::workspace::remove_agent_workspace,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

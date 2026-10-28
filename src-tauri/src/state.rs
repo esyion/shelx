@@ -111,6 +111,17 @@ impl AppState {
         );
         let agent_search: Arc<dyn crate::application::agent::types::WebSearch> =
             Arc::new(crate::infrastructure::agent::TavilySearch::shared());
+        // 本机工作区:受控文件系统 + 独立存储句柄(与 Agent 存储同库文件)。
+        let workspace_fs: Arc<dyn crate::application::local_ports::WorkspaceFs> =
+            Arc::new(crate::infrastructure::workspace_fs::ConfinedLocalFs::new());
+        let workspace_store = Arc::new(
+            crate::infrastructure::sqlite::workspace_repo::SqliteWorkspaceStore::open(&db_path)
+                .unwrap_or_else(|err| panic!("工作区数据库打开失败({}): {err}", db_path.display())),
+        );
+        let workspaces = Arc::new(crate::application::workspaces::WorkspaceService::new(
+            workspace_store,
+            workspace_fs,
+        ));
         let agent = Arc::new(crate::application::agent::AgentService::new(
             agent_store,
             agent_gateway,
@@ -120,6 +131,7 @@ impl AppState {
             settings.clone(),
             agent_secrets,
             agent_search,
+            workspaces,
         ));
         agent.recover_unfinished_runs();
 

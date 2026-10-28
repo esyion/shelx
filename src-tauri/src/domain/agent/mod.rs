@@ -5,10 +5,15 @@
 //! 因此这里定义的是 shelx 自己的词汇,而不是 provider 词汇的转写。
 
 pub mod command_policy;
+pub mod workspace;
 
 use serde::{Deserialize, Serialize};
 
 pub use command_policy::{CommandDecision, ToolCategory};
+pub use workspace::{
+    is_within, normalize_within, validate_workspace, WorkspacePathError, LOCAL_TARGET_ID,
+    WORKSPACE_NAME_MAX, WORKSPACE_PATH_MAX,
+};
 
 /// Agent 领域错误。
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -44,6 +49,12 @@ pub enum AgentDomainError {
     /// provider 或模型配置非法。
     #[error("模型配置非法:{0}")]
     InvalidProfile(String),
+    /// 工作区路径越界或非法(细节见消息)。
+    #[error("工作区路径非法:{0}")]
+    WorkspacePath(String),
+    /// 工作区不存在。
+    #[error("工作区不存在")]
+    WorkspaceNotFound,
 }
 
 /// 生成字符串标识值对象宏:与 [`crate::domain::connection::ConnId`] 同一套约束口径。
@@ -98,6 +109,10 @@ agent_id!(
 agent_id!(
     /// 共享记忆条目标识。
     MemoryId
+);
+agent_id!(
+    /// 本机工作区标识。
+    WorkspaceId
 );
 
 /// Provider 协议种类。

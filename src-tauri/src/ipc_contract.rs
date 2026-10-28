@@ -212,6 +212,9 @@ fn document_uncanonical() -> Value {
                 ("AgentIdRequestDto", refer::<crate::dto::agent::AgentIdRequestDto>),
                 ("UpsertMemoryRequestDto", refer::<crate::dto::agent::UpsertMemoryRequestDto>),
                 ("ResolveTargetsRequestDto", refer::<crate::dto::agent::ResolveTargetsRequestDto>),
+                ("WorkspaceDto", refer::<crate::dto::workspace::WorkspaceDto>),
+                ("AddWorkspaceRequestDto", refer::<crate::dto::workspace::AddWorkspaceRequestDto>),
+                ("WorkspaceIdRequestDto", refer::<crate::dto::workspace::WorkspaceIdRequestDto>),
             ]),
         }
     })

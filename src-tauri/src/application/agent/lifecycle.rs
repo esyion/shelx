@@ -32,6 +32,17 @@ impl AgentService {
         if self.profile(&draft.profile_id).is_none() {
             return Err(AgentError::NotFound("模型配置"));
         }
+        // 工作区三态:显式绑定(校验存在) / 显式不绑定 / 未指定 → 回落最近使用。
+        let workspace_id = match draft.workspace_id {
+            Some(Some(id)) => {
+                if self.workspaces.get(&id)?.is_none() {
+                    return Err(AgentError::NotFound("工作区"));
+                }
+                Some(id)
+            }
+            Some(None) => None,
+            None => self.workspaces.most_recent().map(|ws| ws.id),
+        };
         let now = now_millis();
         let thread = self.store.find_or_create_draft(&ThreadRecord {
             id: uuid::Uuid::new_v4().to_string(),
@@ -43,6 +54,7 @@ impl AgentService {
             profile_id: draft.profile_id.clone(),
             approval: draft.approval,
             bound_session_id: draft.bound_session_id,
+            workspace_id,
             created_at: now,
             updated_at: now,
             archived_at: None,

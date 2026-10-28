@@ -29,6 +29,7 @@ export * as systemInfoApi from "./system-info";
 export * as appMetaApi from "./app-meta";
 export * as openerApi from "./opener";
 export * as clipboardApi from "./clipboard";
+export * as dialogApi from "./dialog";
 export {
   CHECK_TIMEOUT_MS,
   checkForUpdate,

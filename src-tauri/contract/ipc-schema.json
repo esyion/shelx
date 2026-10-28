@@ -2,6 +2,29 @@
   "modules": {
     "agent": {
       "$defs": {
+        "AddWorkspaceRequestDto": {
+          "additionalProperties": false,
+          "description": "登记工作区请求。",
+          "properties": {
+            "name": {
+              "default": null,
+              "description": "显示名(可空;空则用目录名兜底)。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "rootPath": {
+              "description": "根目录(系统目录选择器返回的绝对路径;必须存在且是目录)。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "rootPath",
+            "name"
+          ],
+          "type": "object"
+        },
         "AgentEnumsDto": {
           "description": "界面候选枚举的单点来源(AGENTS.md §5:前端禁止自己抄一份取值)。\n\n一次取回候选与区间,避免抽屉每次打开都发多条 IPC;审批模式档位不在这里,\n它由设置契约 `agent.approvalMode` 提供(校验与界面档位同源)。",
           "properties": {
@@ -706,13 +729,22 @@
               "default": "",
               "description": "标题(可空,默认\"新对话\")。",
               "type": "string"
+            },
+            "workspaceId": {
+              "default": null,
+              "description": "绑定的本机工作区;不传/null = 后端取最近使用的工作区,空字符串 = 显式不绑定。",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "required": [
             "title",
             "profileId",
             "approvalMode",
-            "boundSessionId"
+            "boundSessionId",
+            "workspaceId"
           ],
           "type": "object"
         },
@@ -1559,6 +1591,13 @@
               "description": "更新时间。",
               "format": "int64",
               "type": "integer"
+            },
+            "workspaceId": {
+              "description": "绑定的本机工作区 ID;不使用本机能力为 null(工作区删除时自动置 null)。",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "required": [
@@ -1567,6 +1606,7 @@
             "profileId",
             "approvalMode",
             "boundSessionId",
+            "workspaceId",
             "createdAt",
             "updatedAt",
             "pinnedAt",
@@ -1753,6 +1793,14 @@
                 "string",
                 "null"
               ]
+            },
+            "workspaceId": {
+              "default": null,
+              "description": "绑定的本机工作区;传空字符串表示解绑,不传不改。",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "required": [
@@ -1760,6 +1808,7 @@
             "title",
             "approvalMode",
             "boundSessionId",
+            "workspaceId",
             "profileId",
             "pinned"
           ],
@@ -1923,10 +1972,71 @@
             "configured"
           ],
           "type": "object"
+        },
+        "WorkspaceDto": {
+          "description": "一个已登记的本机工作区。",
+          "properties": {
+            "createdAt": {
+              "description": "创建时间。",
+              "format": "int64",
+              "type": "integer"
+            },
+            "id": {
+              "description": "ID。",
+              "type": "string"
+            },
+            "lastUsedAt": {
+              "description": "最近一次被对话使用;从未用过为 null。",
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "name": {
+              "description": "显示名(登记时未填则以目录名兜底)。",
+              "type": "string"
+            },
+            "rootPath": {
+              "description": "根目录(canonical 绝对路径)。",
+              "type": "string"
+            },
+            "updatedAt": {
+              "description": "更新时间。",
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "rootPath",
+            "createdAt",
+            "updatedAt",
+            "lastUsedAt"
+          ],
+          "type": "object"
+        },
+        "WorkspaceIdRequestDto": {
+          "additionalProperties": false,
+          "description": "工作区 ID 请求。",
+          "properties": {
+            "id": {
+              "description": "工作区 ID。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "type": "object"
         }
       },
       "additionalProperties": false,
       "properties": {
+        "AddWorkspaceRequestDto": {
+          "$ref": "#/$defs/AddWorkspaceRequestDto"
+        },
         "AgentEnumsDto": {
           "$ref": "#/$defs/AgentEnumsDto"
         },
@@ -2058,6 +2168,12 @@
         },
         "WebSearchStatusDto": {
           "$ref": "#/$defs/WebSearchStatusDto"
+        },
+        "WorkspaceDto": {
+          "$ref": "#/$defs/WorkspaceDto"
+        },
+        "WorkspaceIdRequestDto": {
+          "$ref": "#/$defs/WorkspaceIdRequestDto"
         }
       },
       "required": [
@@ -2104,7 +2220,10 @@
         "WebSearchProbeDto",
         "AgentIdRequestDto",
         "UpsertMemoryRequestDto",
-        "ResolveTargetsRequestDto"
+        "ResolveTargetsRequestDto",
+        "WorkspaceDto",
+        "AddWorkspaceRequestDto",
+        "WorkspaceIdRequestDto"
       ],
       "type": "object"
     },

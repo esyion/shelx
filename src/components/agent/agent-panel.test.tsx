@@ -135,6 +135,7 @@ beforeEach(() => {
         title: "排查 web-01",
         approvalMode: "read_only_auto",
         boundSessionId: null,
+        workspaceId: null,
         profileId: "p1",
         createdAt: 1,
         updatedAt: 2,

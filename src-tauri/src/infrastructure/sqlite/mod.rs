@@ -4,6 +4,7 @@ pub mod agent_repo;
 pub mod connection_repo;
 pub mod host_key_repo;
 pub mod migrations;
+pub mod workspace_repo;
 
 use std::path::Path;
 

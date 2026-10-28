@@ -7,6 +7,7 @@
 
 pub mod agent;
 pub mod connections;
+pub mod local_ports;
 pub mod migration;
 pub mod monitoring;
 pub mod ports;
@@ -17,6 +18,7 @@ pub mod sftp;
 pub mod terminals;
 pub mod transfers;
 pub mod update;
+pub mod workspaces;
 
 #[cfg(test)]
 pub mod test_support;

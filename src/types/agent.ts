@@ -3,6 +3,7 @@
  * 本文件仅做再导出与前端别名(AGENTS.md §5:禁止手写后端镜像类型)。
  */
 export type {
+  AddWorkspaceRequestDto,
   AgentEnumsDto,
   AgentEvent,
   AgentIdRequestDto,
@@ -46,6 +47,8 @@ export type {
   UpsertProfileRequestDto,
   WebSearchProbeDto,
   WebSearchStatusDto,
+  WorkspaceDto,
+  WorkspaceIdRequestDto,
   ApprovalMode,
 } from "./gen/agent";
 

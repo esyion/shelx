@@ -79,6 +79,7 @@ export interface AgentStore {
     threadId: string,
     patch: Partial<Pick<AgentThread, "title" | "approvalMode" | "profileId">> & {
       boundSessionId?: string | null;
+      workspaceId?: string | null;
       pinned?: boolean;
     },
   ): Promise<boolean>;
@@ -332,6 +333,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         title: patch.title,
         approvalMode: patch.approvalMode,
         boundSessionId: patch.boundSessionId,
+        workspaceId: patch.workspaceId,
         profileId: patch.profileId,
         pinned: patch.pinned,
       });

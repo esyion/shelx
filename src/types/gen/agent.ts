@@ -256,6 +256,19 @@ export type RunState = "running" | "awaiting_approval" | "completed" | "failed" 
 export type ThreadLifecycle = "draft" | "active" | "archived";
 
 /**
+ * 登记工作区请求。
+ */
+export interface AddWorkspaceRequestDto {
+  /**
+   * 显示名(可空;空则用目录名兜底)。
+   */
+  name: string | null;
+  /**
+   * 根目录(系统目录选择器返回的绝对路径;必须存在且是目录)。
+   */
+  rootPath: string;
+}
+/**
  * 界面候选枚举的单点来源(AGENTS.md §5:前端禁止自己抄一份取值)。
  *
  * 一次取回候选与区间,避免抽屉每次打开都发多条 IPC;审批模式档位不在这里,
@@ -467,6 +480,10 @@ export interface CreateThreadRequestDto {
    * 标题(可空,默认"新对话")。
    */
   title: string;
+  /**
+   * 绑定的本机工作区;不传/null = 后端取最近使用的工作区,空字符串 = 显式不绑定。
+   */
+  workspaceId: string | null;
 }
 /**
  * 退订请求。
@@ -811,6 +828,10 @@ export interface ThreadDto {
    * 更新时间。
    */
   updatedAt: number;
+  /**
+   * 绑定的本机工作区 ID;不使用本机能力为 null(工作区删除时自动置 null)。
+   */
+  workspaceId: string | null;
 }
 /**
  * 线程 ID 请求。
@@ -875,6 +896,10 @@ export interface UpdateThreadRequestDto {
    * 标题。
    */
   title: string | null;
+  /**
+   * 绑定的本机工作区;传空字符串表示解绑,不传不改。
+   */
+  workspaceId: string | null;
 }
 /**
  * 保存记忆请求。
@@ -961,4 +986,42 @@ export interface WebSearchStatusDto {
    * 是否已配置 Tavily 密钥(配置后对话里的助手即具备联网搜索工具)。
    */
   configured: boolean;
+}
+/**
+ * 一个已登记的本机工作区。
+ */
+export interface WorkspaceDto {
+  /**
+   * 创建时间。
+   */
+  createdAt: number;
+  /**
+   * ID。
+   */
+  id: string;
+  /**
+   * 最近一次被对话使用;从未用过为 null。
+   */
+  lastUsedAt: number | null;
+  /**
+   * 显示名(登记时未填则以目录名兜底)。
+   */
+  name: string;
+  /**
+   * 根目录(canonical 绝对路径)。
+   */
+  rootPath: string;
+  /**
+   * 更新时间。
+   */
+  updatedAt: number;
+}
+/**
+ * 工作区 ID 请求。
+ */
+export interface WorkspaceIdRequestDto {
+  /**
+   * 工作区 ID。
+   */
+  id: string;
 }

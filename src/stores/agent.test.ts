@@ -285,6 +285,7 @@ describe("新对话与生命周期(回归:连点不得堆出多个空对话)", (
       title: id === "d1" ? "新对话" : "排查",
       approvalMode: "read_only_auto",
       boundSessionId: null,
+      workspaceId: null,
       profileId: "p1",
       createdAt: 1,
       updatedAt: 2,

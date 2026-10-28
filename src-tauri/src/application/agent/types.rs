@@ -68,6 +68,8 @@ pub struct ThreadRecord {
     pub approval: ApprovalMode,
     /// 用户手动绑定的会话(上下文来源;`None` 表示不绑定)。
     pub bound_session_id: Option<String>,
+    /// 绑定的本机工作区(`None` = 不使用本机能力;工作区删除时由外键置空)。
+    pub workspace_id: Option<String>,
     /// 创建时间。
     pub created_at: i64,
     /// 更新时间。
@@ -213,6 +215,9 @@ pub struct NewThread {
     pub approval: ApprovalMode,
     /// 绑定会话。
     pub bound_session_id: Option<String>,
+    /// 绑定的本机工作区;三态:`None` = 未指定(创建时回落最近使用),
+    /// `Some(None)` = 显式不绑定,`Some(Some(id))` = 显式绑定。
+    pub workspace_id: Option<Option<String>>,
 }
 
 /// 发起一轮的入参。

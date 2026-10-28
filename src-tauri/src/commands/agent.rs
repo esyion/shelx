@@ -145,22 +145,36 @@ pub fn create_agent_thread(
     request: CreateThreadRequestDto,
 ) -> IpcResult<crate::dto::agent::ThreadDto> {
     let settings_default = state.agent.agent_settings().approval_mode;
+    // 工作区三态归一:不传 = 后端取最近使用;空串 = 显式不绑定;其余 = 绑定该 ID。
+    let workspace = match request.workspace_id {
+        None => None,
+        Some(value) if value.trim().is_empty() => Some(None),
+        Some(value) => Some(Some(value)),
+    };
     let draft = crate::application::agent::types::NewThread {
         title: request.title,
         profile_id: request.profile_id,
         approval: request.approval_mode.unwrap_or(settings_default),
         bound_session_id: request.bound_session_id,
+        workspace_id: workspace,
     };
     map_err(state.agent.create_thread(draft).map(Into::into))
 }
 
-/// 修改线程(标题 / 审批档 / 绑定 / profile / 置顶)。
+/// 修改线程(标题 / 审批档 / 绑定 / 工作区 / profile / 置顶)。
 #[tauri::command]
 pub fn update_agent_thread(
     state: State<AppState>,
     request: UpdateThreadRequestDto,
 ) -> IpcResult<crate::dto::agent::ThreadDto> {
     let bound = request.bound_session_id.map(|value| {
+        if value.trim().is_empty() {
+            None
+        } else {
+            Some(value)
+        }
+    });
+    let workspace = request.workspace_id.map(|value| {
         if value.trim().is_empty() {
             None
         } else {
@@ -175,6 +189,7 @@ pub fn update_agent_thread(
                 request.title,
                 request.approval_mode,
                 bound,
+                workspace,
                 request.profile_id,
                 request.pinned,
             )

@@ -29,6 +29,7 @@ import type {
   UpsertProfileRequestDto,
   WebSearchProbeDto,
   WebSearchStatusDto,
+  WorkspaceDto,
 } from "@/types";
 import { invokeUnwrapped } from "./tauri";
 
@@ -48,6 +49,7 @@ export function createAgentThread(request: {
   title?: string;
   approvalMode?: ApprovalMode;
   boundSessionId?: string | null;
+  workspaceId?: string | null;
 }): Promise<AgentThread> {
   return invokeUnwrapped("create_agent_thread", {
     request: {
@@ -55,16 +57,18 @@ export function createAgentThread(request: {
       profileId: request.profileId,
       approvalMode: request.approvalMode ?? null,
       boundSessionId: request.boundSessionId ?? null,
+      workspaceId: request.workspaceId ?? null,
     },
   });
 }
 
-/** 修改线程(标题 / 审批档 / 绑定 / 模型配置 / 置顶)。 */
+/** 修改线程(标题 / 审批档 / 绑定 / 工作区 / 模型配置 / 置顶)。 */
 export function updateAgentThread(request: {
   threadId: string;
   title?: string;
   approvalMode?: ApprovalMode;
   boundSessionId?: string | null;
+  workspaceId?: string | null;
   profileId?: string;
   pinned?: boolean;
 }): Promise<AgentThread> {
@@ -74,6 +78,7 @@ export function updateAgentThread(request: {
       title: request.title ?? null,
       approvalMode: request.approvalMode ?? null,
       boundSessionId: request.boundSessionId ?? null,
+      workspaceId: request.workspaceId ?? null,
       profileId: request.profileId ?? null,
       pinned: request.pinned ?? null,
     },
@@ -269,4 +274,24 @@ export function testWebSearchKey(
   request: TestWebSearchRequestDto,
 ): Promise<WebSearchProbeDto> {
   return invokeUnwrapped("test_web_search_key", { request });
+}
+
+/** 本机工作区列表(最近使用在前)。 */
+export function listAgentWorkspaces(): Promise<WorkspaceDto[]> {
+  return invokeUnwrapped("list_agent_workspaces");
+}
+
+/** 登记本机工作区(路径来自系统目录选择器;名称空则后端用目录名兜底)。 */
+export function addAgentWorkspace(request: {
+  rootPath: string;
+  name?: string | null;
+}): Promise<WorkspaceDto> {
+  return invokeUnwrapped("add_agent_workspace", {
+    request: { rootPath: request.rootPath, name: request.name ?? null },
+  });
+}
+
+/** 移除本机工作区(绑定它的对话自动解绑;历史记录保留)。 */
+export function removeAgentWorkspace(id: string): Promise<void> {
+  return invokeUnwrapped("remove_agent_workspace", { request: { id } });
 }

@@ -131,6 +131,22 @@ pub enum AgentError {
     Connections(#[from] crate::application::connections::ConnectionError),
 }
 
+impl From<crate::application::workspaces::WorkspaceError> for AgentError {
+    /// 工作区错误 → Agent 错误(存储错误透传,NotFound 归一为可定位文案)。
+    fn from(value: crate::application::workspaces::WorkspaceError) -> Self {
+        match value {
+            err @ crate::application::workspaces::WorkspaceError::Store(_) => Self::Store(
+                crate::application::agent::types::StoreFault(err.to_string()),
+            ),
+            crate::application::workspaces::WorkspaceError::NotFound => Self::NotFound("工作区"),
+            err @ (crate::application::workspaces::WorkspaceError::Invalid(_)
+            | crate::application::workspaces::WorkspaceError::RootInvalid(_)) => {
+                Self::Invalid(err.to_string())
+            }
+        }
+    }
+}
+
 /// 线程快照:界面重进时一次拉齐,避免"看不见的进行中状态"。
 #[derive(Debug, Clone)]
 pub struct ThreadSnapshot {
@@ -172,6 +188,8 @@ pub struct AgentService {
     pub(crate) secrets: Arc<dyn SecretStore>,
     /// 联网搜索端口(工具执行与连通性测试共用)。
     pub(crate) search: Arc<dyn WebSearch>,
+    /// 本机工作区服务(登记/列表/删除与最近使用;本机工具的边界来源)。
+    pub(crate) workspaces: Arc<crate::application::workspaces::WorkspaceService>,
 }
 
 impl AgentService {
@@ -187,6 +205,7 @@ impl AgentService {
         settings: Arc<SettingsService>,
         secrets: Arc<dyn SecretStore>,
         search: Arc<dyn WebSearch>,
+        workspaces: Arc<crate::application::workspaces::WorkspaceService>,
     ) -> Self {
         let hub = Arc::new(ThreadEventHub::new());
         let approvals = Arc::new(ApprovalCenter::new());
@@ -212,6 +231,7 @@ impl AgentService {
             settings,
             secrets,
             search,
+            workspaces,
         }
     }
 
@@ -292,19 +312,21 @@ impl AgentService {
         })
     }
 
-    /// 改标题、审批模式、绑定会话、模型配置或置顶(None 表示不改)。
+    /// 改标题、审批模式、绑定会话、工作区、模型配置或置顶(None 表示不改)。
     ///
     /// 置顶只改 `pinned_at`,不动 `updated_at`:取消置顶后线程按原更新时间
     /// 回到"最近"组,不会因为置过一次顶就窜到列表最前。
     ///
     /// # Errors
-    /// 线程不存在或存储失败。
+    /// 线程不存在、工作区不存在或存储失败。
+    #[allow(clippy::too_many_arguments)]
     pub fn update_thread(
         &self,
         thread_id: &str,
         title: Option<String>,
         approval: Option<ApprovalMode>,
         bound_session_id: Option<Option<String>>,
+        workspace_id: Option<Option<String>>,
         profile_id: Option<String>,
         pinned: Option<bool>,
     ) -> Result<ThreadRecord, AgentError> {
@@ -315,6 +337,7 @@ impl AgentService {
         let touched = title.is_some()
             || approval.is_some()
             || bound_session_id.is_some()
+            || workspace_id.is_some()
             || profile_id.is_some();
         if let Some(title) = title {
             if title.trim().is_empty() {
@@ -327,6 +350,14 @@ impl AgentService {
         }
         if let Some(bound) = bound_session_id {
             thread.bound_session_id = bound;
+        }
+        if let Some(workspace) = workspace_id {
+            if let Some(id) = workspace.as_deref() {
+                if self.workspaces.get(id)?.is_none() {
+                    return Err(AgentError::NotFound("工作区"));
+                }
+            }
+            thread.workspace_id = workspace;
         }
         if let Some(profile_id) = profile_id {
             if self.profile(&profile_id).is_none() {
@@ -371,6 +402,36 @@ impl AgentService {
         thread_id: &str,
     ) -> Result<Vec<crate::domain::agent::ToolCallRecord>, AgentError> {
         Ok(self.store.tool_calls(thread_id)?)
+    }
+
+    /// 本机工作区列表(最近使用在前)。
+    ///
+    /// # Errors
+    /// 存储失败。
+    pub fn list_workspaces(
+        &self,
+    ) -> Result<Vec<crate::application::workspaces::WorkspaceRecord>, AgentError> {
+        Ok(self.workspaces.list()?)
+    }
+
+    /// 登记本机工作区:根必须存在且是目录;名称为空时取目录名;同一目录只登记一次。
+    ///
+    /// # Errors
+    /// 根不可用、名称/路径非法或存储失败。
+    pub fn add_workspace(
+        &self,
+        name: &str,
+        root: &str,
+    ) -> Result<crate::application::workspaces::WorkspaceRecord, AgentError> {
+        Ok(self.workspaces.add(name, root)?)
+    }
+
+    /// 移除本机工作区:绑定它的对话自动解绑(外键置空),历史记录保留。
+    ///
+    /// # Errors
+    /// 工作区不存在或存储失败。
+    pub fn remove_workspace(&self, id: &str) -> Result<(), AgentError> {
+        Ok(self.workspaces.remove(id)?)
     }
 
     /// 记忆列表。

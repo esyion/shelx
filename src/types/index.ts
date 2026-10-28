@@ -115,4 +115,7 @@ export type {
   UpsertProfileRequestDto,
   WebSearchProbeDto,
   WebSearchStatusDto,
+  WorkspaceDto,
+  WorkspaceIdRequestDto,
+  AddWorkspaceRequestDto,
 } from "./agent";

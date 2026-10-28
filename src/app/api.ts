@@ -7,6 +7,7 @@
 import {
   agentApi,
   connectionsApi,
+  dialogApi,
   localFsApi,
   migrationApi,
   monitorApi,
@@ -269,6 +270,16 @@ export const getWebSearchStatus = agentApi.getWebSearchStatus;
 export const saveWebSearchKey = agentApi.saveWebSearchKey;
 /** 测试联网搜索密钥。 */
 export const testWebSearchKey = agentApi.testWebSearchKey;
+
+/** 本机工作区列表(最近使用在前)。 */
+export const listAgentWorkspaces = agentApi.listAgentWorkspaces;
+/** 登记本机工作区(路径来自系统目录选择器)。 */
+export const addAgentWorkspace = agentApi.addAgentWorkspace;
+/** 移除本机工作区(绑定的对话自动解绑,历史保留)。 */
+export const removeAgentWorkspace = agentApi.removeAgentWorkspace;
+
+/** 打开系统目录选择框(取消返回 null;非 Tauri 环境无原生选择,返回 null)。 */
+export const pickDirectory = dialogApi.pickDirectory;
 
 /** 应用「窗口与系统」设置到操作系统(开机自启等,保存后即时生效)。 */
 export const applyWindowSettings = windowApi.applyWindowSettings;

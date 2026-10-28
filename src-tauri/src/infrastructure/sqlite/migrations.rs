@@ -30,6 +30,10 @@ const MIGRATIONS: &[(i64, &str)] = &[
         8,
         include_str!("../../../migrations/0008_agent_thread_lifecycle.sql"),
     ),
+    (
+        9,
+        include_str!("../../../migrations/0009_agent_workspace.sql"),
+    ),
 ];
 
 /// 将数据库迁移到最新版本;已是最新时为空操作。

@@ -22,3 +22,4 @@ pub mod terminals;
 pub mod transfers;
 pub mod update;
 pub mod window;
+pub mod workspace;

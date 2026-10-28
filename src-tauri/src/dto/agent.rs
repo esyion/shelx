@@ -34,6 +34,8 @@ pub struct ThreadDto {
     pub approval_mode: ApprovalMode,
     /// 手动绑定的会话 ID。
     pub bound_session_id: Option<String>,
+    /// 绑定的本机工作区 ID;不使用本机能力为 null(工作区删除时自动置 null)。
+    pub workspace_id: Option<String>,
     /// 创建时间。
     pub created_at: Millis,
     /// 更新时间。
@@ -55,6 +57,7 @@ impl From<ThreadRecord> for ThreadDto {
             profile_id: value.profile_id,
             approval_mode: value.approval,
             bound_session_id: value.bound_session_id,
+            workspace_id: value.workspace_id,
             created_at: value.created_at,
             updated_at: value.updated_at,
             pinned_at: value.pinned_at,
@@ -492,6 +495,9 @@ pub struct CreateThreadRequestDto {
     /// 绑定会话。
     #[serde(default)]
     pub bound_session_id: Option<String>,
+    /// 绑定的本机工作区;不传/null = 后端取最近使用的工作区,空字符串 = 显式不绑定。
+    #[serde(default)]
+    pub workspace_id: Option<String>,
 }
 
 /// 修改线程请求(全部可选,只改传入项)。
@@ -509,6 +515,9 @@ pub struct UpdateThreadRequestDto {
     /// 绑定会话;传空字符串表示解绑。
     #[serde(default)]
     pub bound_session_id: Option<String>,
+    /// 绑定的本机工作区;传空字符串表示解绑,不传不改。
+    #[serde(default)]
+    pub workspace_id: Option<String>,
     /// 模型配置 ID。
     #[serde(default)]
     pub profile_id: Option<String>,
