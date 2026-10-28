@@ -27,7 +27,7 @@ use crate::domain::agent::{
 /// 输出摘要上限(字符):超出即截断并把"已截断"事实告诉模型。
 pub const EXCERPT_CHARS: usize = 4000;
 
-/// 基于既有 SSH/SFTP 用例的工具执行器。
+/// 基于既有 SSH/SFTP 用例的工具执行器(本机工作区工具也经它走同一审批/审计管线)。
 pub struct SshToolHost {
     connections: Arc<ConnectionService>,
     sessions: Arc<SessionService>,
@@ -39,6 +39,10 @@ pub struct SshToolHost {
     secrets: Arc<dyn SecretStore>,
     /// 联网搜索端口。
     search: Arc<dyn WebSearch>,
+    /// 本机命令执行端口(`local_exec`)。
+    local_exec: Arc<dyn crate::application::local_ports::LocalExec>,
+    /// 本机工作区受控文件系统端口(`local_*` 文件工具)。
+    workspace_fs: Arc<dyn crate::application::local_ports::WorkspaceFs>,
     /// 本线程内已"永久允许"的 (线程, 主机, 工具)。
     always_allowed: RwLock<HashSet<(String, String, String)>>,
 }
@@ -56,6 +60,8 @@ impl SshToolHost {
         approvals: Arc<ApprovalCenter>,
         secrets: Arc<dyn SecretStore>,
         search: Arc<dyn WebSearch>,
+        local_exec: Arc<dyn crate::application::local_ports::LocalExec>,
+        workspace_fs: Arc<dyn crate::application::local_ports::WorkspaceFs>,
     ) -> Self {
         Self {
             connections,
@@ -66,6 +72,8 @@ impl SshToolHost {
             approvals,
             secrets,
             search,
+            local_exec,
+            workspace_fs,
             always_allowed: RwLock::new(HashSet::new()),
         }
     }
@@ -155,14 +163,27 @@ impl ToolHost for SshToolHost {
             return outcome;
         }
 
-        let mut targets = match self.resolve_targets(&context, &arguments) {
-            Ok(resolved) => resolved,
-            Err(outcome) => {
-                self.finish_call(&context, &call_id, name, category, &outcome);
-                return outcome;
+        // 本机工作区工具:目标是唯一的哨兵 "local"(显示名带工作区名),
+        // 之后的审批/并发执行/审计/事件与远端主机走同一条管线。
+        let local_tool = super::tools::is_local_tool(name);
+        let mut targets = if local_tool {
+            match self.resolve_local_target(&context) {
+                Ok(resolved) => resolved,
+                Err(outcome) => {
+                    self.finish_call(&context, &call_id, name, category, &outcome);
+                    return outcome;
+                }
+            }
+        } else {
+            match self.resolve_targets(&context, &arguments) {
+                Ok(resolved) => resolved,
+                Err(outcome) => {
+                    self.finish_call(&context, &call_id, name, category, &outcome);
+                    return outcome;
+                }
             }
         };
-        if targets.is_empty() {
+        if targets.is_empty() && !local_tool {
             targets = match self.scope_targets(&arguments) {
                 Ok(resolved) => resolved,
                 Err(outcome) => {
@@ -181,7 +202,11 @@ impl ToolHost for SshToolHost {
             return outcome;
         }
 
-        let reason = classify_reason(name, &argv, category);
+        let reason = if local_tool {
+            super::local_ops::reason_for(name, &arguments, category)
+        } else {
+            classify_reason(name, &argv, category)
+        };
 
         let needs_approval = context.approval.requires_approval(category);
         let pending: Vec<(String, String)> = targets
@@ -265,12 +290,15 @@ impl ToolHost for SshToolHost {
             let connections = Arc::clone(&self.connections);
             let sessions = Arc::clone(&self.sessions);
             let sftp = Arc::clone(&self.sftp);
+            let local_exec = Arc::clone(&self.local_exec);
+            let workspace_fs = Arc::clone(&self.workspace_fs);
             let run_context = Arc::clone(&context);
             let arguments = arguments.clone();
             let tool_name = name.to_owned();
             let conn_id = conn_id.clone();
             let conn_name = conn_name.clone();
             let argv = argv.clone();
+            let is_local = local_tool;
             tasks.push(tokio::spawn(async move {
                 let Ok(_guard) = permits.acquire_owned().await else {
                     return (
@@ -286,18 +314,46 @@ impl ToolHost for SshToolHost {
                 };
                 // 耗时只计执行本身:排队等并发许可的时间不算进去(审计里"慢"要能被区分)。
                 let started = std::time::Instant::now();
-                let outcome = super::tool_ops::run_on_target(
-                    &connections,
-                    &sessions,
-                    &sftp,
-                    &run_context,
-                    &tool_name,
-                    &conn_id,
-                    &conn_name,
-                    &arguments,
-                    &argv,
-                )
-                .await;
+                let outcome = if is_local {
+                    // 本机工具:不建 SSH 连接;输出统一走 excerpt,与远端同口径。
+                    match super::local_ops::dispatch(
+                        local_exec.as_ref(),
+                        workspace_fs.as_ref(),
+                        &run_context,
+                        &tool_name,
+                        &arguments,
+                    )
+                    .await
+                    {
+                        Ok(output) => ToolTargetOutcome {
+                            conn_id,
+                            conn_name,
+                            status: TargetStatus::Ok,
+                            output: Some(excerpt(&output)),
+                            error: None,
+                        },
+                        Err(error) => ToolTargetOutcome {
+                            conn_id,
+                            conn_name,
+                            status: TargetStatus::Failed,
+                            output: None,
+                            error: Some(error),
+                        },
+                    }
+                } else {
+                    super::tool_ops::run_on_target(
+                        &connections,
+                        &sessions,
+                        &sftp,
+                        &run_context,
+                        &tool_name,
+                        &conn_id,
+                        &conn_name,
+                        &arguments,
+                        &argv,
+                    )
+                    .await
+                };
                 (
                     outcome,
                     Some(i64::try_from(started.elapsed().as_millis()).unwrap_or(i64::MAX)),
@@ -382,10 +438,16 @@ impl ToolHost for SshToolHost {
             .iter()
             .filter(|(item, _)| item.status == TargetStatus::Ok)
             .count();
-        let summary = format!(
-            "{name} 在 {} 台主机上执行,成功 {ok_count} 台",
-            results.len()
-        );
+        let summary = if local_tool {
+            // 本机是单目标,不按"台"措辞。
+            let failed = ok_count != results.len();
+            format!("{name} 在本机执行,{}", if failed { "失败" } else { "成功" })
+        } else {
+            format!(
+                "{name} 在 {} 台主机上执行,成功 {ok_count} 台",
+                results.len()
+            )
+        };
         let mut outcome = ToolOutcome {
             ok: ok_count == results.len() && !results.is_empty(),
             needs_user: results
@@ -450,6 +512,23 @@ impl SshToolHost {
         }
         self.check_batch_limit(context, resolved.len())?;
         Ok(resolved)
+    }
+
+    /// 解析本机工具的目标:固定单目标哨兵 `local`(显示名带工作区名),
+    /// 未绑定工作区时明确报错 —— 不允许落成"悄悄在 0 台上执行"的假成功。
+    fn resolve_local_target(
+        &self,
+        context: &RunContext,
+    ) -> Result<Vec<(String, String)>, ToolOutcome> {
+        match context.workspace.as_ref() {
+            Some(workspace) => Ok(vec![(
+                crate::domain::agent::LOCAL_TARGET_ID.to_owned(),
+                format!("本机·{}", workspace.name),
+            )]),
+            None => Err(ToolOutcome::failed(
+                "本对话未绑定本机工作区,请先在对话抬头选择一个本机文件夹",
+            )),
+        }
     }
 
     /// 按作用域解析(供 targetScope 形态的调用使用:分组/在线/全部配置)。

@@ -67,7 +67,11 @@ thiserror = "2"
 # 保留 flate2(zlib 压缩)与 rsa(老服务器 ssh-rsa 兼容)。
 russh = { version = "0.63.3", default-features = false, features = ["ring", "flate2", "rsa"] }
 russh-sftp = "3.0.0"
-tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "time", "sync", "io-util"] }
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "time", "sync", "io-util", "process"] }
+# ↑ process feature:Agent 本机工作区的 local_exec 用 tokio::process 起系统 shell
+#   (用途:spawn 子进程 + 双流收集 + 超时 kill/kill_on_drop)。
+#   风险:任意命令执行的暴露面 —— 由逐次审批门、cwd 固定工作区、超时与输出上限约束。
+#   回滚:去掉 feature 并删除 infrastructure/local_exec.rs 与 local_ops 分支即可。
 
 # --- 本地存储与凭据(PRD §7.1)---
 rusqlite = { version = "0.40.2", features = ["bundled"] }

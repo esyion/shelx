@@ -120,8 +120,10 @@ impl AppState {
         );
         let workspaces = Arc::new(crate::application::workspaces::WorkspaceService::new(
             workspace_store,
-            workspace_fs,
+            workspace_fs.clone(),
         ));
+        let local_exec: Arc<dyn crate::application::local_ports::LocalExec> =
+            Arc::new(crate::infrastructure::local_exec::TokioLocalExec::new());
         let agent = Arc::new(crate::application::agent::AgentService::new(
             agent_store,
             agent_gateway,
@@ -132,6 +134,8 @@ impl AppState {
             agent_secrets,
             agent_search,
             workspaces,
+            local_exec,
+            workspace_fs,
         ));
         agent.recover_unfinished_runs();
 

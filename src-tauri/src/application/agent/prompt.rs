@@ -7,6 +7,7 @@
 //! 因此静态段落的字符串字面量必须顶格(行首缩进会被 Markdown 当成代码块),
 //! 各节以空行结尾,保证拼接后标题前总有一个空行。
 
+use crate::application::agent::types::WorkspaceScope;
 use crate::domain::agent::ApprovalMode;
 
 /// 一台可对外的主机在提示里的表示。
@@ -49,8 +50,10 @@ const INSTRUCTIONS: &str = r#"# 角色
 /// - `memories`:已启用的共享记忆条目(不可信数据,按事实引用);
 /// - `bound`:用户手动绑定的当前会话主机(可为 `None`);
 /// - `approval`:审批档位,决定模型对"要不要问用户"的预期;
-/// - `web_search`:联网搜索是否注册(未注册时不提,模型看不见的能力不写进提示)。
+/// - `web_search`:联网搜索是否注册(未注册时不提,模型看不见的能力不写进提示);
+/// - `workspace`:本机工作区是否绑定(未绑定时完全不提本机工具)。
 #[must_use]
+#[allow(clippy::too_many_arguments)]
 pub fn system_preamble(
     profile_label: &str,
     protocol_display: &str,
@@ -59,6 +62,7 @@ pub fn system_preamble(
     bound: Option<&str>,
     approval: ApprovalMode,
     web_search: bool,
+    workspace: Option<&WorkspaceScope>,
 ) -> String {
     let mut text = String::from(INSTRUCTIONS);
     text.push_str(&session_section(
@@ -68,6 +72,9 @@ pub fn system_preamble(
         approval,
         web_search,
     ));
+    if let Some(workspace) = workspace {
+        text.push_str(&workspace_section(workspace));
+    }
     text.push_str(&hosts_section(hosts));
     if !memories.is_empty() {
         text.push_str(&memories_section(memories));
@@ -99,6 +106,15 @@ fn session_section(
     }
     text.push('\n');
     text
+}
+
+/// "本机工作区"节:绑定时告诉模型本机能力与边界(未绑定时完全不提)。
+fn workspace_section(workspace: &WorkspaceScope) -> String {
+    format!(
+        "# 本机工作区\n\n- 当前对话绑定了本机工作区「{name}」(根目录 `{root}`)。\n- `local_` 开头的工具操作本机:命令在该目录下用系统 shell 执行,每条命令都会请用户批准;文件读写限制在该目录之内。\n- 本机与远端服务器可以混用:本机改文件、远端验证,是正常工作方式。\n\n",
+        name = workspace.name,
+        root = workspace.root
+    )
 }
 
 /// "用户配置过的服务器"节:Markdown 表格,让模型只能从表里取 id。

@@ -104,6 +104,10 @@ export interface AgentSettings {
    */
   injectMemories: boolean;
   /**
+   * 本机工作区单条命令超时(秒;`local_exec`)。
+   */
+  localExecTimeoutSecs: number;
+  /**
    * 单轮最多允许多少次工具往返。
    */
   maxTurns: number;

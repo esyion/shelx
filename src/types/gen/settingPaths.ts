@@ -31,6 +31,7 @@ export type SettingPath =
   | "agent.batchLimit"
   | "agent.parallelHosts"
   | "agent.execTimeoutSecs"
+  | "agent.localExecTimeoutSecs"
   | "agent.tokenBudget"
   | "agent.injectMemories"
   | "agent.showReasoning"

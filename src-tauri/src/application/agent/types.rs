@@ -267,6 +267,17 @@ pub trait WebSearch: Send + Sync {
 #[error("{0}")]
 pub struct WebSearchFault(pub String);
 
+/// 本轮生效的本机工作区快照(运行期间不随工作区删除而失效)。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceScope {
+    /// 工作区 ID。
+    pub id: String,
+    /// 显示名。
+    pub name: String,
+    /// 根目录(canonical 形态;本机工具的 confinement 边界)。
+    pub root: String,
+}
+
 /// 运行上下文:一次运行期间工具执行需要的环境。
 #[derive(Debug, Clone)]
 pub struct RunContext {
@@ -278,12 +289,16 @@ pub struct RunContext {
     pub approval: ApprovalMode,
     /// 用户绑定的会话(`None` 时工具自行按 connId 建连)。
     pub bound_conn_id: Option<String>,
+    /// 本轮生效的本机工作区(`None` 时本地工具未注册,与 web_search 同一注册口径)。
+    pub workspace: Option<WorkspaceScope>,
     /// 单次批量主机上限。
     pub batch_limit: usize,
     /// 同时执行的主机数上限。
     pub parallel_hosts: usize,
-    /// 单条命令超时秒数。
+    /// 单条命令超时秒数(远端 exec)。
     pub exec_timeout_secs: u64,
+    /// 本机命令超时秒数(`local_exec`)。
+    pub local_exec_timeout_secs: u64,
     /// 联网搜索是否注册(`web_search` 工具只在密钥已配置的本轮出现)。
     pub web_search_enabled: bool,
     /// 取消令牌。

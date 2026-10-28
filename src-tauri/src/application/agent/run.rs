@@ -9,7 +9,7 @@ use super::events::{canonical_log, AgentEvent, AgentEventPayload};
 use super::prompt::{system_preamble, HostLine};
 use super::types::{
     MessageRecord, MessageRole, ProfileRecord, RunContext, RunOutcome, RunPlan, RunRecord,
-    SendRequest, ThreadRecord,
+    SendRequest, ThreadRecord, WorkspaceScope,
 };
 use super::{AgentError, AgentService, DEFAULT_THREAD_TITLE};
 use crate::application::settings::AgentSettings;
@@ -367,14 +367,33 @@ impl AgentService {
         let cancel = self.runs.register(&run_id, &thread_id);
         // 密钥存在性只在这一处判定:工具注册(RunContext)与提示词(RunPlan)共用同一口径。
         let web_search = self.web_search_key().is_some();
+        // 本机工作区同一口径:本轮解析一次,工具注册与提示词共用;解析失败回落 None
+        // (模型看不到本地工具,不阻断运行)。快照在运行期间不随工作区删除而失效。
+        let workspace = thread.workspace_id.as_deref().and_then(|id| {
+            let resolved = self.workspaces.get(id).ok().flatten();
+            if resolved.is_none() {
+                tracing::warn!(thread_id = %thread_id, workspace_id = %id, "对话绑定的工作区已不存在,本轮按未绑定处理");
+            }
+            resolved
+        });
+        if let Some(workspace) = &workspace {
+            self.workspaces.touch_used(&workspace.id);
+        }
+        let workspace_scope = workspace.map(|ws| WorkspaceScope {
+            id: ws.id,
+            name: ws.name,
+            root: ws.root,
+        });
         let context = Arc::new(RunContext {
             thread_id: thread_id.clone(),
             run_id: run_id.clone(),
             approval,
             bound_conn_id: bound_session_id.or_else(|| thread.bound_session_id.clone()),
+            workspace: workspace_scope.clone(),
             batch_limit: settings.batch_limit.max(1) as usize,
             parallel_hosts: settings.parallel_hosts.max(1) as usize,
             exec_timeout_secs: settings.exec_timeout_secs.max(1) as u64,
+            local_exec_timeout_secs: settings.local_exec_timeout_secs.max(1) as u64,
             web_search_enabled: web_search,
             cancel,
         });
@@ -382,6 +401,7 @@ impl AgentService {
             preamble: self.build_preamble(
                 approval,
                 context.bound_conn_id.as_deref(),
+                workspace_scope.as_ref(),
                 &model.record,
                 settings.inject_memories,
                 web_search,
@@ -598,11 +618,13 @@ impl AgentService {
         Ok(())
     }
 
-    /// 组装系统提示:主机清单 + 共享记忆 + 审批档位。
+    /// 组装系统提示:主机清单 + 共享记忆 + 审批档位 + 本机工作区。
+    #[allow(clippy::too_many_arguments)]
     fn build_preamble(
         &self,
         approval: ApprovalMode,
         bound: Option<&str>,
+        workspace: Option<&WorkspaceScope>,
         profile: &super::types::ProfileRecord,
         inject_memories: bool,
         web_search: bool,
@@ -648,6 +670,7 @@ impl AgentService {
             bound,
             approval,
             web_search,
+            workspace,
         ))
     }
 }

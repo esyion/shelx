@@ -252,6 +252,12 @@ const TOOL_ACTION_DISPLAY: Record<string, string> = {
   set_permissions: "修改权限",
   web_search: "联网搜索",
   remember: "记住这条事实",
+  local_exec: "在本机执行命令",
+  local_read_file: "读取本机文件",
+  local_list_dir: "列出本机目录",
+  local_write_file: "写入本机文件",
+  local_remove_path: "删除本机文件",
+  local_rename_path: "重命名本机文件",
 };
 
 /**

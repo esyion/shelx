@@ -4006,6 +4006,13 @@
               "description": "是否把共享记忆注入系统提示。",
               "type": "boolean"
             },
+            "localExecTimeoutSecs": {
+              "default": 120,
+              "description": "本机工作区单条命令超时(秒;`local_exec`)。",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
             "maxTurns": {
               "default": 20,
               "description": "单轮最多允许多少次工具往返。",
@@ -4039,6 +4046,7 @@
             "batchLimit",
             "parallelHosts",
             "execTimeoutSecs",
+            "localExecTimeoutSecs",
             "approvalMode",
             "tokenBudget",
             "injectMemories",
@@ -4057,6 +4065,7 @@
                 "contextMessages": 30,
                 "execTimeoutSecs": 30,
                 "injectMemories": true,
+                "localExecTimeoutSecs": 120,
                 "maxTurns": 20,
                 "parallelHosts": 4,
                 "showReasoning": true,

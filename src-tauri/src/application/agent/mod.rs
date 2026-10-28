@@ -6,6 +6,7 @@
 pub mod events;
 pub mod hub;
 pub mod lifecycle;
+pub mod local_ops;
 pub mod prompt;
 pub mod tool_host;
 pub mod tool_ops;
@@ -206,6 +207,8 @@ impl AgentService {
         secrets: Arc<dyn SecretStore>,
         search: Arc<dyn WebSearch>,
         workspaces: Arc<crate::application::workspaces::WorkspaceService>,
+        local_exec: Arc<dyn crate::application::local_ports::LocalExec>,
+        workspace_fs: Arc<dyn crate::application::local_ports::WorkspaceFs>,
     ) -> Self {
         let hub = Arc::new(ThreadEventHub::new());
         let approvals = Arc::new(ApprovalCenter::new());
@@ -218,6 +221,8 @@ impl AgentService {
             Arc::clone(&approvals),
             Arc::clone(&secrets),
             Arc::clone(&search),
+            local_exec,
+            workspace_fs,
         ));
         Self {
             store,

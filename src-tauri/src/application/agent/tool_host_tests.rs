@@ -237,6 +237,9 @@ fn harness() -> Harness {
         Arc::clone(&approvals),
         Arc::clone(&secrets) as Arc<dyn crate::application::ports::SecretStore>,
         Arc::new(FixedSearch),
+        // 本机端口:远端用例不会触达(未绑定工作区),给错误型 fake 兜底。
+        Arc::new(RefuseLocalExec),
+        Arc::new(RefuseWorkspaceFs),
     ));
     Harness {
         host,
@@ -247,6 +250,64 @@ fn harness() -> Harness {
     }
 }
 
+/// 远端用例兜底的本机执行 fake:被调到即报错。
+struct RefuseLocalExec;
+#[async_trait::async_trait]
+impl crate::application::local_ports::LocalExec for RefuseLocalExec {
+    async fn run(
+        &self,
+        _command: &str,
+        _cwd: &std::path::Path,
+        _timeout: std::time::Duration,
+        _max_output_bytes: usize,
+    ) -> Result<
+        crate::application::local_ports::LocalExecOutcome,
+        crate::application::local_ports::LocalExecFault,
+    > {
+        Err(crate::application::local_ports::LocalExecFault(
+            "测试不应触达本机执行".into(),
+        ))
+    }
+}
+
+/// 远端用例兜底的工作区文件系统 fake:被调到即报错。
+struct RefuseWorkspaceFs;
+impl crate::application::local_ports::WorkspaceFs for RefuseWorkspaceFs {
+    fn resolve_root(&self, _raw: &str) -> Result<String, String> {
+        Err("测试不应触达本机文件系统".into())
+    }
+    fn read_text(
+        &self,
+        _root: &str,
+        _path: &str,
+        _max_bytes: u64,
+    ) -> Result<(String, bool), String> {
+        Err("测试不应触达本机文件系统".into())
+    }
+    fn list(
+        &self,
+        _root: &str,
+        _path: &str,
+    ) -> Result<Vec<crate::application::local_ports::WorkspaceListing>, String> {
+        Err("测试不应触达本机文件系统".into())
+    }
+    fn write(
+        &self,
+        _root: &str,
+        _path: &str,
+        _content: &str,
+        _append: bool,
+    ) -> Result<u64, String> {
+        Err("测试不应触达本机文件系统".into())
+    }
+    fn remove(&self, _root: &str, _path: &str) -> Result<(), String> {
+        Err("测试不应触达本机文件系统".into())
+    }
+    fn rename(&self, _root: &str, _old_path: &str, _new_path: &str) -> Result<(), String> {
+        Err("测试不应触达本机文件系统".into())
+    }
+}
+
 /// 最小运行上下文(默认"只读自动,改动需批准")。
 fn context() -> Arc<RunContext> {
     Arc::new(RunContext {
@@ -254,9 +315,11 @@ fn context() -> Arc<RunContext> {
         run_id: "run-1".into(),
         approval: ApprovalMode::ReadOnlyAuto,
         bound_conn_id: None,
+        workspace: None,
         batch_limit: 8,
         parallel_hosts: 2,
         exec_timeout_secs: 10,
+        local_exec_timeout_secs: 120,
         web_search_enabled: false,
         cancel: CancelToken::new(),
     })

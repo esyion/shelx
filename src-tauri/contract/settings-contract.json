@@ -429,6 +429,25 @@
       "default": 30.0
     },
     {
+      "path": "agent.localExecTimeoutSecs",
+      "group": "agent",
+      "unit": "秒",
+      "kind": {
+        "kind": "int",
+        "min": 1,
+        "max": 600,
+        "presets": [
+          10,
+          30,
+          60,
+          120,
+          300,
+          600
+        ]
+      },
+      "default": 120.0
+    },
+    {
       "path": "agent.tokenBudget",
       "group": "agent",
       "unit": "tokens",
@@ -527,6 +546,7 @@
       "batchLimit": 5,
       "parallelHosts": 4,
       "execTimeoutSecs": 30,
+      "localExecTimeoutSecs": 120,
       "approvalMode": "read_only_auto",
       "tokenBudget": 1000000,
       "injectMemories": true,

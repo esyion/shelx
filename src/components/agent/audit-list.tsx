@@ -125,7 +125,11 @@ export function AuditList({ threadId }: { threadId: string | null }) {
           {rows.map((item) => {
             const action = toolActionLabel(item.toolName);
             const line = traceLine(action, item.status);
-            const host = findConnectionName(tree, item.connId) ?? (item.connId ? "已删除的连接" : "本机");
+            const host =
+              item.connId === "local"
+                ? "本机"
+                : (findConnectionName(tree, item.connId) ??
+                  (item.connId ? "已删除的连接" : "本机"));
             const duration = formatDuration(item.durationMs);
             const decision = item.approval ? APPROVAL_DECISION_DISPLAY[item.approval] : null;
             const category = TOOL_CATEGORY_DISPLAY[item.category];

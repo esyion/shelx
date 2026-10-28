@@ -129,6 +129,43 @@ pub const ALL_TOOLS: &[ToolSpec] = &[
         parameters: r#"{"type":"object","properties":{"content":{"type":"string","maxLength":500},"scope":{"type":"string","enum":["global","connection"]},"connId":{"type":"string"}},"required":["content","scope"],"additionalProperties":false}"#,
         policy: ToolPolicy::Fixed(ToolCategory::Mutating),
     },
+    // ---- 本机工作区(local_ 前缀;只在对话绑定了工作区的轮次注册) ----
+    ToolSpec {
+        name: "local_exec",
+        description: "在用户本机的工作区目录下用系统 shell 执行一条命令(支持管道与重定向)。命令在绑定的工作区根目录运行,每条命令都需要用户批准。需要 PowerShell 等其它 shell 时在命令里显式写出。",
+        parameters: r#"{"type":"object","properties":{"command":{"type":"string","description":"完整 shell 命令,例如 \"npm run build\" 或 \"dir | findstr log\""},"timeoutSecs":{"type":"integer","minimum":1,"maximum":600}},"required":["command"],"additionalProperties":false}"#,
+        policy: ToolPolicy::Fixed(ToolCategory::Mutating),
+    },
+    ToolSpec {
+        name: "local_read_file",
+        description: "读取本机工作区里的文本文件(路径相对工作区根;最多 64 KiB,超出截断)。",
+        parameters: r#"{"type":"object","properties":{"path":{"type":"string","description":"工作区内的文件路径"},"maxBytes":{"type":"integer","minimum":1,"maximum":65536}},"required":["path"],"additionalProperties":false}"#,
+        policy: ToolPolicy::Fixed(ToolCategory::ReadOnly),
+    },
+    ToolSpec {
+        name: "local_list_dir",
+        description: "列出本机工作区里的目录条目(路径相对工作区根,缺省为根目录)。",
+        parameters: r#"{"type":"object","properties":{"path":{"type":"string","description":"工作区内的目录路径,缺省列出根目录"}},"additionalProperties":false}"#,
+        policy: ToolPolicy::Fixed(ToolCategory::ReadOnly),
+    },
+    ToolSpec {
+        name: "local_write_file",
+        description: "写入或追加本机工作区里的文本文件(父目录不存在会创建)。会改动本机文件,需要用户批准。",
+        parameters: r#"{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"},"mode":{"type":"string","enum":["overwrite","append"]}},"required":["path","content"],"additionalProperties":false}"#,
+        policy: ToolPolicy::Fixed(ToolCategory::Mutating),
+    },
+    ToolSpec {
+        name: "local_remove_path",
+        description: "删除本机工作区里的单个文件或空目录(不递归;非空目录要先清空)。不可恢复,需要用户批准;不能删除工作区根本身。",
+        parameters: r#"{"type":"object","properties":{"path":{"type":"string"},"kind":{"type":"string","enum":["file","dir"]}},"required":["path"],"additionalProperties":false}"#,
+        policy: ToolPolicy::Fixed(ToolCategory::Mutating),
+    },
+    ToolSpec {
+        name: "local_rename_path",
+        description: "重命名/移动本机工作区里的路径(新旧路径都必须在工作区内;目标已存在则拒绝)。需要用户批准。",
+        parameters: r#"{"type":"object","properties":{"oldPath":{"type":"string"},"newPath":{"type":"string"}},"required":["oldPath","newPath"],"additionalProperties":false}"#,
+        policy: ToolPolicy::Fixed(ToolCategory::Mutating),
+    },
 ];
 
 /// 按名称查工具定义。
@@ -136,11 +173,17 @@ pub fn spec(name: &str) -> Option<&'static ToolSpec> {
     ALL_TOOLS.iter().find(|tool| tool.name == name)
 }
 
+/// 工具名是否属于本机工作区工具(目标固定为工作区,不面向 SSH 主机)。
+pub fn is_local_tool(name: &str) -> bool {
+    name.starts_with("local_")
+}
+
 /// 给定审批模式下允许注册进模型的工具集。
 ///
 /// "只读模式"直接把写工具从工具表里拿掉,而不是注册后再拒绝 —— 模型看不见才不会反复试探。
-/// `web_search` 只在密钥已配置时注册:模型看得见却调不通的能力是死状态(AGENTS.md §4.1.1)。
-pub fn tools_for(mode: ApprovalMode, web_search: bool) -> Vec<&'static ToolSpec> {
+/// `web_search` 只在密钥已配置时注册、`local_` 工具只在对话绑定了本机工作区时注册:
+/// 模型看得见却调不通的能力是死状态(AGENTS.md §4.1.1)。
+pub fn tools_for(mode: ApprovalMode, web_search: bool, workspace: bool) -> Vec<&'static ToolSpec> {
     ALL_TOOLS
         .iter()
         .filter(|tool| match tool.policy {
@@ -148,6 +191,7 @@ pub fn tools_for(mode: ApprovalMode, web_search: bool) -> Vec<&'static ToolSpec>
             _ => mode.allows_mutating_tools(),
         })
         .filter(|tool| tool.name != "web_search" || web_search)
+        .filter(|tool| !is_local_tool(tool.name) || workspace)
         .collect()
 }
 

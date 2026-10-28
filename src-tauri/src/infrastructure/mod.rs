@@ -11,6 +11,7 @@
 pub mod agent;
 pub mod deep_link;
 pub mod events;
+pub mod local_exec;
 pub mod local_fs;
 pub mod secrets;
 pub mod settings;

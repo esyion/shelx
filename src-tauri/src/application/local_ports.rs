@@ -18,6 +18,48 @@ pub struct WorkspaceListing {
     pub mtime: Option<u64>,
 }
 
+/// 一次本机命令执行的产出(输出已按上限截断并标记)。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalExecOutcome {
+    /// 退出码;进程被超时杀死时为 `None`。
+    pub exit_code: Option<i32>,
+    /// 标准输出(有损 UTF-8,与远端 exec_once 同口径)。
+    pub stdout: String,
+    /// 标准错误(有损 UTF-8)。
+    pub stderr: String,
+    /// 是否触到输出上限(停止收集)。
+    pub truncated: bool,
+    /// 是否因超时被终止。
+    pub timed_out: bool,
+}
+
+/// 本机命令执行失败(进程起不来、cwd 无效等;非零退出码不是错误,见 [`LocalExecOutcome::exit_code`])。
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{0}")]
+pub struct LocalExecFault(pub String);
+
+/// 本机 shell 执行端口(实现见 `infrastructure/local_exec.rs`)。
+///
+/// 命令是完整 shell 字符串(Claude Code 式语义,管道/重定向由系统 shell 解释);
+/// `cwd` 由实现固定为传入目录(调用方传工作区根),实现不得回退到其它目录。
+#[async_trait::async_trait]
+pub trait LocalExec: Send + Sync {
+    /// 执行一条命令。
+    ///
+    /// 约定:`command` 非空、`timeout >= 1s`、`max_output_bytes > 0` 由调用方保证;
+    /// 实现必须 `kill_on_drop`、超时杀进程、输出(stdout+stderr 合计)超限后停止收集。
+    ///
+    /// # Errors
+    /// 进程无法启动(如目录无效、系统拒绝)或等待失败。
+    async fn run(
+        &self,
+        command: &str,
+        cwd: &std::path::Path,
+        timeout: std::time::Duration,
+        max_output_bytes: usize,
+    ) -> Result<LocalExecOutcome, LocalExecFault>;
+}
+
 /// 工作区受控文件系统端口(实现见 `infrastructure/workspace_fs.rs`)。
 ///
 /// 同步语义与 `LocalFs` 一致(本地磁盘微秒级);`root` 参数总是**已 canonicalize**

@@ -329,6 +329,8 @@ pub struct AgentSettings {
     pub parallel_hosts: u32,
     /// 单条远端命令超时(秒)。
     pub exec_timeout_secs: u32,
+    /// 本机工作区单条命令超时(秒;`local_exec`)。
+    pub local_exec_timeout_secs: u32,
     /// 审批档位。
     pub approval_mode: crate::domain::agent::ApprovalMode,
     /// 单对话 token 预算;0 表示不限。
@@ -348,6 +350,7 @@ impl Default for AgentSettings {
             batch_limit: 5,
             parallel_hosts: 4,
             exec_timeout_secs: 30,
+            local_exec_timeout_secs: 120,
             approval_mode: crate::domain::agent::ApprovalMode::ReadOnlyAuto,
             token_budget: 1_000_000,
             inject_memories: true,

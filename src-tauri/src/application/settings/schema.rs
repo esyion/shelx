@@ -327,6 +327,11 @@ fn raw_specs() -> Vec<RawSpec> {
             kind: ints(1, 120, &[10, 30, 60, 120]),
         },
         RawSpec {
+            path: "agent.localExecTimeoutSecs",
+            unit: Some("秒"),
+            kind: ints(1, 600, &[10, 30, 60, 120, 300, 600]),
+        },
+        RawSpec {
             path: "agent.tokenBudget",
             unit: Some("tokens"),
             kind: ints(0, 5_000_000, &[0, 50_000, 200_000, 1_000_000, 5_000_000]),

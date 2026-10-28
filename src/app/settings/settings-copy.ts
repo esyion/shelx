@@ -198,6 +198,10 @@ export const SETTING_COPY: Partial<Record<SettingPath, SettingCopy>> = {  "appea
     label: "一条命令最多等多久",
     hint: "超过这个时间命令就被中止,避免助手卡在一条不返回的命令上等死",
   },
+  "agent.localExecTimeoutSecs": {
+    label: "本机一条命令最多等多久",
+    hint: "助手在你电脑的工作区里执行命令的最长等待;超时自动终止,不会一直挂着",
+  },
   "agent.tokenBudget": {
     label: "一次任务的用量上限",
     hint: "助手一次任务最多用多少 tokens,超出就自动停下;选不限则一直跑到任务完成",
