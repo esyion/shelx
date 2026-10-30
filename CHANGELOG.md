@@ -7,7 +7,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > Versions prior to `0.2.0` were internal iterations before the project
 > was open-sourced; their changes are summarized under "Unreleased / 0.2.0".
 
-## [Unreleased]
+## [0.4.2] - 2026-10-31
 
 Claude Code-style local workspace for the operations agent. Conversations
 can now bind a local folder (workspace) and the agent gains `local_` tools
@@ -19,17 +19,20 @@ design decision that listed "local shell / local file access" as a non-goal.
 ### Added
 
 - **Offline semantic search (embedding, memory, history).** A local ONNX
-  embedding model (`BAAI/bge-small-zh-v1.5` via fastembed, ~30 MB, Chinese +
-  English) powers three capabilities, all fully on-device after a one-time,
-  user-initiated download from the conversation-search dialog: **conversation
-  search** (find past chats by meaning — "上次 nginx 连接数怎么处理的" — results
-  jump straight to the thread), **semantic memory injection** (the agent's
-  shared memories are filtered to the ones relevant to each question instead of
-  dumping all of them into the prompt, falling back to full injection while the
-  model is not prepared), and the groundwork index itself (memories and the
-  most recent 1000 Q&A pairs backfilled on prepare; new exchanges indexed as
-  runs complete). Model download never starts by itself: the dialog states the
-  cost up front and the user clicks 准备.
+  embedding model (`BAAI/bge-small-zh-v1.5`, Q8 via fastembed, ~24 MB,
+  Chinese + English) powers three capabilities, all fully on-device. The
+  model ships inside the installer (`resources/embeddings`) and loads from
+  disk with zero network access — there is no download path at all, since
+  huggingface.co is unreachable on many networks this app runs on:
+  **conversation search** (find past chats by meaning — "上次 nginx 连接数
+  怎么处理的" — results jump straight to the thread), **semantic memory
+  injection** (the agent's shared memories are filtered to the ones relevant
+  to each question instead of dumping all of them into the prompt, falling
+  back to full injection while the index is not prepared), and the
+  groundwork index itself (memories and the most recent 1000 Q&A pairs
+  backfilled on prepare; new exchanges indexed as runs complete). Prepare
+  never runs by itself: the user clicks 准备 in the dialog and the index is
+  built locally from existing history.
 - **Vector store on the app's own SQLite (anti-corruption layer).**
   `infrastructure/vector` implements rig's `InsertDocuments` / `VectorStoreIndex`
   contracts directly over the project's rusqlite 0.40 (`vector_documents` table,
@@ -76,13 +79,24 @@ design decision that listed "local shell / local file access" as a non-goal.
   workspace snapshot and the local exec timeout; `system_preamble` gains a
   「# 本机工作区」 section when bound.
 
+### Fixed
+
+- **Frontend builds no longer require Google Fonts.** A dead
+  `next/font/google` Geist import (unreferenced since the UI switched to
+  system sans) failed the whole build whenever `fonts.gstatic.com` was
+  unreachable. Removal is a no-op visually.
+
 ### Migration
 
 - `0009_agent_workspace.sql`: `agent_workspaces` table (unique root),
   `agent_threads.workspace_id` FK with `ON DELETE SET NULL`.
+- `0010_vector_documents.sql`: `vector_documents` table (one row per
+  embedding; same-id rows = one multi-vector document, best score wins).
 - IPC contract: `ThreadDto`/`Create`/`UpdateThreadRequestDto` gain nullable
   `workspaceId`; new `WorkspaceDto`, `AddWorkspaceRequestDto`,
-  `WorkspaceIdRequestDto`; new setting path `agent.localExecTimeoutSecs`.
+  `WorkspaceIdRequestDto`; new setting path `agent.localExecTimeoutSecs`;
+  new `semantic_status` / `prepare_semantic_index` / `search_conversations`
+  commands with `SemanticStatusDto` / `ConversationHitDto`.
   All additive and backward compatible.
 
 ## [0.4.1] - 2026-10-26
