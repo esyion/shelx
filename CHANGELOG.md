@@ -7,6 +7,27 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > Versions prior to `0.2.0` were internal iterations before the project
 > was open-sourced; their changes are summarized under "Unreleased / 0.2.0".
 
+## [0.4.3] - 2026-10-31
+
+Hotfix for the 0.4.2 semantic-search rollout: the prepare action could
+crash the whole app, and its entry point was buried too deep to find.
+
+### Fixed
+
+- **Clicking 准备离线检索 crashed the app (present in 0.4.2).** The
+  command was synchronous, so it ran on the main thread, where its
+  `tokio::spawn` had no Tokio runtime context and panicked into an abort.
+  The background prepare task now goes through `tauri::async_runtime::spawn`
+  (callable from any thread, matching the port contract), and
+  `search_conversations` became an async command so its CPU inference never
+  runs on the main thread. Regression test spawns `prepare` from a plain
+  non-runtime thread and asserts it settles into the retryable Failed state
+  instead of panicking.
+- **The conversation-search entry was buried three levels deep** (sidebar →
+  panel → dropdown bottom). It is now a full-width, input-styled trigger on
+  the first row of the agent panel header — visible the moment the panel
+  opens; the duplicate dropdown item was removed.
+
 ## [0.4.2] - 2026-10-31
 
 Claude Code-style local workspace for the operations agent. Conversations
