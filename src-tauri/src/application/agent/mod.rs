@@ -21,7 +21,7 @@ mod local_tests;
 #[cfg(test)]
 mod semantic_tests;
 #[cfg(test)]
-mod tool_host_tests;
+pub(crate) mod tool_host_tests;
 
 use std::sync::Arc;
 

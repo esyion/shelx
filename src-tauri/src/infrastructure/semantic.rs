@@ -102,7 +102,10 @@ impl semantic::SemanticIndex for FastembedSemanticIndex {
         let vectors = Arc::clone(&self.vectors);
         let store = Arc::clone(&self.store);
         let model_dir = self.model_dir.clone();
-        tokio::spawn(async move {
+        // 必须用 tauri::async_runtime::spawn 而非 tokio::spawn:同步 command 在
+        // 主线程上调用本方法时没有 Tokio 上下文,tokio::spawn 会直接 panic(闪退);
+        // tauri 的运行时句柄从任意线程可用,与端口"可从任意线程调用"的契约一致。
+        tauri::async_runtime::spawn(async move {
             // 模型加载与 CPU 推理都是阻塞活,进 blocking 线程池,不占异步运行时;
             // 句柄单独克隆进任务,外层还要用它落终态。
             let task_runtime = Arc::clone(&runtime);

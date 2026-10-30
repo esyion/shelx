@@ -26,18 +26,21 @@ pub fn prepare_semantic_index(state: State<AppState>) -> IpcResult<()> {
 }
 
 /// 语义搜索历史对话(按意思匹配,返回标题与命中片段)。
+///
+/// async:查询向量化是 CPU 推理,同步 command 会跑在主线程上卡 UI;
+/// 带 `State` 引用的 async command 须返回 Result(agent command 同惯例)。
 #[tauri::command]
-pub fn search_conversations(
-    state: State<AppState>,
+pub async fn search_conversations(
+    state: State<'_, AppState>,
     request: SearchConversationsRequestDto,
-) -> IpcResult<Vec<ConversationHitDto>> {
+) -> Result<IpcResult<Vec<ConversationHitDto>>, String> {
     if request.query.trim().is_empty() {
-        return IpcResult::err(IpcError::new(
+        return Ok(IpcResult::err(IpcError::new(
             IpcErrorCode::InvalidArgument,
             "请输入要搜索的内容",
-        ));
+        )));
     }
-    match state.agent.search_conversations(&request.query) {
+    Ok(match state.agent.search_conversations(&request.query) {
         Ok(hits) => IpcResult::ok(
             hits.into_iter()
                 .map(|hit| ConversationHitDto {
@@ -48,7 +51,7 @@ pub fn search_conversations(
                 .collect(),
         ),
         Err(err) => IpcResult::err(super::agent::to_ipc_error(err)),
-    }
+    })
 }
 
 /// 应用层状态 → IPC DTO。

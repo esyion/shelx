@@ -15,6 +15,8 @@ pub mod local_exec;
 pub mod local_fs;
 pub mod secrets;
 pub mod semantic;
+#[cfg(test)]
+mod semantic_tests;
 pub mod settings;
 pub mod sqlite;
 pub mod ssh;
