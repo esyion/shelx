@@ -46,6 +46,12 @@ export type {
 } from "./sessions";
 export type { TerminalDataHandler, TerminalHandle } from "./terminals";
 export type {
+  ConversationHitDto,
+  SearchConversationsRequestDto,
+  SemanticPhaseDto,
+  SemanticStatusDto,
+} from "./semantic";
+export type {
   DeleteFailure,
   DeleteRemoteResult,
   FileEntry,

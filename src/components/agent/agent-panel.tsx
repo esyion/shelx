@@ -39,6 +39,7 @@ import { useAgentStore } from "@/stores/agent";
 import { useUiStore } from "@/stores/ui";
 import { AgentThread } from "./agent-thread";
 import { ArchivedThreadsDialog } from "./archived-threads-dialog";
+import { ConversationSearchDialog } from "./conversation-search-dialog";
 import { AuditList } from "./audit-list";
 import { ThreadSelector } from "./thread-selector";
 
@@ -65,6 +66,7 @@ export function AgentPanel() {
   const [needProfile, setNeedProfile] = useState(false);
   /** 归档弹窗(恢复/彻底删除的入口,常驻在对话选择器底部)。 */
   const [archivedOpen, setArchivedOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   /** 打开时才拉数据:收着面板不产生额外 IPC 与网络。 */
   useEffect(() => {
@@ -123,6 +125,7 @@ export function AgentPanel() {
           activeThreadId={activeThreadId}
           onSelect={(threadId) => void openThread(threadId)}
           onOpenArchived={() => setArchivedOpen(true)}
+          onOpenSearch={() => setSearchOpen(true)}
         />
         <Button
           variant="ghost"
@@ -147,6 +150,7 @@ export function AgentPanel() {
       </header>
 
       <ArchivedThreadsDialog open={archivedOpen} onOpenChange={setArchivedOpen} />
+      <ConversationSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-4 pb-4 pt-3">
         {error && !(tab === "chat" && activeThreadId) && (

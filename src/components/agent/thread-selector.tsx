@@ -15,7 +15,7 @@
 "use client";
 
 import { useState } from "react";
-import { Archive, ChevronDown, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
+import { Archive, ChevronDown, Pencil, Pin, PinOff, Search, Trash2 } from "lucide-react";
 import type { AgentThread } from "@/types";
 import { formatRelativeTime } from "@/lib/agent-events";
 import {
@@ -64,17 +64,20 @@ const THREAD_TITLE_MAX = 80;
  * @param activeThreadId 当前线程 ID;`null` = 还没选。
  * @param onSelect 选中回调(切换线程)。
  * @param onOpenArchived 打开「已归档的对话」弹窗(入口常驻在菜单底部)。
+ * @param onOpenSearch 打开「搜索对话」弹窗(按意思找,不用记原词)。
  */
 export function ThreadSelector({
   threads,
   activeThreadId,
   onSelect,
   onOpenArchived,
+  onOpenSearch,
 }: {
   threads: AgentThread[];
   activeThreadId: string | null;
   onSelect: (threadId: string) => void;
   onOpenArchived: () => void;
+  onOpenSearch: () => void;
 }) {
   const patchThread = useAgentStore((state) => state.patchThread);
   const removeThread = useAgentStore((state) => state.removeThread);
@@ -264,6 +267,10 @@ export function ThreadSelector({
           )}
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => onOpenSearch()}>
+          <Search />
+          搜索对话
+        </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => onOpenArchived()}>
           <Archive />
           已归档的对话

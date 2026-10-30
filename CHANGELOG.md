@@ -18,6 +18,18 @@ design decision that listed "local shell / local file access" as a non-goal.
 
 ### Added
 
+- **Offline semantic search (embedding, memory, history).** A local ONNX
+  embedding model (`BAAI/bge-small-zh-v1.5` via fastembed, ~30 MB, Chinese +
+  English) powers three capabilities, all fully on-device after a one-time,
+  user-initiated download from the conversation-search dialog: **conversation
+  search** (find past chats by meaning — "上次 nginx 连接数怎么处理的" — results
+  jump straight to the thread), **semantic memory injection** (the agent's
+  shared memories are filtered to the ones relevant to each question instead of
+  dumping all of them into the prompt, falling back to full injection while the
+  model is not prepared), and the groundwork index itself (memories and the
+  most recent 1000 Q&A pairs backfilled on prepare; new exchanges indexed as
+  runs complete). Model download never starts by itself: the dialog states the
+  cost up front and the user clicks 准备.
 - **Vector store on the app's own SQLite (anti-corruption layer).**
   `infrastructure/vector` implements rig's `InsertDocuments` / `VectorStoreIndex`
   contracts directly over the project's rusqlite 0.40 (`vector_documents` table,

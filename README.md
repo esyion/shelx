@@ -70,6 +70,7 @@ Everything stays local: connections live in a local database, credentials go int
 - Streaming output with a visible chain of thought: reasoning, one timeline step per tool call, per-host progress, and a separate operation log to review everything afterwards
 - Conversations persist: pinned, renamed, auto-named, reusable; an active terminal session can be bound as context, or the assistant roams freely
 - Works with OpenAI (Responses API), Anthropic (Messages API), or a custom verified endpoint; long conversations compact older context automatically while token usage stays visible
+- Semantic search over past conversations and relevance-filtered shared memory, powered by a local offline embedding model (one-time, consent-gated download; nothing leaves your machine)
 
 ## Download
 

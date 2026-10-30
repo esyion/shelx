@@ -278,6 +278,13 @@ export const addAgentWorkspace = agentApi.addAgentWorkspace;
 /** 移除本机工作区(绑定的对话自动解绑,历史保留)。 */
 export const removeAgentWorkspace = agentApi.removeAgentWorkspace;
 
+/** 语义索引状态(离线检索是否就绪)。 */
+export const semanticStatus = agentApi.semanticStatus;
+/** 开始准备语义索引(下载离线模型并整理历史)。 */
+export const prepareSemanticIndex = agentApi.prepareSemanticIndex;
+/** 语义搜索历史对话(按意思匹配)。 */
+export const searchConversations = agentApi.searchConversations;
+
 /** 打开系统目录选择框(取消返回 null;非 Tauri 环境无原生选择,返回 null)。 */
 export const pickDirectory = dialogApi.pickDirectory;
 

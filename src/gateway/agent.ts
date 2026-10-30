@@ -19,7 +19,9 @@ import type {
   ModelWindowDto,
   ProbeDto,
   SaveWebSearchKeyRequestDto,
+  SearchConversationsRequestDto,
   SendAcceptedDto,
+  SemanticStatusDto,
   TargetDto,
   TargetScope,
   TestProfileRequestDto,
@@ -30,6 +32,7 @@ import type {
   WebSearchProbeDto,
   WebSearchStatusDto,
   WorkspaceDto,
+  ConversationHitDto,
 } from "@/types";
 import { invokeUnwrapped } from "./tauri";
 
@@ -294,4 +297,21 @@ export function addAgentWorkspace(request: {
 /** 移除本机工作区(绑定它的对话自动解绑;历史记录保留)。 */
 export function removeAgentWorkspace(id: string): Promise<void> {
   return invokeUnwrapped("remove_agent_workspace", { request: { id } });
+}
+
+/** 语义索引当前状态(离线检索是否就绪)。 */
+export function semanticStatus(): Promise<SemanticStatusDto> {
+  return invokeUnwrapped("semantic_status");
+}
+
+/** 开始准备语义索引(下载离线模型并整理历史);立即返回,进度轮询状态。 */
+export function prepareSemanticIndex(): Promise<void> {
+  return invokeUnwrapped("prepare_semantic_index");
+}
+
+/** 语义搜索历史对话(按意思匹配,返回标题与命中片段)。 */
+export function searchConversations(
+  request: SearchConversationsRequestDto,
+): Promise<ConversationHitDto[]> {
+  return invokeUnwrapped("search_conversations", { request });
 }
