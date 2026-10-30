@@ -276,6 +276,9 @@ pub fn run() {
             commands::workspace::list_agent_workspaces,
             commands::workspace::add_agent_workspace,
             commands::workspace::remove_agent_workspace,
+            commands::semantic::semantic_status,
+            commands::semantic::prepare_semantic_index,
+            commands::semantic::search_conversations,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

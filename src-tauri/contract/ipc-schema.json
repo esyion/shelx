@@ -3494,6 +3494,114 @@
       ],
       "type": "object"
     },
+    "semantic": {
+      "$defs": {
+        "ConversationHitDto": {
+          "description": "对话搜索命中。",
+          "properties": {
+            "snippet": {
+              "description": "命中片段(问与答的节选)。",
+              "type": "string"
+            },
+            "threadId": {
+              "description": "命中的对话 ID(点击即切换过去)。",
+              "type": "string"
+            },
+            "title": {
+              "description": "对话当前标题。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "threadId",
+            "title",
+            "snippet"
+          ],
+          "type": "object"
+        },
+        "SearchConversationsRequestDto": {
+          "description": "对话搜索请求。",
+          "properties": {
+            "query": {
+              "description": "搜索词(按意思匹配,不必是原词;上限 200 字,与后端校验同源)。",
+              "type": "string"
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "type": "object"
+        },
+        "SemanticPhaseDto": {
+          "description": "语义索引阶段。",
+          "oneOf": [
+            {
+              "const": "not_ready",
+              "description": "尚未准备(需要用户点「准备」才开始下载模型)。",
+              "type": "string"
+            },
+            {
+              "const": "preparing",
+              "description": "正在下载模型或整理历史。",
+              "type": "string"
+            },
+            {
+              "const": "ready",
+              "description": "就绪,搜索可用。",
+              "type": "string"
+            },
+            {
+              "const": "failed",
+              "description": "准备失败,可重试。",
+              "type": "string"
+            }
+          ]
+        },
+        "SemanticStatusDto": {
+          "description": "语义索引状态(界面展示「准备 / 建立索引中 / 就绪 / 失败重试」)。",
+          "properties": {
+            "message": {
+              "description": "失败原因(仅 failed 时有值,原样展示)。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "state": {
+              "$ref": "#/$defs/SemanticPhaseDto",
+              "description": "阶段:not_ready / preparing / ready / failed。"
+            }
+          },
+          "required": [
+            "state",
+            "message"
+          ],
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "properties": {
+        "ConversationHitDto": {
+          "$ref": "#/$defs/ConversationHitDto"
+        },
+        "SearchConversationsRequestDto": {
+          "$ref": "#/$defs/SearchConversationsRequestDto"
+        },
+        "SemanticPhaseDto": {
+          "$ref": "#/$defs/SemanticPhaseDto"
+        },
+        "SemanticStatusDto": {
+          "$ref": "#/$defs/SemanticStatusDto"
+        }
+      },
+      "required": [
+        "SemanticStatusDto",
+        "SemanticPhaseDto",
+        "SearchConversationsRequestDto",
+        "ConversationHitDto"
+      ],
+      "type": "object"
+    },
     "session": {
       "$defs": {
         "AuthMethodDto": {

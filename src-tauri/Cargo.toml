@@ -136,6 +136,13 @@ rig = { version = "=0.45.0", default-features = false, features = [
   "bedrock", "gemini-grpc", "vertexai", "typesafeai",
   "candle", "fastembed", "vectorize",
 ] }
+# --- 离线 embedding(infrastructure/semantic.rs 直接用 fastembed 的 TextEmbedding)---
+# 用途:rig 的 Fastembed 封装不暴露缓存目录定制,这里直接依赖 fastembed(与
+#       rig-fastembed 同一 4.9.x,自动统一版本),模型缓存落在应用数据目录。
+# 风险:首次准备需联网下载模型(约 30 MB);CPU 推理在 blocking 线程池执行。
+# 回滚:`cargo remove fastembed` + 删除 infrastructure/semantic.rs 与 semantic 相关
+#       application/commands 代码即可,向量表(0010)可留在库里不影响运行。
+fastembed = "4.9.1"
 futures = "0.3"
 
 [dev-dependencies]

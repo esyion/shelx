@@ -10409,6 +10409,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "dirs 6.0.0",
+ "fastembed",
  "futures",
  "keyring",
  "machine-uid",

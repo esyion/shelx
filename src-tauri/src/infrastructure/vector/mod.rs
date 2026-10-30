@@ -75,7 +75,7 @@ impl SqliteVectorStore {
     ///
     /// 维度与查询不一致或范数为零的向量不参与排名:写入时换了 embedding 模型的
     /// 旧行无法与新查询比较,如实跳过而不是给假分数。
-    fn search_rows(
+    pub(crate) fn search_rows(
         &self,
         query: &[f64],
         samples: u64,
@@ -140,6 +140,50 @@ impl InsertDocuments for SqliteVectorStore {
         Doc: Serialize + rig::Embed + rig::wasm_compat::WasmCompatSend,
     {
         let rows = prepare_rows(documents)?;
+        self.write_pending(rows)
+    }
+}
+
+impl SqliteVectorStore {
+    /// 供语义索引适配器直接写行(纯数据形态,不经 rig 契约);同 id 替换。
+    ///
+    /// # Errors
+    /// 序列化或存储失败。
+    pub(crate) fn insert_rows(
+        &self,
+        rows: Vec<(String, String, Vec<f64>)>,
+    ) -> Result<(), VectorStoreError> {
+        let pending = rows
+            .into_iter()
+            .map(|(id, document, vector)| PendingRow {
+                id,
+                document,
+                embeddings: vec![serialize_embedding(&vector)],
+            })
+            .collect();
+        self.write_pending(pending)
+    }
+
+    /// 按 id 批量删除向量行(不存在视为成功)。
+    ///
+    /// # Errors
+    /// 存储失败。
+    pub(crate) fn delete_rows(&self, ids: &[String]) -> Result<(), VectorStoreError> {
+        self.with_conn(|conn| {
+            conn.execute_batch("BEGIN")?;
+            for id in ids {
+                conn.execute(
+                    &format!("DELETE FROM {TABLE} WHERE id = ?1"),
+                    rusqlite::params![id],
+                )?;
+            }
+            conn.execute_batch("COMMIT")?;
+            Ok(())
+        })
+    }
+
+    /// 事务写入待定行(同 id 先删后插,保证替换语义)。
+    fn write_pending(&self, rows: Vec<PendingRow>) -> Result<(), VectorStoreError> {
         self.with_conn(|conn| {
             conn.execute_batch("BEGIN")?;
             let now = now_millis();
@@ -242,11 +286,14 @@ impl VectorStoreIndex for SqliteVectorIndex {
     }
 }
 
-/// 一条已打分的检索结果行(排序、去重前)。
-struct Scored {
-    id: String,
-    document: String,
-    score: f64,
+/// 一条已打分的检索结果行(排序、去重前);跨模块只读,供语义适配器取用。
+pub(crate) struct Scored {
+    /// 文档 ID。
+    pub(crate) id: String,
+    /// 文档 JSON 原文。
+    pub(crate) document: String,
+    /// 相似度分数。
+    pub(crate) score: f64,
 }
 
 /// 待写入行:文档 JSON 与其向量的 f32 小端序列化(与 sqlite-vec blob 格式一致)。

@@ -124,6 +124,16 @@ impl AppState {
         ));
         let local_exec: Arc<dyn crate::application::local_ports::LocalExec> =
             Arc::new(crate::infrastructure::local_exec::TokioLocalExec::new());
+        // 语义索引(fastembed 离线模型 + 向量表):模型不随启动加载,用户首次
+        // 在「搜索对话」里点准备才下载,避免未经同意拉取大文件(§7)。
+        let semantic_index: Arc<dyn crate::application::agent::semantic::SemanticIndex> = Arc::new(
+            crate::infrastructure::semantic::FastembedSemanticIndex::open(
+                &db_path,
+                Arc::clone(&agent_store),
+                dir.join("embeddings"),
+            )
+            .unwrap_or_else(|err| panic!("{err}")),
+        );
         let agent = Arc::new(crate::application::agent::AgentService::new(
             agent_store,
             agent_gateway,
@@ -136,6 +146,7 @@ impl AppState {
             workspaces,
             local_exec,
             workspace_fs,
+            semantic_index,
         ));
         agent.recover_unfinished_runs();
 

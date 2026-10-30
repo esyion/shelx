@@ -8,6 +8,7 @@ pub mod hub;
 pub mod lifecycle;
 pub mod local_ops;
 pub mod prompt;
+pub mod semantic;
 pub mod tool_host;
 pub mod tool_ops;
 pub mod tools;
@@ -17,6 +18,8 @@ mod run;
 
 #[cfg(test)]
 mod local_tests;
+#[cfg(test)]
+mod semantic_tests;
 #[cfg(test)]
 mod tool_host_tests;
 
@@ -196,6 +199,8 @@ pub struct AgentService {
     pub(crate) search: Arc<dyn WebSearch>,
     /// 本机工作区服务(登记/列表/删除与最近使用;本机工具的边界来源)。
     pub(crate) workspaces: Arc<crate::application::workspaces::WorkspaceService>,
+    /// 语义索引(离线 embedding + 向量检索;记忆注入与对话搜索共用)。
+    pub(crate) semantic: Arc<dyn semantic::SemanticIndex>,
 }
 
 impl AgentService {
@@ -214,6 +219,7 @@ impl AgentService {
         workspaces: Arc<crate::application::workspaces::WorkspaceService>,
         local_exec: Arc<dyn crate::application::local_ports::LocalExec>,
         workspace_fs: Arc<dyn crate::application::local_ports::WorkspaceFs>,
+        semantic: Arc<dyn semantic::SemanticIndex>,
     ) -> Self {
         let hub = Arc::new(ThreadEventHub::new());
         let approvals = Arc::new(ApprovalCenter::new());
@@ -242,6 +248,7 @@ impl AgentService {
             secrets,
             search,
             workspaces,
+            semantic,
         }
     }
 
@@ -474,6 +481,8 @@ impl AgentService {
             enabled,
         )?;
         self.store.upsert_memory(&memory)?;
+        // 索引钩子在存储成功之后:索引失败不影响记忆保存(见 semantic.rs)。
+        self.index_memory(&memory);
         Ok(memory)
     }
 
@@ -483,6 +492,7 @@ impl AgentService {
     /// 存储失败。
     pub fn delete_memory(&self, id: &str) -> Result<(), AgentError> {
         self.store.delete_memory(id)?;
+        self.forget_memory_index(id);
         Ok(())
     }
 

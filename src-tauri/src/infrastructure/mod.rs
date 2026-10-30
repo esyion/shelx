@@ -14,6 +14,7 @@ pub mod events;
 pub mod local_exec;
 pub mod local_fs;
 pub mod secrets;
+pub mod semantic;
 pub mod settings;
 pub mod sqlite;
 pub mod ssh;
