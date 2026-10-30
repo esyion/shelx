@@ -342,10 +342,12 @@ fn serialize_embedding(vector: &[f64]) -> Vec<u8> {
         .collect()
 }
 
-/// f32 小端字节 → f64 向量;尾部残缺字节(异常数据)按 chunks_exact 语义丢弃。
+/// f32 小端字节 → f64 向量;尾部残缺字节(异常数据)按 as_chunks 语义丢弃。
 fn decode_embedding(blob: &[u8]) -> Vec<f64> {
-    blob.chunks_exact(4)
-        .map(|bytes| f64::from(f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])))
+    let (chunks, _) = blob.as_chunks::<4>();
+    chunks
+        .iter()
+        .map(|bytes| f64::from(f32::from_le_bytes(*bytes)))
         .collect()
 }
 

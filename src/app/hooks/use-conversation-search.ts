@@ -50,7 +50,7 @@ export function useConversationSearch(active: boolean) {
     return () => clearInterval(timer);
   }, [active, status?.state, refreshStatus]);
 
-  /** 发起准备(下载离线模型并整理历史);立即返回,进度交给轮询。 */
+  /** 发起准备(加载内置离线模型并整理历史);立即返回,进度交给轮询。 */
   const prepare = useCallback(async () => {
     setError(null);
     try {

@@ -304,7 +304,7 @@ export function semanticStatus(): Promise<SemanticStatusDto> {
   return invokeUnwrapped("semantic_status");
 }
 
-/** 开始准备语义索引(下载离线模型并整理历史);立即返回,进度轮询状态。 */
+/** 开始准备语义索引(加载内置离线模型并整理历史);立即返回,进度轮询状态。 */
 export function prepareSemanticIndex(): Promise<void> {
   return invokeUnwrapped("prepare_semantic_index");
 }

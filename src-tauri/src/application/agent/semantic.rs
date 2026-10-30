@@ -1,8 +1,8 @@
 //! 语义检索应用层:离线 embedding、语义记忆与历史对话搜索的用例与端口。
 //!
-//! 端口 [`SemanticIndex`] 由 infrastructure 以 fastembed(本地 ONNX,中英双语
-//! 小模型)+ `vector_documents` 向量表实现。模型首次准备需要联网下载,未就绪时
-//! 语义记忆自动退回全量注入、对话搜索返回可行动的错误,主流程不阻断。
+//! 端口 [`SemanticIndex`] 由 infrastructure 以 fastembed(安装包内置的本地
+//! ONNX,中英双语小模型)+ `vector_documents` 向量表实现;模型加载无网络。
+//! 未就绪时语义记忆自动退回全量注入、对话搜索返回可行动的错误,主流程不阻断。
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -30,7 +30,7 @@ pub(crate) const BACKFILL_EXCHANGES: usize = 1000;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case", tag = "state")]
 pub enum SemanticStatus {
-    /// 尚未准备:发起准备后才开始下载模型并建立索引(下载需要用户知情,不自动)。
+    /// 尚未准备:发起准备后才开始加载内置模型并回填索引(回填耗时,由用户发起,不自动)。
     NotReady,
     /// 模型下载或历史回填进行中。
     Preparing,

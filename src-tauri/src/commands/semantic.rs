@@ -18,7 +18,7 @@ pub fn semantic_status(state: State<AppState>) -> IpcResult<SemanticStatusDto> {
     IpcResult::ok(to_status_dto(state.agent.semantic_status()))
 }
 
-/// 开始准备语义索引(下载离线模型并整理历史);立即返回,进度轮询状态。
+/// 开始准备语义索引(加载安装包内置离线模型并整理历史);立即返回,进度轮询状态。
 #[tauri::command]
 pub fn prepare_semantic_index(state: State<AppState>) -> IpcResult<()> {
     state.agent.prepare_semantic();

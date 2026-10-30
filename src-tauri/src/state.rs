@@ -5,6 +5,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use tauri::Manager;
+
 use crate::application::connections::ConnectionService;
 use crate::application::migration::MigrationService;
 use crate::application::monitoring::MonitorService;
@@ -124,13 +126,22 @@ impl AppState {
         ));
         let local_exec: Arc<dyn crate::application::local_ports::LocalExec> =
             Arc::new(crate::infrastructure::local_exec::TokioLocalExec::new());
-        // 语义索引(fastembed 离线模型 + 向量表):模型不随启动加载,用户首次
-        // 在「搜索对话」里点准备才下载,避免未经同意拉取大文件(§7)。
+        // 语义索引(fastembed 离线模型 + 向量表):模型文件随安装包 resources
+        // 内置,不随启动加载,用户首次在「搜索对话」里点准备才加载并回填历史。
+        // 目录解析失败不让应用起不来:语义检索是辅助能力,准备时给出可重试
+        // 的失败状态即可(Failed 带原因,§4.1.1)。
+        let semantic_model_dir = app
+            .path()
+            .resolve("resources/embeddings", tauri::path::BaseDirectory::Resource)
+            .unwrap_or_else(|err| {
+                tracing::warn!(error = %err, "离线模型资源目录解析失败,语义检索暂不可用");
+                std::path::PathBuf::from("resources/embeddings")
+            });
         let semantic_index: Arc<dyn crate::application::agent::semantic::SemanticIndex> = Arc::new(
             crate::infrastructure::semantic::FastembedSemanticIndex::open(
                 &db_path,
                 Arc::clone(&agent_store),
-                dir.join("embeddings"),
+                semantic_model_dir,
             )
             .unwrap_or_else(|err| panic!("{err}")),
         );

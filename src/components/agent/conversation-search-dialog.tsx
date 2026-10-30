@@ -1,9 +1,9 @@
 /**
  * 历史对话语义搜索弹窗:按意思找对话,不用记原词(离线模型,数据不出本机)。
  *
- * 首次使用需下载离线模型(约 30 MB,联网一次),之后完全离线 —— 下载由用户
- * 点「准备」发起,不自动拉取;准备中持续可见进度,失败给出原因与重试,
- * 不留死状态(AGENTS.md §4.1.1)。就绪后输入即搜,点结果直接切到那个对话。
+ * 离线模型随安装包内置,全程无网络与下载;首次使用点「准备」在本机整理一次
+ * 历史对话即可。准备中持续可见进度,失败给出原因与重试,不留死状态(AGENTS.md
+ * §4.1.1)。就绪后输入即搜,点结果直接切到那个对话。
  */
 "use client";
 
@@ -89,8 +89,8 @@ export function ConversationSearchDialog({ open, onOpenChange }: ConversationSea
             <EmptyHeader>
               <EmptyTitle>还没准备离线检索</EmptyTitle>
               <EmptyDescription>
-                首次使用需要下载一个约 30 MB 的离线模型(需联网),之后搜索、语义记忆
-                全在本机完成;不下载也不影响其他功能。
+                首次使用需要在本机整理一次历史对话(一两分钟),之后搜索、语义记忆
+                全在本机完成;不准备也不影响其他功能。
               </EmptyDescription>
             </EmptyHeader>
             <Button size="sm" onClick={() => void prepare()}>
@@ -103,7 +103,7 @@ export function ConversationSearchDialog({ open, onOpenChange }: ConversationSea
         {status?.state === "preparing" && (
           <p className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
             <Spinner data-icon="inline-start" />
-            正在下载模型并整理历史对话,可能需要几分钟;窗口可以先留着。
+            正在整理历史对话,可能需要一两分钟;窗口可以先留着。
           </p>
         )}
 

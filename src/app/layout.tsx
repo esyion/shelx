@@ -18,14 +18,12 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import { usePathname, useRouter } from "next/navigation";
 import { useEventListener } from "usehooks-ts";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { UnlistenFn } from "@tauri-apps/api/event";
-import { cn } from "@/lib/utils";
 import {
   AuthPromptDialog,
   HostKeyConfirmDialog,
@@ -54,8 +52,6 @@ import type { QuickLink } from "@/stores/ui";
 import { useUpdateStore } from "@/stores/update";
 import { enqueueUploadAndShow } from "@/components/files/transfer-enqueue";
 import type { SessionStatusEvent, UpdateNotice } from "@/types";
-
-const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 
 /**
  * 应用根布局。
@@ -240,7 +236,7 @@ export default function RootLayout({
   useEventListener("keydown", (event) => keyHandlerRef.current(event));
 
   return (
-    <html lang="zh-CN" suppressHydrationWarning className={cn("font-sans", geist.variable)}>
+    <html lang="zh-CN" suppressHydrationWarning className="font-sans">
       <head />
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
         <ThemeProvider

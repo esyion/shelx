@@ -280,7 +280,7 @@ export const removeAgentWorkspace = agentApi.removeAgentWorkspace;
 
 /** 语义索引状态(离线检索是否就绪)。 */
 export const semanticStatus = agentApi.semanticStatus;
-/** 开始准备语义索引(下载离线模型并整理历史)。 */
+/** 开始准备语义索引(加载内置离线模型并整理历史)。 */
 export const prepareSemanticIndex = agentApi.prepareSemanticIndex;
 /** 语义搜索历史对话(按意思匹配)。 */
 export const searchConversations = agentApi.searchConversations;

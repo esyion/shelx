@@ -14,9 +14,9 @@
 
 import { Fragment, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowDown } from "lucide-react";
+import { ArrowDown, Sparkles } from "lucide-react";
 import type { RunDto, TargetDto } from "@/types";
-import { EVENT_KIND_DISPLAY, foldEvents } from "@/lib/agent-events";
+import { APPROVAL_MODE_DISPLAY, EVENT_KIND_DISPLAY, foldEvents } from "@/lib/agent-events";
 import { chainSegments, type AgentSegment } from "@/lib/agent-chain";
 import { resolveAgentTargets } from "@/app/api";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
@@ -24,7 +24,14 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ShelxMark } from "@/components/brand/shelx-mark";
 import { Button } from "@/components/ui/button";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { Message, MessageAvatar, MessageContent, MessageHeader } from "@/components/ui/message";
 import {
   MessageScroller,
@@ -45,12 +52,27 @@ import { Reasoning } from "./reasoning";
 import { ThreadComposer } from "./thread-composer";
 import { ThreadHeader } from "./thread-header";
 
-/** 空态的可点建议(Suggestion pattern:点一下就把这句话发出去)。 */
-const SUGGESTIONS = [
-  "web-01 现在为什么这么慢",
-  "把所有机器磁盘使用率超过 80% 的列出来",
-  "这台机器的 nginx 配置里 upstream 长什么样",
-];
+/**
+ * 空态的可点建议(Suggestion pattern:点一下就把这句话发出去)。
+ * 带主机名的建议用真实连接名,点了就能跑通;一台机器都没有时退化为
+ * 不点名的问题,由 Agent 如实回答当前能看到什么。
+ *
+ * @param exemplarName 示例主机显示名(优先取在线的一台),没有可用机器时为 null。
+ */
+function buildSuggestions(exemplarName: string | null): string[] {
+  if (!exemplarName) {
+    return [
+      "你现在能看到哪些服务器",
+      "把所有机器磁盘使用率超过 80% 的列出来",
+      "每台机器现在负载怎么样",
+    ];
+  }
+  return [
+    `${exemplarName} 现在为什么这么慢`,
+    "把所有机器磁盘使用率超过 80% 的列出来",
+    `看看 ${exemplarName} 的 nginx 配置里 upstream 长什么样`,
+  ];
+}
 
 /** Agent 侧一段的外壳(助手的答案不套气泡);身份由头像标记,caption 为空时不渲染抬头。 */
 function AgentRow({ caption, children }: { caption: string | null; children: ReactNode }) {
@@ -168,6 +190,14 @@ export function AgentThread({ threadId }: { threadId: string }) {
   }));
   /** 空态判据:一轮都没有,缓冲里也还没有回答。 */
   const hasAnswer = turns.some((turn) => turn.segments.some((segment) => segment.kind === "text"));
+  /** 空态建议的示例主机:优先挑一台在线的,点了就能跑通。 */
+  const exemplarName = (scope.targets.find((target) => target.online) ?? scope.targets[0])
+    ?.connName ?? null;
+  const suggestions = buildSuggestions(exemplarName);
+  /** 空态的档位说明与审批档位映射同源(AGENTS.md §4.1.1:提示必须与真实行为一致)。 */
+  const approvalDescription = snapshot
+    ? APPROVAL_MODE_DISPLAY[snapshot.thread.approvalMode].description
+    : "";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -192,26 +222,30 @@ export function AgentThread({ threadId }: { threadId: string }) {
                   <MessageScrollerItem>
                     <Empty className="border">
                       <EmptyHeader>
-                        <EmptyTitle>问它一件运维上的事</EmptyTitle>
+                        <EmptyMedia variant="icon">
+                          <Sparkles />
+                        </EmptyMedia>
+                        <EmptyTitle>问点什么?</EmptyTitle>
                         <EmptyDescription>
                           {snapshot.thread.lifecycle === "draft"
-                            ? "发第一条消息后,这个对话会自动命名并出现在对话列表里。取证类操作会自动执行;任何改动都会先请你逐台批准。"
-                            : "取证类操作会自动执行;任何改动都会先请你逐台批准。"}
+                            ? `发第一条消息后,这个对话会自动命名并出现在对话列表里。${approvalDescription}`
+                            : approvalDescription}
                         </EmptyDescription>
                       </EmptyHeader>
-                      <div className="flex flex-wrap gap-2">
-                        {SUGGESTIONS.map((text) => (
+                      <EmptyContent className="items-stretch gap-2">
+                        {suggestions.map((text) => (
                           <Button
                             key={text}
                             variant="outline"
                             size="sm"
+                            className="justify-start whitespace-normal"
                             disabled={busy}
                             onClick={() => void send(text)}
                           >
                             {text}
                           </Button>
                         ))}
-                      </div>
+                      </EmptyContent>
                     </Empty>
                   </MessageScrollerItem>
                 )}

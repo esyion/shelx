@@ -1,14 +1,19 @@
 //! fastembed + SQLite 向量表的语义索引适配器:实现应用层 [`SemanticIndex`] 端口。
 //!
-//! 模型固定 BAAI/bge-small-zh-v1.5(中英双语小模型,CPU 毫秒级,约 30 MB)。
-//! 首次准备需联网下载到数据目录下的缓存,之后完全离线;回填把启用的共享记忆
+//! 模型固定 BAAI/bge-small-zh-v1.5 的 Xenova ONNX 转换(Q8 量化,中英双语,
+//! CPU 毫秒级,约 24 MB),五个文件随安装包 resources 内置(见
+//! src-tauri/resources/embeddings/),以 UserDefinedEmbeddingModel 直读字节,
+//! 全程无网络 —— 不走 fastembed 的 HuggingFace 下载路径:huggingface.co 国内
+//! 不可达,且 hf-hub 的 HF_HOME 环境变量会劫持缓存位置。回填把启用的共享记忆
 //! 与最近若干条问答对写进 `vector_documents`(0010 迁移)。切换模型必须清空
 //! 向量表重建(维度与语义空间都不同),本版本不做模型切换。
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
-use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+use fastembed::{
+    InitOptionsUserDefined, Pooling, TextEmbedding, TokenizerFiles, UserDefinedEmbeddingModel,
+};
 use rig::vector_store::request::{Filter, SearchFilter};
 use rig::vector_store::VectorStoreError;
 
@@ -18,8 +23,14 @@ use crate::application::agent::semantic::{
 use crate::application::agent::types::{memory_line, AgentStore};
 use crate::infrastructure::vector::SqliteVectorStore;
 
-/// 选用的离线模型(中英双语;见模块注释)。
-const MODEL: EmbeddingModel = EmbeddingModel::BGESmallZHV15;
+/// 资源目录里必须齐备的模型文件(缺一即准备失败,逐名报缺失)。
+const MODEL_FILES: [&str; 5] = [
+    "model_quantized.onnx",
+    "tokenizer.json",
+    "config.json",
+    "special_tokens_map.json",
+    "tokenizer_config.json",
+];
 
 /// 一次喂给模型的文本数上限(分批控制单次推理的内存与延迟)。
 const EMBED_BATCH: usize = 32;
@@ -38,28 +49,28 @@ pub struct FastembedSemanticIndex {
     vectors: Arc<SqliteVectorStore>,
     /// 回填数据源(记忆与历史消息)。
     store: Arc<dyn AgentStore>,
-    /// 模型缓存目录(数据目录下,遵循本项目数据落位约定)。
-    cache_dir: PathBuf,
+    /// 安装包内置的模型文件目录(tauri resources 解析出的 embeddings 目录)。
+    model_dir: PathBuf,
     /// 运行时状态。
     runtime: Arc<RwLock<Runtime>>,
 }
 
 impl FastembedSemanticIndex {
-    /// 打开向量库连接并组装;模型不在此加载(首次 prepare 时才下载/加载)。
+    /// 打开向量库连接并组装;模型不在此加载(首次 prepare 时才加载并回填)。
     ///
     /// # Errors
     /// 数据库打开或迁移失败(带路径上下文)。
     pub fn open(
         db_path: &Path,
         store: Arc<dyn AgentStore>,
-        cache_dir: PathBuf,
+        model_dir: PathBuf,
     ) -> Result<Self, String> {
         let conn = crate::infrastructure::sqlite::open(db_path)
             .map_err(|err| format!("语义库打开失败({}):{err}", db_path.display()))?;
         Ok(Self {
             vectors: Arc::new(SqliteVectorStore::new(conn)),
             store,
-            cache_dir,
+            model_dir,
             runtime: Arc::new(RwLock::new(Runtime::NotReady)),
         })
     }
@@ -86,17 +97,17 @@ impl semantic::SemanticIndex for FastembedSemanticIndex {
             }
             *guard = Runtime::Preparing;
         }
-        tracing::info!("开始准备语义索引:下载/加载离线模型并回填历史(首次需联网)");
+        tracing::info!("开始准备语义索引:加载内置离线模型并回填历史(无网络请求)");
         let runtime = Arc::clone(&self.runtime);
         let vectors = Arc::clone(&self.vectors);
         let store = Arc::clone(&self.store);
-        let cache_dir = self.cache_dir.clone();
+        let model_dir = self.model_dir.clone();
         tokio::spawn(async move {
-            // 下载与 CPU 推理都是阻塞活,进 blocking 线程池,不占异步运行时;
+            // 模型加载与 CPU 推理都是阻塞活,进 blocking 线程池,不占异步运行时;
             // 句柄单独克隆进任务,外层还要用它落终态。
             let task_runtime = Arc::clone(&runtime);
             let outcome = tokio::task::spawn_blocking(move || {
-                load_and_backfill(&task_runtime, &vectors, &store, &cache_dir)
+                load_and_backfill(&task_runtime, &vectors, &store, &model_dir)
             })
             .await
             .unwrap_or_else(|err| Err(format!("语义准备任务异常退出:{err}")));
@@ -154,18 +165,14 @@ impl semantic::SemanticIndex for FastembedSemanticIndex {
     }
 }
 
-/// 下载/加载模型并回填索引;只在状态仍是 Preparing 时落 Ready(中途被复位就不覆盖)。
+/// 加载内置模型并回填索引;只在状态仍是 Preparing 时落 Ready(中途被复位就不覆盖)。
 fn load_and_backfill(
     runtime: &Arc<RwLock<Runtime>>,
     vectors: &Arc<SqliteVectorStore>,
     store: &Arc<dyn AgentStore>,
-    cache_dir: &Path,
+    model_dir: &Path,
 ) -> Result<(), String> {
-    std::fs::create_dir_all(cache_dir).map_err(|err| format!("缓存目录创建失败:{err}"))?;
-    let model =
-        TextEmbedding::try_new(InitOptions::new(MODEL).with_cache_dir(cache_dir.to_path_buf()))
-            .map_err(|err| format!("模型下载或加载失败(首次需要联网,约 30 MB):{err}"))?;
-    let model = Arc::new(model);
+    let model = Arc::new(load_bundled_model(model_dir)?);
 
     let memories = backfill_memories(&model, vectors, store);
     let conversations = backfill_conversations(&model, vectors, store);
@@ -176,6 +183,44 @@ fn load_and_backfill(
         *guard = Runtime::Ready(model);
     }
     Ok(())
+}
+
+/// 从安装包资源目录加载内置模型;五个文件缺一即失败,错误点名缺失清单。
+///
+/// bge 系列是 CLS 池化,而 UserDefinedEmbeddingModel 默认无池化 —— 必须显式
+/// 指定,否则向量口径错误,检索质量会静默劣化。
+fn load_bundled_model(model_dir: &Path) -> Result<TextEmbedding, String> {
+    let missing = MODEL_FILES
+        .iter()
+        .map(|name| model_dir.join(name))
+        .filter(|path| !path.is_file())
+        .collect::<Vec<_>>();
+    if !missing.is_empty() {
+        let list = missing
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join("、");
+        return Err(format!(
+            "安装包缺少离线模型文件(资源目录 {}):{list};请重新安装",
+            model_dir.display()
+        ));
+    }
+    let read = |name: &str| {
+        std::fs::read(model_dir.join(name)).map_err(|err| format!("模型文件读取失败({name}):{err}"))
+    };
+    let mut model = UserDefinedEmbeddingModel::new(
+        read("model_quantized.onnx")?,
+        TokenizerFiles {
+            tokenizer_file: read("tokenizer.json")?,
+            config_file: read("config.json")?,
+            special_tokens_map_file: read("special_tokens_map.json")?,
+            tokenizer_config_file: read("tokenizer_config.json")?,
+        },
+    );
+    model.pooling = Some(Pooling::Cls);
+    TextEmbedding::try_new_from_user_defined(model, InitOptionsUserDefined::new())
+        .map_err(|err| format!("离线模型加载失败:{err}"))
 }
 
 /// 回填启用的共享记忆;返回成功写入的条数(单段失败只告警,不阻断整体)。

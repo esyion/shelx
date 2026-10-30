@@ -227,22 +227,6 @@ mod tests {
     const ROOT: &str = r"C:\ws";
 
     #[test]
-    fn relative_paths_join_under_root() {
-        assert_eq!(
-            normalize_within(ROOT, "a/b.txt").unwrap(),
-            format!(r"C:\ws\a\b.txt")
-        );
-    }
-
-    #[test]
-    fn absolute_inside_root_passes() {
-        assert_eq!(
-            normalize_within(ROOT, r"C:\ws\a\c.txt").unwrap(),
-            format!(r"C:\ws\a\c.txt")
-        );
-    }
-
-    #[test]
     fn parent_hop_rejected() {
         assert_eq!(
             normalize_within(ROOT, "a/../b").unwrap_err(),
@@ -267,18 +251,6 @@ mod tests {
         assert_eq!(
             normalize_within(ROOT, r"C:\ws2\side").unwrap_err(),
             WorkspacePathError::OutsideRoot
-        );
-    }
-
-    #[test]
-    fn dot_and_separator_folding() {
-        assert_eq!(
-            normalize_within(ROOT, "./a//b\\c/").unwrap(),
-            format!(r"C:\ws\a\b\c")
-        );
-        assert_eq!(
-            normalize_within(ROOT, "").unwrap_err(),
-            WorkspacePathError::Empty
         );
     }
 

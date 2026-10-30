@@ -1,7 +1,7 @@
 /**
  * 历史对话语义搜索弹窗的行为测试(AGENTS.md §9:测用户可见行为)。
  *
- * 覆盖:未就绪时说明下载并让用户发起、准备中进度可见、就绪后输入即搜、
+ * 覆盖:未就绪时说明要整理历史并让用户发起、准备中进度可见、就绪后输入即搜、
  * 点结果切换对话、搜索失败保留后端原文、空结果给下一步引导。只 mock 路由 `api.ts`。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -58,18 +58,18 @@ describe("历史对话语义搜索弹窗", () => {
     fireEvent.click(screen.getByRole("button", { name: "准备离线检索" }));
     expect(api.prepareSemanticIndex).toHaveBeenCalledOnce();
     await waitFor(() => {
-      expect(screen.getByText(/正在下载模型并整理历史对话/)).toBeTruthy();
+      expect(screen.getByText(/正在整理历史对话/)).toBeTruthy();
     });
   });
 
   it("失败给原因与重试入口,不留死状态", async () => {
     api.semanticStatus.mockResolvedValue({
       state: "failed",
-      message: "网络不可用,模型没下载下来",
+      message: "离线模型加载失败:模型文件读取失败(model_quantized.onnx)",
     });
     renderDialog();
     await waitFor(() => {
-      expect(screen.getByText(/网络不可用/)).toBeTruthy();
+      expect(screen.getByText(/离线模型加载失败/)).toBeTruthy();
     });
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     expect(api.prepareSemanticIndex).toHaveBeenCalledOnce();
