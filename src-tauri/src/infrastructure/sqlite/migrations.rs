@@ -34,6 +34,10 @@ const MIGRATIONS: &[(i64, &str)] = &[
         9,
         include_str!("../../../migrations/0009_agent_workspace.sql"),
     ),
+    (
+        10,
+        include_str!("../../../migrations/0010_vector_documents.sql"),
+    ),
 ];
 
 /// 将数据库迁移到最新版本;已是最新时为空操作。

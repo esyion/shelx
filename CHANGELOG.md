@@ -18,6 +18,17 @@ design decision that listed "local shell / local file access" as a non-goal.
 
 ### Added
 
+- **Vector store on the app's own SQLite (anti-corruption layer).**
+  `infrastructure/vector` implements rig's `InsertDocuments` / `VectorStoreIndex`
+  contracts directly over the project's rusqlite 0.40 (`vector_documents` table,
+  migration 0010): exact cosine top-N, the canonical rig metadata `Filter`, and
+  similarity thresholds — the same semantics rig-sqlite provides (its `vec0`
+  KNN is exact brute force anyway) without adopting its pinned `rusqlite ^0.32`,
+  which cannot coexist with the app's rusqlite 0.40 under libsqlite3-sys's
+  single `links = "sqlite3"` slot. Implementing `VectorStoreIndex` also makes
+  the index usable as rig's built-in `search_vector_store` tool, ready for
+  upcoming RAG / semantic-memory features.
+
 - **Workspaces (登记 + 对话绑定).** Pick a folder via the system directory
   chooser, keep a saved list (most recently used first), and bind one per
   conversation from the thread header. New conversations default to the most

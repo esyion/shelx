@@ -20,5 +20,6 @@ pub mod ssh;
 pub mod terminal_channel;
 pub mod tray;
 pub mod updater;
+pub mod vector;
 pub mod window_integration;
 pub mod workspace_fs;

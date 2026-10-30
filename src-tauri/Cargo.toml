@@ -115,8 +115,8 @@ schemars = "1.2.3"
 #       qdrant/s3vectors/scylladb/surrealdb/helixdb/postgres)——项目用不上,且 postgres 经 sqlx
 #       会拉 sqlx-sqlite、sqlite 经 rig-sqlite 会拉 rusqlite ^0.32,都与本项目 rusqlite 0.40.2
 #       在 libsqlite3-sys(links="sqlite3" 全图仅允许一份)上原生冲突。
-#       rig-sqlite(向量存储)待决策:项目 rusqlite 降级 0.32(引擎回退到 SQLite 3.46)或在防腐层
-#       用 rusqlite 0.40 实现 rig 的 VectorStore 契约。
+#       rig-sqlite(向量存储)已决策不引入(2026-10-30):等价能力由 infrastructure/vector 防腐层
+#       以 rusqlite 0.40 自实现(精确余弦 top-N + rig VectorStore 契约,迁移 0010),保住 SQLite 3.50 引擎。
 #       原设计中"向量库/embedding/MCP 为非目标"不再成立,AGENT_DESIGN 待同步。
 # 风险:编译时间、二进制体积与依赖供应链面显著变大(candle/fastembed 拉 ort 等 native 依赖,
 #       fastembed 构建期会下载 ONNX 二进制);未使用的特性只增加体积,不影响运行时行为。
