@@ -8,9 +8,11 @@
  * 只保留对话与操作记录两个页签:记忆与模型配置是低频管理动作,
  * 在 设置 → AI(它们原本挤在这里的页签里,管理体验受限)。
  *
- * 头部只有一行:flex 左右排列 —— 对话切换(线程即标题,见 `thread-selector.tsx`)
- * 占满剩余宽度,右侧是「新对话」与「关闭」两颗图标键,不再用绝对定位的关闭键
- * (绝对定位在窄窗口会盖住旁边的键,点「新对话」会点到关闭)。
+ * 头部两行:首行是「搜索对话」触发键 —— 输入框样式、全宽、点击开离线检索弹窗,
+ * 检索是跨对话能力,入口要一眼可达,不埋进对话下拉菜单;第二行 flex 左右排列 ——
+ * 对话切换(线程即标题,见 `thread-selector.tsx`)占满剩余宽度,右侧是「新对话」
+ * 与「关闭」两颗图标键,不再用绝对定位的关闭键(绝对定位在窄窗口会盖住旁边的
+ * 键,点「新对话」会点到关闭)。
  * 面板不常驻"AI 助手"大标题与副标题 —— 侧栏入口已经自我介绍,空态也会说明
  * 它能做什么;跨线程的待批准由侧栏徽章与正文警示卡兜住,标题徽章不再重复一份。
  */
@@ -18,7 +20,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, X } from "lucide-react";
+import { Plus, Search, X } from "lucide-react";
 import type { ApprovalDto } from "@/types";
 import { listPendingApprovals } from "@/app/api";
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
@@ -119,34 +121,47 @@ export function AgentPanel() {
       aria-label="AI 助手"
       className="relative flex h-full min-w-0 flex-col bg-background text-sm text-foreground"
     >
-      <header className="flex shrink-0 items-center gap-1 border-b px-2.5 py-2">
-        <ThreadSelector
-          threads={threads}
-          activeThreadId={activeThreadId}
-          onSelect={(threadId) => void openThread(threadId)}
-          onOpenArchived={() => setArchivedOpen(true)}
-          onOpenSearch={() => setSearchOpen(true)}
-        />
+      <header className="flex shrink-0 flex-col gap-1.5 border-b px-2.5 py-2">
+        {/* 搜索对话:首行全宽触发键,点击开弹窗;做成输入框样式而非图标键,
+            让"能搜历史对话"在打开面板的第一眼可见(§4.1.1 能力有可达入口)。 */}
         <Button
-          variant="ghost"
-          size="icon-sm"
-          className="shrink-0"
-          aria-label="新对话"
-          title={creating ? "正在创建…" : "新对话"}
-          disabled={creating}
-          onClick={() => void create()}
+          variant="outline"
+          size="sm"
+          className="h-8 w-full justify-start gap-2 font-normal text-muted-foreground"
+          title="按意思搜索历史对话(本机离线)"
+          onClick={() => setSearchOpen(true)}
         >
-          <Plus />
+          <Search aria-hidden className="size-4 shrink-0" />
+          搜索对话
         </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="shrink-0"
-          onClick={() => setAgentOpen(false)}
-        >
-          <X />
-          <span className="sr-only">关闭 AI 助手</span>
-        </Button>
+        <div className="flex items-center gap-1">
+          <ThreadSelector
+            threads={threads}
+            activeThreadId={activeThreadId}
+            onSelect={(threadId) => void openThread(threadId)}
+            onOpenArchived={() => setArchivedOpen(true)}
+          />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="shrink-0"
+            aria-label="新对话"
+            title={creating ? "正在创建…" : "新对话"}
+            disabled={creating}
+            onClick={() => void create()}
+          >
+            <Plus />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="shrink-0"
+            onClick={() => setAgentOpen(false)}
+          >
+            <X />
+            <span className="sr-only">关闭 AI 助手</span>
+          </Button>
+        </div>
       </header>
 
       <ArchivedThreadsDialog open={archivedOpen} onOpenChange={setArchivedOpen} />

@@ -3,6 +3,7 @@
  *
  * 入口:点侧栏「AI 助手」只切换 `useUiStore.agentOpen`,不得跳转新页面
  * (原缺陷:`router.push("/agent")` 打开整页,冲掉工作区)。
+ * 搜索:「搜索对话」触发键在面板头部首行(不埋进对话下拉菜单,可发现性回归)。
  * 形态:助手是 AppShell 里的停靠右栏(ResizablePanel 第三列,挤压工作区),
  * 不是覆盖层抽屉 —— 页面里不得出现 Drawer 弹层节点,主列随开关保持挂载
  * (AGENTS.md §4.1.1,docs/AGENT_DESIGN.md §12.1)。
@@ -34,6 +35,9 @@ const api = vi.hoisted(() => ({
   resumeAgentRun: vi.fn(),
   resolveAgentTargets: vi.fn(),
   listPendingApprovals: vi.fn(),
+  semanticStatus: vi.fn(),
+  prepareSemanticIndex: vi.fn(),
+  searchConversations: vi.fn(),
   getSettings: vi.fn(),
   getSettingsSchema: vi.fn(),
   openExternalUrl: vi.fn(),
@@ -166,6 +170,7 @@ beforeEach(() => {
   api.getAgentThread.mockResolvedValue(snapshot);
   api.resolveAgentTargets.mockResolvedValue([]);
   api.listPendingApprovals.mockResolvedValue([]);
+  api.semanticStatus.mockResolvedValue({ state: "not_ready", message: null });
   api.getSettings.mockResolvedValue({});
   api.getSettingsSchema.mockResolvedValue([]);
   api.attachAgentThread.mockResolvedValue("sub-1");
@@ -406,6 +411,22 @@ describe("新对话连点回归(原缺陷:连点堆出多个空对话)", () => {
       .threads.filter((thread) => thread.lifecycle === "draft");
     expect(drafts).toHaveLength(1);
     expect(useAgentStore.getState().activeThreadId).toBe("d1");
+  });
+});
+
+describe("搜索对话入口", () => {
+  it("触发键在面板头部首行(对话切换之上),点击打开搜索弹窗", async () => {
+    render(<AppShell />);
+    useUiStore.setState({ agentOpen: true });
+    await screen.findByLabelText("向 Agent 提问");
+    const trigger = screen.getByRole("button", { name: /搜索对话/ });
+    // 首行:文档流里排在第二行控制键(新对话)之前。
+    const newRow = screen.getByRole("button", { name: "新对话" });
+    expect(
+      trigger.compareDocumentPosition(newRow) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    fireEvent.click(trigger);
+    expect(await screen.findByText("搜索历史对话")).toBeTruthy();
   });
 });
 
