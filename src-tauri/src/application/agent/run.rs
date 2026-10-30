@@ -397,6 +397,7 @@ impl AgentService {
                 context.bound_conn_id.as_deref(),
                 workspace_scope.as_ref(),
                 &model.record,
+                &prompt,
                 settings.inject_memories,
                 web_search,
             )?,
@@ -531,14 +532,34 @@ impl AgentService {
             }
         }
         if !outcome.final_text.trim().is_empty() {
+            let answer_id = uuid::Uuid::new_v4().to_string();
             if let Err(err) = self.store.append_message(&MessageRecord {
-                id: uuid::Uuid::new_v4().to_string(),
+                id: answer_id.clone(),
                 thread_id: thread_id.to_owned(),
                 role: MessageRole::Assistant,
                 content: outcome.final_text.clone(),
                 created_at: now,
             }) {
                 tracing::warn!("回答落库失败: {err}");
+            }
+            // 对话语义索引:问题取本轮用户消息(尾部最近一条),与回答一起向量化;
+            // 未就绪静默跳过,准备完成后的回填会补。
+            if state == RunState::Completed {
+                let prompt = self
+                    .store
+                    .messages(thread_id, super::SNAPSHOT_MESSAGE_LIMIT)
+                    .ok()
+                    .and_then(|messages| {
+                        messages
+                            .iter()
+                            .rev()
+                            .find(|message| matches!(message.role, MessageRole::User))
+                            .map(|message| message.content.clone())
+                    })
+                    .unwrap_or_default();
+                if !prompt.trim().is_empty() {
+                    self.index_exchange(thread_id, &prompt, &outcome.final_text, &answer_id);
+                }
             }
         }
         if let Some(title) = outcome
@@ -598,6 +619,7 @@ impl AgentService {
         bound: Option<&str>,
         workspace: Option<&WorkspaceScope>,
         profile: &super::types::ProfileRecord,
+        prompt: &str,
         inject_memories: bool,
         web_search: bool,
     ) -> Result<String, AgentError> {
@@ -620,13 +642,10 @@ impl AgentService {
                 online: online.iter().any(|id| id == config.id.as_str()),
             })
             .collect();
+        // 语义记忆:索引就绪时只注入与本次问题最相关的若干条,未就绪自动退回全量
+        //(见 semantic::memory_lines,降级不断档)。
         let memories: Vec<String> = if inject_memories {
-            self.store
-                .memories()?
-                .into_iter()
-                .filter(|memory| memory.enabled)
-                .map(|memory| super::types::memory_line(&memory))
-                .collect()
+            super::semantic::memory_lines(&self.store.memories()?, self.semantic.as_ref(), prompt)
         } else {
             Vec::new()
         };

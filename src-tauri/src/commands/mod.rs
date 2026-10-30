@@ -15,6 +15,7 @@ pub mod groups;
 pub mod local_fs;
 pub mod migration;
 pub mod monitor;
+pub mod semantic;
 pub mod sessions;
 pub mod settings;
 pub mod sftp;

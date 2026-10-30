@@ -115,8 +115,8 @@ schemars = "1.2.3"
 #       qdrant/s3vectors/scylladb/surrealdb/helixdb/postgres)——项目用不上,且 postgres 经 sqlx
 #       会拉 sqlx-sqlite、sqlite 经 rig-sqlite 会拉 rusqlite ^0.32,都与本项目 rusqlite 0.40.2
 #       在 libsqlite3-sys(links="sqlite3" 全图仅允许一份)上原生冲突。
-#       rig-sqlite(向量存储)待决策:项目 rusqlite 降级 0.32(引擎回退到 SQLite 3.46)或在防腐层
-#       用 rusqlite 0.40 实现 rig 的 VectorStore 契约。
+#       rig-sqlite(向量存储)已决策不引入(2026-10-30):等价能力由 infrastructure/vector 防腐层
+#       以 rusqlite 0.40 自实现(精确余弦 top-N + rig VectorStore 契约,迁移 0010),保住 SQLite 3.50 引擎。
 #       原设计中"向量库/embedding/MCP 为非目标"不再成立,AGENT_DESIGN 待同步。
 # 风险:编译时间、二进制体积与依赖供应链面显著变大(candle/fastembed 拉 ort 等 native 依赖,
 #       fastembed 构建期会下载 ONNX 二进制);未使用的特性只增加体积,不影响运行时行为。
@@ -136,6 +136,15 @@ rig = { version = "=0.45.0", default-features = false, features = [
   "bedrock", "gemini-grpc", "vertexai", "typesafeai",
   "candle", "fastembed", "vectorize",
 ] }
+# --- 离线 embedding(infrastructure/semantic.rs 直接用 fastembed 的 TextEmbedding)---
+# 用途:rig 的 Fastembed 封装不暴露模型文件定制,这里直接依赖 fastembed(与
+#       rig-fastembed 同一 4.9.x,自动统一版本);模型文件随安装包 resources 内置
+#       (src-tauri/resources/embeddings/,Q8 量化约 24 MB),不走 HuggingFace 下载。
+# 风险:安装包体积 +约 24 MB;CPU 推理在 blocking 线程池执行;换模型文件必须清空
+#       向量表重建(维度与语义空间不同)。
+# 回滚:`cargo remove fastembed` + 删除 infrastructure/semantic.rs 与 semantic 相关
+#       application/commands 代码即可,向量表(0010)可留在库里不影响运行。
+fastembed = "4.9.1"
 futures = "0.3"
 
 [dev-dependencies]

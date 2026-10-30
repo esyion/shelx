@@ -216,6 +216,24 @@ fn document_uncanonical() -> Value {
                 ("AddWorkspaceRequestDto", refer::<crate::dto::workspace::AddWorkspaceRequestDto>),
                 ("WorkspaceIdRequestDto", refer::<crate::dto::workspace::WorkspaceIdRequestDto>),
             ]),
+            "semantic": build_module(&[
+                (
+                    "SemanticStatusDto",
+                    refer::<crate::dto::semantic::SemanticStatusDto>,
+                ),
+                (
+                    "SemanticPhaseDto",
+                    refer::<crate::dto::semantic::SemanticPhaseDto>,
+                ),
+                (
+                    "SearchConversationsRequestDto",
+                    refer::<crate::dto::semantic::SearchConversationsRequestDto>,
+                ),
+                (
+                    "ConversationHitDto",
+                    refer::<crate::dto::semantic::ConversationHitDto>,
+                ),
+            ]),
         }
     })
 }

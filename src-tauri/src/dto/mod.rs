@@ -10,6 +10,7 @@ pub mod connection;
 pub mod deep_link;
 pub mod migration;
 pub mod monitor;
+pub mod semantic;
 pub mod session;
 pub mod settings;
 pub mod sftp;

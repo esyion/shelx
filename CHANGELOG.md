@@ -18,6 +18,29 @@ design decision that listed "local shell / local file access" as a non-goal.
 
 ### Added
 
+- **Offline semantic search (embedding, memory, history).** A local ONNX
+  embedding model (`BAAI/bge-small-zh-v1.5` via fastembed, ~30 MB, Chinese +
+  English) powers three capabilities, all fully on-device after a one-time,
+  user-initiated download from the conversation-search dialog: **conversation
+  search** (find past chats by meaning — "上次 nginx 连接数怎么处理的" — results
+  jump straight to the thread), **semantic memory injection** (the agent's
+  shared memories are filtered to the ones relevant to each question instead of
+  dumping all of them into the prompt, falling back to full injection while the
+  model is not prepared), and the groundwork index itself (memories and the
+  most recent 1000 Q&A pairs backfilled on prepare; new exchanges indexed as
+  runs complete). Model download never starts by itself: the dialog states the
+  cost up front and the user clicks 准备.
+- **Vector store on the app's own SQLite (anti-corruption layer).**
+  `infrastructure/vector` implements rig's `InsertDocuments` / `VectorStoreIndex`
+  contracts directly over the project's rusqlite 0.40 (`vector_documents` table,
+  migration 0010): exact cosine top-N, the canonical rig metadata `Filter`, and
+  similarity thresholds — the same semantics rig-sqlite provides (its `vec0`
+  KNN is exact brute force anyway) without adopting its pinned `rusqlite ^0.32`,
+  which cannot coexist with the app's rusqlite 0.40 under libsqlite3-sys's
+  single `links = "sqlite3"` slot. Implementing `VectorStoreIndex` also makes
+  the index usable as rig's built-in `search_vector_store` tool, ready for
+  upcoming RAG / semantic-memory features.
+
 - **Workspaces (登记 + 对话绑定).** Pick a folder via the system directory
   chooser, keep a saved list (most recently used first), and bind one per
   conversation from the thread header. New conversations default to the most
