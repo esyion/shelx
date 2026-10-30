@@ -92,10 +92,6 @@ export interface AgentSettings {
    */
   batchLimit: number;
   /**
-   * 每次请求携带的历史消息条数(上下文窗口)。
-   */
-  contextMessages: number;
-  /**
    * 单条远端命令超时(秒)。
    */
   execTimeoutSecs: number;
@@ -119,10 +115,6 @@ export interface AgentSettings {
    * 是否展示模型推理增量( provider 返回时)。
    */
   showReasoning: boolean;
-  /**
-   * 单对话 token 预算;0 表示不限。
-   */
-  tokenBudget: number;
 }
 /**
  * 外观设置。

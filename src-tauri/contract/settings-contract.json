@@ -361,23 +361,6 @@
       "default": 20.0
     },
     {
-      "path": "agent.contextMessages",
-      "group": "agent",
-      "unit": "条",
-      "kind": {
-        "kind": "int",
-        "min": 2,
-        "max": 400,
-        "presets": [
-          10,
-          30,
-          60,
-          120
-        ]
-      },
-      "default": 30.0
-    },
-    {
       "path": "agent.batchLimit",
       "group": "agent",
       "unit": "台",
@@ -446,24 +429,6 @@
         ]
       },
       "default": 120.0
-    },
-    {
-      "path": "agent.tokenBudget",
-      "group": "agent",
-      "unit": "tokens",
-      "kind": {
-        "kind": "int",
-        "min": 0,
-        "max": 5000000,
-        "presets": [
-          0,
-          50000,
-          200000,
-          1000000,
-          5000000
-        ]
-      },
-      "default": 1000000.0
     },
     {
       "path": "agent.injectMemories",
@@ -542,13 +507,11 @@
     },
     "agent": {
       "maxTurns": 20,
-      "contextMessages": 30,
       "batchLimit": 5,
       "parallelHosts": 4,
       "execTimeoutSecs": 30,
       "localExecTimeoutSecs": 120,
       "approvalMode": "read_only_auto",
-      "tokenBudget": 1000000,
       "injectMemories": true,
       "showReasoning": true
     },

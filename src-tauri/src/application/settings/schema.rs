@@ -307,11 +307,6 @@ fn raw_specs() -> Vec<RawSpec> {
             kind: ints(1, 100, &[8, 12, 20, 40, 100]),
         },
         RawSpec {
-            path: "agent.contextMessages",
-            unit: Some("条"),
-            kind: ints(2, 400, &[10, 30, 60, 120]),
-        },
-        RawSpec {
             path: "agent.batchLimit",
             unit: Some("台"),
             kind: ints(1, 20, &[1, 5, 10, 20]),
@@ -330,11 +325,6 @@ fn raw_specs() -> Vec<RawSpec> {
             path: "agent.localExecTimeoutSecs",
             unit: Some("秒"),
             kind: ints(1, 600, &[10, 30, 60, 120, 300, 600]),
-        },
-        RawSpec {
-            path: "agent.tokenBudget",
-            unit: Some("tokens"),
-            kind: ints(0, 5_000_000, &[0, 50_000, 200_000, 1_000_000, 5_000_000]),
         },
         RawSpec {
             path: "agent.injectMemories",

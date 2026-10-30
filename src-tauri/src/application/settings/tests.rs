@@ -170,6 +170,22 @@ fn legacy_settings_fall_back_to_github_light() {
     );
 }
 
+/// 已移除的 Agent token 预算不得阻断旧配置读取;后续保存自然从文件里清掉。
+#[test]
+fn legacy_token_budget_is_ignored() {
+    let store = FakeSettingsStore::default();
+    *store.settings.lock().expect("settings 锁") = Some(
+        r#"{"agent":{"tokenBudget":200000,"contextMessages":30,"showReasoning":false}}"#.to_owned(),
+    );
+    let svc = SettingsService::new(Box::new(store));
+    let settings = svc.get().unwrap();
+    assert!(!settings.agent.show_reasoning);
+
+    assert!(svc
+        .update(json!({ "agent": { "tokenBudget": 1000000 } }))
+        .is_err());
+}
+
 /// 布局:非对象拒绝;对象透传持久化并可读回。
 #[test]
 fn layout_round_trip_and_shape_check() {

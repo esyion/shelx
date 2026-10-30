@@ -321,8 +321,6 @@ pub struct WindowSettings {
 pub struct AgentSettings {
     /// 单轮最多允许多少次工具往返。
     pub max_turns: u32,
-    /// 每次请求携带的历史消息条数(上下文窗口)。
-    pub context_messages: u32,
     /// 单次批量操作的主机数上限。
     pub batch_limit: u32,
     /// 同时执行的主机数上限。
@@ -333,8 +331,6 @@ pub struct AgentSettings {
     pub local_exec_timeout_secs: u32,
     /// 审批档位。
     pub approval_mode: crate::domain::agent::ApprovalMode,
-    /// 单对话 token 预算;0 表示不限。
-    pub token_budget: u32,
     /// 是否把共享记忆注入系统提示。
     pub inject_memories: bool,
     /// 是否展示模型推理增量( provider 返回时)。
@@ -342,17 +338,15 @@ pub struct AgentSettings {
 }
 
 impl Default for AgentSettings {
-    /// Agent 分组默认值:只读自动、批量 5 台、并发 4、超时 30s、预算 100 万 token。
+    /// Agent 分组默认值:只读自动、批量 5 台、并发 4、超时 30s。
     fn default() -> Self {
         Self {
             max_turns: 20,
-            context_messages: 30,
             batch_limit: 5,
             parallel_hosts: 4,
             exec_timeout_secs: 30,
             local_exec_timeout_secs: 120,
             approval_mode: crate::domain::agent::ApprovalMode::ReadOnlyAuto,
-            token_budget: 1_000_000,
             inject_memories: true,
             show_reasoning: true,
         }

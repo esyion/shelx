@@ -3987,13 +3987,6 @@
               "minimum": 0,
               "type": "integer"
             },
-            "contextMessages": {
-              "default": 30,
-              "description": "每次请求携带的历史消息条数(上下文窗口)。",
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
-            },
             "execTimeoutSecs": {
               "default": 30,
               "description": "单条远端命令超时(秒)。",
@@ -4031,24 +4024,15 @@
               "default": true,
               "description": "是否展示模型推理增量( provider 返回时)。",
               "type": "boolean"
-            },
-            "tokenBudget": {
-              "default": 1000000,
-              "description": "单对话 token 预算;0 表示不限。",
-              "format": "uint32",
-              "minimum": 0,
-              "type": "integer"
             }
           },
           "required": [
             "maxTurns",
-            "contextMessages",
             "batchLimit",
             "parallelHosts",
             "execTimeoutSecs",
             "localExecTimeoutSecs",
             "approvalMode",
-            "tokenBudget",
             "injectMemories",
             "showReasoning"
           ],
@@ -4062,14 +4046,12 @@
               "default": {
                 "approvalMode": "read_only_auto",
                 "batchLimit": 5,
-                "contextMessages": 30,
                 "execTimeoutSecs": 30,
                 "injectMemories": true,
                 "localExecTimeoutSecs": 120,
                 "maxTurns": 20,
                 "parallelHosts": 4,
-                "showReasoning": true,
-                "tokenBudget": 1000000
+                "showReasoning": true
               },
               "description": "AI Agent(M5)。"
             },

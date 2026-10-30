@@ -182,10 +182,6 @@ export const SETTING_COPY: Partial<Record<SettingPath, SettingCopy>> = {  "appea
     label: "一次任务最多走几轮",
     hint: "一轮指助手思考并操作一次;到达上限会暂停并保留进度,点「继续」接着跑,不会前功尽弃",
   },
-  "agent.contextMessages": {
-    label: "每次带上多少条历史",
-    hint: "对话时给助手看的最近消息数,越多它越了解前因后果,开销也越大",
-  },
   "agent.batchLimit": {
     label: "一次最多操作几台服务器",
     hint: "助手一轮里最多处理多少台;数量越大越省时间,一次改动的面也越大",
@@ -201,11 +197,6 @@ export const SETTING_COPY: Partial<Record<SettingPath, SettingCopy>> = {  "appea
   "agent.localExecTimeoutSecs": {
     label: "本机一条命令最多等多久",
     hint: "助手在你电脑的工作区里执行命令的最长等待;超时自动终止,不会一直挂着",
-  },
-  "agent.tokenBudget": {
-    label: "一次任务的用量上限",
-    hint: "助手一次任务最多用多少 tokens,超出就自动停下;选不限则一直跑到任务完成",
-    valueLabels: { "0": "不限" },
   },
   "agent.injectMemories": {
     label: "让助手参考以往积累的信息",

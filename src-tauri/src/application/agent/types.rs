@@ -338,10 +338,8 @@ pub struct RunPlan {
     pub preamble: String,
     /// 最大工具轮次。
     pub max_turns: usize,
-    /// 携带的历史消息条数(上下文窗口档位)。
-    pub context_messages: usize,
     /// 断点上下文(继续暂停的一轮时):网关格式的对话历史序列化,
-    /// 优先于 `context_messages` 的常规装配。
+    /// 优先于线程消息表的常规装配。
     pub resume_history: Option<String>,
 }
 
@@ -382,6 +380,10 @@ pub trait AgentStore: Send + Sync {
     fn append_message(&self, message: &MessageRecord) -> Result<(), StoreFault>;
     /// 读取线程消息(按 seq 正序,最多 limit 条尾部)。
     fn messages(&self, thread_id: &str, limit: usize) -> Result<Vec<MessageRecord>, StoreFault>;
+    /// 读取线程全部消息(按时间正序);上下文压缩需要完整历史,不能用固定尾部窗口。
+    fn all_messages(&self, thread_id: &str) -> Result<Vec<MessageRecord>, StoreFault> {
+        self.messages(thread_id, i64::MAX as usize)
+    }
     /// 写入/更新运行记录。
     fn upsert_run(&self, run: &RunRecord) -> Result<(), StoreFault>;
     /// 线程的运行历史。

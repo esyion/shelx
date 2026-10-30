@@ -3,7 +3,8 @@
  *
  * 触发器是一个 `Button variant="outline" size="sm"` 报百分比,悬浮出 `HoverCard` +
  * `Progress` 详情。**分母是模型窗口**(接入点解析出的 `effectiveContextWindow`,
- * 用户覆盖优先、否则模型目录),不是花费预算 —— 预算闸门由后端执行,这里不重复一份。
+ * 用户覆盖优先、否则模型目录)。分子是累计 tokens,只会单调上涨;接近窗口时后端
+ * 会把较早历史自动压缩成摘要继续对话,百分比封顶 100% 不代表对话进行不下去。
  * 窗口未知时不报百分比也不画条:没有分母就如实留空(AGENTS.md §4.1.1)。
  */
 "use client";
@@ -20,7 +21,7 @@ function tokens(value: number): string {
 }
 
 /**
- * @param used 整段对话已用 tokens(与后端预算闸门同口径)。
+ * @param used 整段对话累计已用 tokens(各轮落库用量 + 进行中这一轮的实时用量)。
  * @param contextWindow 该接入点实际生效的上下文窗口;`null` = 未知。
  * @param usage 最近一轮用量,详情里拆开显示。
  */
@@ -62,6 +63,7 @@ export function ContextUsage({
         </div>
         {percent !== null && <Progress value={percent} aria-label="上下文用量" />}
         {detail && <p className="text-xs text-muted-foreground">{`最近一轮：${detail}`}</p>}
+        <p className="text-xs text-muted-foreground">较久上下文会自动压缩后继续使用。</p>
       </HoverCardContent>
     </HoverCard>
   );

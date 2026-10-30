@@ -69,7 +69,7 @@ Everything stays local: connections live in a local database, credentials go int
 - Read-only / automatic execution modes; every write operation is held for per-host approval (once / always / reject), with the full command shown before you decide
 - Streaming output with a visible chain of thought: reasoning, one timeline step per tool call, per-host progress, and a separate operation log to review everything afterwards
 - Conversations persist: pinned, renamed, auto-named, reusable; an active terminal session can be bound as context, or the assistant roams freely
-- Works with OpenAI (Responses API), Anthropic (Messages API), or a custom verified endpoint; token usage is tracked against your budget
+- Works with OpenAI (Responses API), Anthropic (Messages API), or a custom verified endpoint; long conversations compact older context automatically while token usage stays visible
 
 ## Download
 

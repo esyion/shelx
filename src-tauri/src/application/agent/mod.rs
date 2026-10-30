@@ -41,6 +41,9 @@ use types::{
 /// 用户改过名(任何不等于默认值的标题)就不再覆盖。
 pub(crate) const DEFAULT_THREAD_TITLE: &str = "新对话";
 
+/// 快照展示的最近消息数。模型输入不使用这个数:网关会按模型窗口自动压缩历史。
+const SNAPSHOT_MESSAGE_LIMIT: usize = 200;
+
 /// 联网搜索连通性测试结论(如实带回失败原文,不吞错)。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -278,7 +281,6 @@ impl AgentService {
             .store
             .thread(thread_id)?
             .ok_or(AgentError::NotFound("对话线程"))?;
-        let limit = self.agent_settings().context_messages as usize;
         let pending = self
             .approvals
             .pending()
@@ -311,7 +313,7 @@ impl AgentService {
         }
         Ok(ThreadSnapshot {
             thread,
-            messages: self.store.messages(thread_id, limit.max(50))?,
+            messages: self.store.messages(thread_id, SNAPSHOT_MESSAGE_LIMIT)?,
             runs,
             pending,
             running,

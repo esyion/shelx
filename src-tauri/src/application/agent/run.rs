@@ -193,7 +193,7 @@ impl AgentService {
     /// 发起一轮对话。
     ///
     /// # Errors
-    /// 输入为空/超长、线程或模型配置不存在、缺少密钥、已有运行在进行、超出线程预算。
+    /// 输入为空/超长、线程或模型配置不存在、缺少密钥、已有运行在进行。
     pub fn send_message(
         self: &Arc<Self>,
         request: SendRequest,
@@ -218,9 +218,6 @@ impl AgentService {
         if !self.runs.running_of_thread(&thread_id).is_empty() {
             return Err(AgentError::AlreadyRunning);
         }
-        let settings = self.agent_settings();
-        self.check_budget(&thread_id, &settings)?;
-
         let prepared_model = self.prepared_model(&thread)?;
 
         let now = super::now_millis();
@@ -266,7 +263,7 @@ impl AgentService {
     /// 继续一轮暂停的运行:断点上下文由上一轮保存,这里另起新 Run 承接。
     ///
     /// # Errors
-    /// 线程或运行不存在、运行不在暂停态、断点上下文丢失、已有运行在进行、缺少密钥、超出预算。
+    /// 线程或运行不存在、运行不在暂停态、断点上下文丢失、已有运行在进行、缺少密钥。
     pub fn resume_run(
         self: &Arc<Self>,
         thread_id: &str,
@@ -282,9 +279,6 @@ impl AgentService {
         if !self.runs.running_of_thread(thread_id).is_empty() {
             return Err(AgentError::AlreadyRunning);
         }
-        let settings = self.agent_settings();
-        self.check_budget(thread_id, &settings)?;
-
         let run = self
             .store
             .runs(thread_id)?
@@ -410,7 +404,6 @@ impl AgentService {
             api_key: model.api_key,
             prompt,
             max_turns: settings.max_turns.max(1) as usize,
-            context_messages: settings.context_messages.max(2) as usize,
             resume_history,
         });
 
@@ -595,27 +588,6 @@ impl AgentService {
         self.hub
             .publish(AgentEvent::new(thread_id, run_id, payload));
         self.hub.forget_run(run_id);
-    }
-
-    /// 线程 token 预算:超出则拒绝新运行,并说明下一步。
-    fn check_budget(&self, thread_id: &str, settings: &AgentSettings) -> Result<(), AgentError> {
-        if settings.token_budget == 0 {
-            return Ok(());
-        }
-        let used: i64 = self
-            .store
-            .runs(thread_id)?
-            .into_iter()
-            .filter_map(|run| run.usage)
-            .filter_map(|usage| usage.total_tokens)
-            .sum();
-        if used >= i64::from(settings.token_budget) {
-            return Err(AgentError::Invalid(format!(
-                "本对话已用 {used} tokens,达到预算 {}。可新建对话或在设置里调整预算。",
-                settings.token_budget
-            )));
-        }
-        Ok(())
     }
 
     /// 组装系统提示:主机清单 + 共享记忆 + 审批档位 + 本机工作区。
