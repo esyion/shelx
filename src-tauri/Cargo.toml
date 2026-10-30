@@ -107,16 +107,35 @@ async-trait = "0.1"
 # src-tauri/contract/ 生成物即可,前端退回手写类型。
 schemars = "1.2.3"
 # --- AI Agent(M5,docs/AGENT_DESIGN.md)---
-# 用途:Agent 循环、Responses/Messages 协议与工具调用。裁剪到 agent+derive+reqwest+native-tls+memory,
-#       不带向量库/embedding/MCP(§2 非目标)。
+# 用途:Agent 循环、Responses/Messages 协议与工具调用。开除外部数据库外的全部能力:内容
+#       (audio/image/pdf/epub)、memory(会话/记忆存储)、本地 embedding 与推理(candle/fastembed)、
+#       边缘向量(vectorize)、provider 补充(bedrock/gemini-grpc/vertexai/typesafeai)、
+#       MCP 客户端(rmcp)、cassette 录制回放与网络选项(websocket/socks/reqwest-middleware)。
+#       数据库只有 sqlite:不开任何 rig 外部数据库/向量库集成(lancedb/milvus/mongodb/neo4j/
+#       qdrant/s3vectors/scylladb/surrealdb/helixdb/postgres)——项目用不上,且 postgres 经 sqlx
+#       会拉 sqlx-sqlite、sqlite 经 rig-sqlite 会拉 rusqlite ^0.32,都与本项目 rusqlite 0.40.2
+#       在 libsqlite3-sys(links="sqlite3" 全图仅允许一份)上原生冲突。
+#       rig-sqlite(向量存储)待决策:项目 rusqlite 降级 0.32(引擎回退到 SQLite 3.46)或在防腐层
+#       用 rusqlite 0.40 实现 rig 的 VectorStore 契约。
+#       原设计中"向量库/embedding/MCP 为非目标"不再成立,AGENT_DESIGN 待同步。
+# 风险:编译时间、二进制体积与依赖供应链面显著变大(candle/fastembed 拉 ort 等 native 依赖,
+#       fastembed 构建期会下载 ONNX 二进制);未使用的特性只增加体积,不影响运行时行为。
 # 精确锁版 `=0.45.0`:rig 为 0.x,每版可能破坏 API(CHANGELOG 大量 breaking);升级必须独立提交,
 #       改动面按防腐层压在 infrastructure/agent/{provider,rig_bridge}.rs 两处。
 # TLS 选 native-tls 而非默认 rustls:rustls 经 reqwest 会拉进 aws-lc-rs,Windows 构建需 NASM/CMake
 #       (与上面 russh 选 ring 的理由一致);native-tls 在 Windows=Schannel、macOS=SecurityFramework、
-#       Linux 需 libssl-dev。
+#       Linux 需 libssl-dev。全量特性下仍保持单一 TLS 栈:rustls/websocket-rustls/
+#       reqwest-middleware-rustls 与 test-utils/facade-build-tests 不开。
 # 回滚:`cargo remove rig` + 删除 src-tauri/src/{domain,application,infrastructure}/agent*、
 #       commands/agent.rs、dto/agent.rs、migrations/0002_agent.sql 与前端 /agent 路由即可,核心 SSH 功能不受影响。
-rig = { version = "=0.45.0", default-features = false, features = ["agent", "derive", "reqwest", "native-tls", "memory"] }
+rig = { version = "=0.45.0", default-features = false, features = [
+  "agent", "derive", "reqwest", "native-tls",
+  "audio", "image", "pdf", "epub",
+  "memory", "cassette", "rmcp",
+  "websocket-native-tls", "socks", "reqwest-middleware-native-tls",
+  "bedrock", "gemini-grpc", "vertexai", "typesafeai",
+  "candle", "fastembed", "vectorize",
+] }
 futures = "0.3"
 
 [dev-dependencies]
